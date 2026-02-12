@@ -201,11 +201,13 @@ export default function TournamentsPage() {
                     <span className="text-xs font-medium">
                       {t.entryFee > 0 ? `Entry: \u20B9${(t.entryFee / 100).toFixed(0)}` : "Free Entry"}
                     </span>
-                    {t.filledSlots >= t.maxSlots ? (
+                    {t.status !== "upcoming" ? (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground uppercase">{t.status}</Badge>
+                    ) : t.filledSlots >= t.maxSlots ? (
                       <Badge variant="outline" className="text-[10px] text-destructive">Full</Badge>
-                    ) : t.status === "upcoming" ? (
+                    ) : (
                       <span className="text-xs text-primary font-medium">Join Now</span>
-                    ) : null}
+                    )}
                   </div>
                 </CardContent>
               </Card>

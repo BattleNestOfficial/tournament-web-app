@@ -96,7 +96,9 @@ export default function TournamentDetailPage() {
 
   const game = games?.find((g) => g.id === tournament.gameId);
   const slotPercentage = (tournament.filledSlots / tournament.maxSlots) * 100;
-  const canJoin = tournament.status === "upcoming" && tournament.filledSlots < tournament.maxSlots && !isRegistered && !!user;
+  const isFull = tournament.filledSlots >= tournament.maxSlots;
+  const isLive = tournament.status === "live";
+  const canJoin = tournament.status === "upcoming" && !isFull && !isRegistered && !!user;
   const prizeDistribution = tournament.prizeDistribution as Record<string, number>[] | null;
 
   const statusColors: Record<string, string> = {
@@ -155,7 +157,17 @@ export default function TournamentDetailPage() {
               {joinMutation.isPending ? "Joining..." : tournament.entryFee > 0 ? `Join \u20B9${(tournament.entryFee / 100).toFixed(0)}` : "Join Free"}
             </Button>
           )}
-          {!user && tournament.status === "upcoming" && (
+          {user && tournament.status === "upcoming" && isFull && !isRegistered && (
+            <Button disabled data-testid="button-tournament-full">
+              Tournament Full
+            </Button>
+          )}
+          {user && isLive && !isRegistered && (
+            <Button disabled data-testid="button-tournament-live">
+              Match Live
+            </Button>
+          )}
+          {!user && tournament.status === "upcoming" && !isFull && (
             <Button onClick={() => setLocation("/auth")} data-testid="button-login-to-join">
               Login to Join
             </Button>

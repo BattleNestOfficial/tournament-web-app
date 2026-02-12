@@ -362,7 +362,9 @@ function TournamentCard({ tournament, gameName, gameSlug }: { tournament: Tourna
             <span className="text-xs font-medium">
               {tournament.entryFee > 0 ? `Entry: \u20B9${(tournament.entryFee / 100).toFixed(0)}` : "Free Entry"}
             </span>
-            {tournament.filledSlots >= tournament.maxSlots ? (
+            {tournament.status !== "upcoming" ? (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground uppercase">{tournament.status}</Badge>
+            ) : tournament.filledSlots >= tournament.maxSlots ? (
               <Badge variant="outline" className="text-[10px] text-destructive">Full</Badge>
             ) : (
               <span className="text-xs text-primary font-medium">Join Now</span>
