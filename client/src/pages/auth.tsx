@@ -1,15 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Swords, Eye, EyeOff, ArrowRight, Gamepad2 } from "lucide-react";
+
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -33,12 +40,70 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  const { data: googleConfig } = useQuery<{ clientId: string | null }>({
+    queryKey: ["/api/config/google-client-id"],
+  });
 
   const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "" } });
   const signupForm = useForm<SignupForm>({ resolver: zodResolver(signupSchema), defaultValues: { username: "", email: "", password: "", confirmPassword: "" } });
+
+  const handleGoogleCredential = useCallback(async (response: any) => {
+    setGoogleLoading(true);
+    try {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "Google login failed");
+      login(json.token, json.user);
+      toast({ title: "Welcome!", description: `Logged in as ${json.user.username}` });
+      setLocation(json.user.role === "admin" ? "/admin" : "/");
+    } catch (err: any) {
+      toast({ title: "Google login failed", description: err.message, variant: "destructive" });
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [login, toast, setLocation]);
+
+  useEffect(() => {
+    if (!googleConfig?.clientId) return;
+
+    const initGoogle = () => {
+      if (!window.google?.accounts?.id) return;
+      window.google.accounts.id.initialize({
+        client_id: googleConfig.clientId,
+        callback: handleGoogleCredential,
+      });
+      if (googleButtonRef.current) {
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: "outline",
+          size: "large",
+          width: "100%",
+          text: "continue_with",
+          shape: "rectangular",
+        });
+      }
+    };
+
+    if (window.google?.accounts?.id) {
+      initGoogle();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = initGoogle;
+      document.head.appendChild(script);
+    }
+  }, [googleConfig?.clientId, handleGoogleCredential]);
 
   async function onLogin(data: LoginForm) {
     setLoading(true);
@@ -82,7 +147,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-chart-2/5 rounded-full blur-3xl" />
       </div>
@@ -230,6 +295,27 @@ export default function AuthPage() {
                   {!loading && <Gamepad2 className="w-4 h-4 ml-2" />}
                 </Button>
               </form>
+            )}
+
+            {googleConfig?.clientId && (
+              <>
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+                <div
+                  ref={googleButtonRef}
+                  data-testid="google-login-container"
+                  className="flex justify-center"
+                />
+                {googleLoading && (
+                  <p className="text-center text-sm text-muted-foreground mt-2">Signing in with Google...</p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

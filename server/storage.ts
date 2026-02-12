@@ -2,15 +2,19 @@ import { db } from "./db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
+  payments, adminLogs, notifications,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
+  type Payment, type AdminLog, type Notification,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
 export interface IStorage {
   createUser(data: { username: string; email: string; password: string }): Promise<User>;
+  createGoogleUser(data: { username: string; email: string; googleId: string; avatarUrl?: string }): Promise<User>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserById(id: number): Promise<User | undefined>;
+  getUserByGoogleId(googleId: string): Promise<User | undefined>;
   updateUserProfile(id: number, data: Partial<User>): Promise<User | undefined>;
   updateWalletBalance(id: number, amount: number): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
@@ -19,17 +23,20 @@ export interface IStorage {
   getAllGames(): Promise<Game[]>;
   createGame(data: InsertGame): Promise<Game>;
   updateGame(id: number, data: Partial<Game>): Promise<Game | undefined>;
+  deleteGame(id: number): Promise<void>;
 
   getAllTournaments(): Promise<Tournament[]>;
   getTournamentById(id: number): Promise<Tournament | undefined>;
   createTournament(data: any): Promise<Tournament>;
   updateTournament(id: number, data: Partial<Tournament>): Promise<Tournament | undefined>;
   updateTournamentStatus(id: number, status: string): Promise<Tournament | undefined>;
+  deleteTournament(id: number): Promise<void>;
   incrementSlots(id: number): Promise<void>;
 
   createRegistration(userId: number, tournamentId: number): Promise<Registration>;
   getRegistrationsByUser(userId: number): Promise<Registration[]>;
   getRegistration(userId: number, tournamentId: number): Promise<Registration | undefined>;
+  getRegistrationsByTournament(tournamentId: number): Promise<Registration[]>;
 
   createTransaction(data: { userId: number; amount: number; type: string; description?: string; tournamentId?: number }): Promise<Transaction>;
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
@@ -41,6 +48,7 @@ export interface IStorage {
 
   getResultsByTournament(tournamentId: number): Promise<Result[]>;
   createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result>;
+  deleteResultsByTournament(tournamentId: number): Promise<void>;
 
   createTeam(ownerId: number, name: string): Promise<Team>;
   getTeamsByUser(userId: number): Promise<(Team & { members: (TeamMember & { username?: string })[] })[]>;
@@ -49,6 +57,20 @@ export interface IStorage {
   removeTeamMember(teamId: number, userId: number): Promise<void>;
   getTeamMembers(teamId: number): Promise<(TeamMember & { username?: string })[]>;
   deleteTeam(id: number): Promise<void>;
+
+  createPayment(data: { userId: number; razorpayOrderId: string; amount: number; currency?: string }): Promise<Payment>;
+  getPaymentByOrderId(orderId: string): Promise<Payment | undefined>;
+  updatePayment(id: number, data: Partial<Payment>): Promise<Payment | undefined>;
+  getPaymentsByUser(userId: number): Promise<Payment[]>;
+
+  createAdminLog(data: { adminId: number; action: string; targetType?: string; targetId?: number; details?: string }): Promise<AdminLog>;
+  getAdminLogs(): Promise<AdminLog[]>;
+
+  createNotification(data: { userId: number; type: string; title: string; message: string }): Promise<Notification>;
+  getNotificationsByUser(userId: number): Promise<Notification[]>;
+  markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: number): Promise<void>;
+  getUnreadNotificationCount(userId: number): Promise<number>;
 
   getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }>;
 
@@ -66,6 +88,17 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async createGoogleUser(data: { username: string; email: string; googleId: string; avatarUrl?: string }): Promise<User> {
+    const [user] = await db.insert(users).values({
+      username: data.username,
+      email: data.email,
+      password: "",
+      googleId: data.googleId,
+      avatarUrl: data.avatarUrl || null,
+    }).returning();
+    return user;
+  }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
@@ -73,6 +106,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserById(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
     return user;
   }
 
@@ -112,6 +150,10 @@ export class DatabaseStorage implements IStorage {
     return game;
   }
 
+  async deleteGame(id: number): Promise<void> {
+    await db.delete(games).where(eq(games.id, id));
+  }
+
   async getAllTournaments(): Promise<Tournament[]> {
     return db.select().from(tournaments).orderBy(desc(tournaments.startTime));
   }
@@ -136,6 +178,12 @@ export class DatabaseStorage implements IStorage {
     return t;
   }
 
+  async deleteTournament(id: number): Promise<void> {
+    await db.delete(registrations).where(eq(registrations.tournamentId, id));
+    await db.delete(results).where(eq(results.tournamentId, id));
+    await db.delete(tournaments).where(eq(tournaments.id, id));
+  }
+
   async incrementSlots(id: number): Promise<void> {
     await db.update(tournaments)
       .set({ filledSlots: sql`${tournaments.filledSlots} + 1` })
@@ -155,6 +203,10 @@ export class DatabaseStorage implements IStorage {
     const [reg] = await db.select().from(registrations)
       .where(and(eq(registrations.userId, userId), eq(registrations.tournamentId, tournamentId)));
     return reg;
+  }
+
+  async getRegistrationsByTournament(tournamentId: number): Promise<Registration[]> {
+    return db.select().from(registrations).where(eq(registrations.tournamentId, tournamentId));
   }
 
   async createTransaction(data: { userId: number; amount: number; type: string; description?: string; tournamentId?: number }): Promise<Transaction> {
@@ -209,6 +261,10 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
+  async deleteResultsByTournament(tournamentId: number): Promise<void> {
+    await db.delete(results).where(eq(results.tournamentId, tournamentId));
+  }
+
   async createTeam(ownerId: number, name: string): Promise<Team> {
     const [team] = await db.insert(teams).values({ name, ownerId }).returning();
     await db.insert(teamMembers).values({ teamId: team.id, userId: ownerId });
@@ -254,6 +310,76 @@ export class DatabaseStorage implements IStorage {
   async deleteTeam(id: number): Promise<void> {
     await db.delete(teamMembers).where(eq(teamMembers.teamId, id));
     await db.delete(teams).where(eq(teams.id, id));
+  }
+
+  async createPayment(data: { userId: number; razorpayOrderId: string; amount: number; currency?: string }): Promise<Payment> {
+    const [p] = await db.insert(payments).values({
+      userId: data.userId,
+      razorpayOrderId: data.razorpayOrderId,
+      amount: data.amount,
+      currency: data.currency || "INR",
+    }).returning();
+    return p;
+  }
+
+  async getPaymentByOrderId(orderId: string): Promise<Payment | undefined> {
+    const [p] = await db.select().from(payments).where(eq(payments.razorpayOrderId, orderId));
+    return p;
+  }
+
+  async updatePayment(id: number, data: Partial<Payment>): Promise<Payment | undefined> {
+    const [p] = await db.update(payments).set(data).where(eq(payments.id, id)).returning();
+    return p;
+  }
+
+  async getPaymentsByUser(userId: number): Promise<Payment[]> {
+    return db.select().from(payments).where(eq(payments.userId, userId)).orderBy(desc(payments.createdAt));
+  }
+
+  async createAdminLog(data: { adminId: number; action: string; targetType?: string; targetId?: number; details?: string }): Promise<AdminLog> {
+    const [log] = await db.insert(adminLogs).values({
+      adminId: data.adminId,
+      action: data.action,
+      targetType: data.targetType || null,
+      targetId: data.targetId || null,
+      details: data.details || null,
+    }).returning();
+    return log;
+  }
+
+  async getAdminLogs(): Promise<AdminLog[]> {
+    return db.select().from(adminLogs).orderBy(desc(adminLogs.createdAt));
+  }
+
+  async createNotification(data: { userId: number; type: string; title: string; message: string }): Promise<Notification> {
+    const [n] = await db.insert(notifications).values({
+      userId: data.userId,
+      type: data.type as any,
+      title: data.title,
+      message: data.message,
+    }).returning();
+    return n;
+  }
+
+  async getNotificationsByUser(userId: number): Promise<Notification[]> {
+    return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(id: number, userId: number): Promise<Notification | undefined> {
+    const [n] = await db.update(notifications).set({ read: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId))).returning();
+    return n;
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    await db.update(notifications).set({ read: true }).where(eq(notifications.userId, userId));
+  }
+
+  async getUnreadNotificationCount(userId: number): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return Number(result.count);
   }
 
   async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {

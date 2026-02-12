@@ -6,14 +6,16 @@ import { z } from "zod";
 export const roleEnum = pgEnum("role", ["user", "admin"]);
 export const tournamentStatusEnum = pgEnum("tournament_status", ["upcoming", "live", "completed", "cancelled"]);
 export const matchTypeEnum = pgEnum("match_type", ["solo", "duo", "squad"]);
-export const transactionTypeEnum = pgEnum("transaction_type", ["deposit", "withdrawal", "entry_fee", "winning", "admin_credit", "admin_debit"]);
+export const transactionTypeEnum = pgEnum("transaction_type", ["deposit", "withdrawal", "entry_fee", "winning", "admin_credit", "admin_debit", "razorpay"]);
 export const withdrawalStatusEnum = pgEnum("withdrawal_status", ["pending", "approved", "rejected", "paid"]);
+export const paymentStatusEnum = pgEnum("payment_status", ["created", "authorized", "captured", "failed", "refunded"]);
+export const notificationTypeEnum = pgEnum("notification_type", ["tournament_joined", "match_started", "results_declared", "withdrawal_update", "wallet_credit", "wallet_debit", "general"]);
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull().default(""),
   role: roleEnum("role").notNull().default("user"),
   walletBalance: integer("wallet_balance").notNull().default(0),
   bgmiId: text("bgmi_id"),
@@ -23,6 +25,8 @@ export const users = pgTable("users", {
   cs2Id: text("cs2_id"),
   pubgId: text("pubg_id"),
   inGameName: text("in_game_name"),
+  googleId: text("google_id"),
+  avatarUrl: text("avatar_url"),
   banned: boolean("banned").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -107,6 +111,38 @@ export const results = pgTable("results", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const payments = pgTable("payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull(),
+  razorpayOrderId: text("razorpay_order_id").notNull(),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  razorpaySignature: text("razorpay_signature"),
+  amount: integer("amount").notNull(),
+  currency: text("currency").notNull().default("INR"),
+  status: paymentStatusEnum("status").notNull().default("created"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const adminLogs = pgTable("admin_logs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  adminId: integer("admin_id").notNull(),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: integer("target_id"),
+  details: text("details"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull(),
+  type: notificationTypeEnum("type").notNull().default("general"),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, walletBalance: true, role: true, banned: true });
 export const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 export const signupSchema = z.object({ username: z.string().min(3).max(30), email: z.string().email(), password: z.string().min(6) });
@@ -129,3 +165,6 @@ export type Withdrawal = typeof withdrawals.$inferSelect;
 export type Result = typeof results.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type TeamMember = typeof teamMembers.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type AdminLog = typeof adminLogs.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

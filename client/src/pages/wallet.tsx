@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Clock, TrendingUp, Ban, CheckCircle, AlertCircle } from "lucide-react";
+import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Clock, TrendingUp, Ban, CheckCircle, AlertCircle, CreditCard } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Transaction, Withdrawal } from "@shared/schema";
 import {
@@ -21,6 +21,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 export default function WalletPage() {
   const { user, token, updateUser } = useAuth();
   const [, setLocation] = useLocation();
@@ -30,6 +36,7 @@ export default function WalletPage() {
   const [upiId, setUpiId] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
+  const [razorpayLoading, setRazorpayLoading] = useState(false);
 
   const { data: transactions, isLoading: txLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions/my"],
@@ -39,6 +46,10 @@ export default function WalletPage() {
   const { data: withdrawals, isLoading: wdLoading } = useQuery<Withdrawal[]>({
     queryKey: ["/api/withdrawals/my"],
     enabled: !!user,
+  });
+
+  const { data: razorpayConfig } = useQuery<{ keyId: string | null }>({
+    queryKey: ["/api/config/razorpay-key"],
   });
 
   const addMoneyMutation = useMutation({
@@ -94,7 +105,82 @@ export default function WalletPage() {
 
   if (!user) return null;
 
-  const deposits = transactions?.filter(t => ["deposit", "admin_credit", "winning"].includes(t.type)) || [];
+  const razorpayAvailable = !!razorpayConfig?.keyId;
+
+  async function handleRazorpayPayment() {
+    const amount = Number(addAmount);
+    if (!amount || amount <= 0) return;
+    setRazorpayLoading(true);
+
+    try {
+      const orderRes = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amount * 100 }),
+      });
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) throw new Error(orderData.message);
+
+      if (!window.Razorpay) {
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.async = true;
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = reject;
+          document.body.appendChild(script);
+        });
+      }
+
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "BATTLE NEST",
+        description: "Wallet Top-up",
+        order_id: orderData.orderId,
+        handler: async function (response: any) {
+          try {
+            const verifyRes = await fetch("/api/payments/verify", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.message);
+
+            if (verifyData.user) updateUser(verifyData.user);
+            queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
+            toast({ title: "Payment Successful!", description: `\u20B9${amount} added to wallet` });
+            setAddAmount("");
+            setAddDialogOpen(false);
+          } catch (err: any) {
+            toast({ title: "Verification failed", description: err.message, variant: "destructive" });
+          }
+        },
+        prefill: {
+          email: user.email,
+          name: user.username,
+        },
+        theme: {
+          color: "#7c3aed",
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      toast({ title: "Payment failed", description: err.message, variant: "destructive" });
+    } finally {
+      setRazorpayLoading(false);
+    }
+  }
+
+  const deposits = transactions?.filter(t => ["deposit", "admin_credit", "winning", "razorpay"].includes(t.type)) || [];
   const expenses = transactions?.filter(t => ["entry_fee", "withdrawal", "admin_debit"].includes(t.type)) || [];
   const totalDeposits = deposits.reduce((s, t) => s + t.amount, 0);
   const totalWinnings = transactions?.filter(t => t.type === "winning").reduce((s, t) => s + t.amount, 0) || 0;
@@ -102,6 +188,7 @@ export default function WalletPage() {
 
   const txTypeIcons: Record<string, any> = {
     deposit: { icon: ArrowDownLeft, color: "text-chart-3", label: "Deposit" },
+    razorpay: { icon: CreditCard, color: "text-chart-3", label: "Razorpay" },
     winning: { icon: TrendingUp, color: "text-chart-3", label: "Winning" },
     admin_credit: { icon: Plus, color: "text-chart-3", label: "Credit" },
     entry_fee: { icon: ArrowUpRight, color: "text-destructive", label: "Entry Fee" },
@@ -118,7 +205,7 @@ export default function WalletPage() {
 
   function TransactionRow({ tx }: { tx: Transaction }) {
     const config = txTypeIcons[tx.type] || { icon: AlertCircle, color: "text-muted-foreground", label: tx.type };
-    const isCredit = ["deposit", "winning", "admin_credit"].includes(tx.type);
+    const isCredit = ["deposit", "winning", "admin_credit", "razorpay"].includes(tx.type);
     return (
       <div className="flex items-center justify-between py-2.5 border-b border-border last:border-0" data-testid={`tx-${tx.id}`}>
         <div className="flex items-center gap-3 min-w-0">
@@ -186,17 +273,31 @@ export default function WalletPage() {
                         </Button>
                       ))}
                     </div>
-                    <Button
-                      className="w-full"
-                      disabled={!addAmount || Number(addAmount) <= 0 || addMoneyMutation.isPending}
-                      onClick={() => addMoneyMutation.mutate()}
-                      data-testid="button-confirm-add"
-                    >
-                      {addMoneyMutation.isPending ? "Adding..." : `Add \u20B9${addAmount || "0"}`}
-                    </Button>
-                    <p className="text-xs text-muted-foreground text-center">
-                      In production, this would use Razorpay payment gateway.
-                    </p>
+                    {razorpayAvailable ? (
+                      <Button
+                        className="w-full gap-2"
+                        disabled={!addAmount || Number(addAmount) <= 0 || razorpayLoading}
+                        onClick={handleRazorpayPayment}
+                        data-testid="button-pay-razorpay"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        {razorpayLoading ? "Processing..." : `Pay \u20B9${addAmount || "0"} via Razorpay`}
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        disabled={!addAmount || Number(addAmount) <= 0 || addMoneyMutation.isPending}
+                        onClick={() => addMoneyMutation.mutate()}
+                        data-testid="button-confirm-add"
+                      >
+                        {addMoneyMutation.isPending ? "Adding..." : `Add \u20B9${addAmount || "0"}`}
+                      </Button>
+                    )}
+                    {!razorpayAvailable && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        Razorpay payment gateway will be enabled when API keys are configured.
+                      </p>
+                    )}
                   </div>
                 </DialogContent>
               </Dialog>
