@@ -55,6 +55,7 @@ export const tournaments = pgTable("tournaments", {
   roomPassword: text("room_password"),
   rules: text("rules"),
   mapName: text("map_name"),
+  imageUrl: text("image_url"),
   prizeDistribution: jsonb("prize_distribution"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
