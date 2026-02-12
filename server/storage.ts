@@ -230,10 +230,10 @@ export class DatabaseStorage implements IStorage {
 
     const insertedGames = await db.insert(games).values(defaultGames).returning();
 
-    const hashedAdminPw = await bcrypt.hash("admin", 10);
+    const hashedAdminPw = await bcrypt.hash("admin@admin", 10);
     const [adminUser] = await db.insert(users).values({
       username: "admin",
-      email: "admin",
+      email: "battlenestofficial@gmail.com",
       password: hashedAdminPw,
       role: "admin",
       walletBalance: 100000,

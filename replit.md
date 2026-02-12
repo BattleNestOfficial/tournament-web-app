@@ -39,8 +39,8 @@ shared/
 - Mobile-responsive design
 
 ## Default Admin Credentials
-- Email: admin@battlenest.com
-- Password: admin123
+- Email: battlenestofficial@gmail.com
+- Password: admin@admin
 
 ## API Routes
 - POST /api/auth/signup, /api/auth/login

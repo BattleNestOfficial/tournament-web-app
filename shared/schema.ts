@@ -93,7 +93,7 @@ export const results = pgTable("results", {
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, walletBalance: true, role: true, banned: true });
-export const loginSchema = z.object({ email: z.string().min(1), password: z.string().min(1) });
+export const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 export const signupSchema = z.object({ username: z.string().min(3).max(30), email: z.string().email(), password: z.string().min(6) });
 
 export const insertGameSchema = createInsertSchema(games).omit({ id: true, createdAt: true });
