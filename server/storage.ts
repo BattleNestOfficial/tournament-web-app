@@ -2,10 +2,10 @@ import { db } from "./db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
-  payments, adminLogs, notifications,
+  payments, adminLogs, notifications, banners,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
-  type Payment, type AdminLog, type Notification,
+  type Payment, type AdminLog, type Notification, type Banner,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
@@ -73,6 +73,13 @@ export interface IStorage {
   getUnreadNotificationCount(userId: number): Promise<number>;
 
   getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }>;
+
+  getAllBanners(): Promise<Banner[]>;
+  getEnabledBanners(): Promise<Banner[]>;
+  createBanner(data: { imageUrl: string; title?: string; linkUrl?: string; sortOrder?: number }): Promise<Banner>;
+  updateBanner(id: number, data: Partial<Banner>): Promise<Banner | undefined>;
+  deleteBanner(id: number): Promise<void>;
+  getBannerCount(): Promise<number>;
 
   seedData(): Promise<void>;
 }
@@ -501,6 +508,38 @@ export class DatabaseStorage implements IStorage {
     ];
 
     await db.insert(tournaments).values(sampleTournaments);
+  }
+
+  async getAllBanners(): Promise<Banner[]> {
+    return db.select().from(banners).orderBy(banners.sortOrder);
+  }
+
+  async getEnabledBanners(): Promise<Banner[]> {
+    return db.select().from(banners).where(eq(banners.enabled, true)).orderBy(banners.sortOrder);
+  }
+
+  async createBanner(data: { imageUrl: string; title?: string; linkUrl?: string; sortOrder?: number }): Promise<Banner> {
+    const [banner] = await db.insert(banners).values({
+      imageUrl: data.imageUrl,
+      title: data.title || null,
+      linkUrl: data.linkUrl || null,
+      sortOrder: data.sortOrder ?? 0,
+    }).returning();
+    return banner;
+  }
+
+  async updateBanner(id: number, data: Partial<Banner>): Promise<Banner | undefined> {
+    const [banner] = await db.update(banners).set(data).where(eq(banners.id, id)).returning();
+    return banner;
+  }
+
+  async deleteBanner(id: number): Promise<void> {
+    await db.delete(banners).where(eq(banners.id, id));
+  }
+
+  async getBannerCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(banners);
+    return result?.count || 0;
   }
 }
 

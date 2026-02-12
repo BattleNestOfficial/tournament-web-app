@@ -144,6 +144,16 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const banners = pgTable("banners", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  imageUrl: text("image_url").notNull(),
+  title: text("title"),
+  linkUrl: text("link_url"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, walletBalance: true, role: true, banned: true });
 export const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 export const signupSchema = z.object({ username: z.string().min(3).max(30), email: z.string().email(), password: z.string().min(6) });
@@ -153,6 +163,7 @@ export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id:
 export const insertWithdrawalSchema = z.object({ amount: z.number().min(50), upiId: z.string().optional(), bankDetails: z.string().optional() });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true, createdAt: true });
 export const insertTeamSchema = z.object({ name: z.string().min(2).max(50) });
+export const insertBannerSchema = createInsertSchema(banners).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -169,3 +180,5 @@ export type TeamMember = typeof teamMembers.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AdminLog = typeof adminLogs.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type Banner = typeof banners.$inferSelect;
+export type InsertBanner = z.infer<typeof insertBannerSchema>;

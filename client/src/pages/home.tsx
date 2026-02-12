@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -5,8 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
-import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star, ImageIcon } from "lucide-react";
-import type { Tournament, Game } from "@shared/schema";
+import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star, ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import type { Tournament, Game, Banner } from "@shared/schema";
 
 const GAME_GRADIENTS: Record<string, string> = {
   bgmi: "from-amber-600/30 to-orange-900/40",
@@ -35,6 +36,10 @@ export default function HomePage() {
 
   const { data: games, isLoading: gamesLoading } = useQuery<Game[]>({
     queryKey: ["/api/games"],
+  });
+
+  const { data: homeBanners } = useQuery<Banner[]>({
+    queryKey: ["/api/banners"],
   });
 
   const upcomingTournaments = tournaments?.filter((t) => t.status === "upcoming").slice(0, 6) || [];
@@ -87,6 +92,12 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {homeBanners && homeBanners.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4">
+          <BannerCarousel banners={homeBanners} />
+        </section>
+      )}
 
       <section className="max-w-7xl mx-auto px-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -170,6 +181,105 @@ export default function HomePage() {
             ))}
           </div>
         </section>
+      )}
+    </div>
+  );
+}
+
+function BannerCarousel({ banners }: { banners: Banner[] }) {
+  const [current, setCurrent] = useState(0);
+  const total = banners.length;
+
+  const goNext = useCallback(() => {
+    setCurrent((prev) => (prev + 1) % total);
+  }, [total]);
+
+  const goPrev = useCallback(() => {
+    setCurrent((prev) => (prev - 1 + total) % total);
+  }, [total]);
+
+  useEffect(() => {
+    if (total <= 1) return;
+    const interval = setInterval(goNext, 4000);
+    return () => clearInterval(interval);
+  }, [total, goNext]);
+
+  const banner = banners[current];
+  if (!banner) return null;
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-md" data-testid="banner-carousel">
+      <div
+        className="flex transition-transform duration-500 ease-in-out"
+        style={{ transform: `translateX(-${current * 100}%)` }}
+      >
+        {banners.map((b, idx) => (
+          <div key={b.id} className="w-full shrink-0">
+            {b.linkUrl ? (
+              <Link href={b.linkUrl}>
+                <div className="relative aspect-[3/1] w-full cursor-pointer">
+                  <img
+                    src={b.imageUrl}
+                    alt={b.title || `Banner ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                    data-testid={`img-home-banner-${b.id}`}
+                  />
+                  {b.title && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4 md:p-6">
+                      <p className="text-white font-bold text-lg md:text-xl drop-shadow-md">{b.title}</p>
+                    </div>
+                  )}
+                </div>
+              </Link>
+            ) : (
+              <div className="relative aspect-[3/1] w-full">
+                <img
+                  src={b.imageUrl}
+                  alt={b.title || `Banner ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                  data-testid={`img-home-banner-${b.id}`}
+                />
+                {b.title && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4 md:p-6">
+                    <p className="text-white font-bold text-lg md:text-xl drop-shadow-md">{b.title}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {total > 1 && (
+        <>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute left-2 top-1/2 -translate-y-1/2 bg-background/50 backdrop-blur-sm"
+            onClick={goPrev}
+            data-testid="button-banner-prev"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute right-2 top-1/2 -translate-y-1/2 bg-background/50 backdrop-blur-sm"
+            onClick={goNext}
+            data-testid="button-banner-next"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </Button>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {banners.map((b, idx) => (
+              <button
+                key={b.id}
+                className={`w-2 h-2 rounded-full transition-colors ${idx === current ? "bg-white" : "bg-white/40"}`}
+                onClick={() => setCurrent(idx)}
+                data-testid={`button-banner-dot-${idx}`}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

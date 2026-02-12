@@ -1038,6 +1038,80 @@ export async function registerRoutes(
     }
   });
 
+  // Banner routes
+  app.get("/api/banners", async (_req, res) => {
+    try {
+      const b = await storage.getEnabledBanners();
+      res.json(b);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/admin/banners", authMiddleware, adminMiddleware, async (_req, res) => {
+    try {
+      const b = await storage.getAllBanners();
+      res.json(b);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/banners", authMiddleware, adminMiddleware, upload.single("image"), async (req, res) => {
+    try {
+      const count = await storage.getBannerCount();
+      if (count >= 5) {
+        return res.status(400).json({ message: "Maximum 5 banners allowed. Delete one before adding a new one." });
+      }
+      if (!req.file) {
+        return res.status(400).json({ message: "Image file is required" });
+      }
+      const imageUrl = `/uploads/${req.file.filename}`;
+      const banner = await storage.createBanner({
+        imageUrl,
+        title: req.body.title || null,
+        linkUrl: req.body.linkUrl || null,
+        sortOrder: count,
+      });
+      await storage.createAdminLog({
+        adminId: (req as any).user.id,
+        action: "create_banner",
+        targetType: "banner",
+        targetId: banner.id,
+      });
+      res.json(banner);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/admin/banners/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const banner = await storage.updateBanner(id, req.body);
+      if (!banner) return res.status(404).json({ message: "Banner not found" });
+      res.json(banner);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/admin/banners/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      await storage.deleteBanner(id);
+      await storage.createAdminLog({
+        adminId: (req as any).user.id,
+        action: "delete_banner",
+        targetType: "banner",
+        targetId: id,
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Google Client ID endpoint for frontend
   app.get("/api/config/google-client-id", (_req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;

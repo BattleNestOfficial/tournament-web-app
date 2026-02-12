@@ -45,6 +45,8 @@ shared/
 - Admin: manual wallet credit/debit for users
 - Admin: set room ID/password for tournaments
 - Admin: activity logs
+- Admin: home page banner management (upload up to 5, enable/disable, delete)
+- Home page sliding banner carousel (auto-slides every 4s, prev/next buttons, dot indicators)
 - Rate limiting on auth and API endpoints
 - Dark/Light mode toggle (dark-mode-first)
 - Mobile-responsive design
@@ -99,6 +101,7 @@ shared/
 - payments (Razorpay payment records)
 - admin_logs (admin activity tracking)
 - notifications (user notifications)
+- banners (home page carousel banners, max 5)
 
 ## Database
 - Uses PostgreSQL via DATABASE_URL environment variable

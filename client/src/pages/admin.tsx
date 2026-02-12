@@ -21,7 +21,7 @@ import {
   Trophy, Users, Gamepad2, Wallet, Shield, Plus, Edit, Ban, CheckCircle, Clock,
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
 } from "lucide-react";
-import type { Game, Tournament, User, Withdrawal } from "@shared/schema";
+import type { Game, Tournament, User, Withdrawal, Banner } from "@shared/schema";
 
 export default function AdminPage() {
   const { user, token } = useAuth();
@@ -49,7 +49,7 @@ export default function AdminPage() {
       <AdminStats token={token} />
 
       <Tabs defaultValue="tournaments" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 max-w-lg">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
           <TabsTrigger value="tournaments" data-testid="tab-admin-tournaments">
             <Trophy className="w-3.5 h-3.5 mr-1.5" /> Tournaments
           </TabsTrigger>
@@ -62,12 +62,16 @@ export default function AdminPage() {
           <TabsTrigger value="withdrawals" data-testid="tab-admin-withdrawals">
             <Wallet className="w-3.5 h-3.5 mr-1.5" /> Withdrawals
           </TabsTrigger>
+          <TabsTrigger value="banners" data-testid="tab-admin-banners">
+            <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Banners
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tournaments"><TournamentManager token={token} /></TabsContent>
         <TabsContent value="games"><GameManager token={token} /></TabsContent>
         <TabsContent value="users"><UserManager token={token} /></TabsContent>
         <TabsContent value="withdrawals"><WithdrawalManager token={token} /></TabsContent>
+        <TabsContent value="banners"><BannerManager token={token} /></TabsContent>
       </Tabs>
     </div>
   );
@@ -732,6 +736,175 @@ function WithdrawalManager({ token }: { token: string | null }) {
             <Card><CardContent className="p-8 text-center text-muted-foreground text-sm">No withdrawal requests</CardContent></Card>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function BannerManager({ token }: { token: string | null }) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [bannerTitle, setBannerTitle] = useState("");
+  const [bannerLink, setBannerLink] = useState("");
+
+  const { data: adminBanners, isLoading } = useQuery<Banner[]>({
+    queryKey: ["/api/admin/banners"],
+    enabled: !!token,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/admin/banners/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error((await res.json()).message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/banners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/banners"] });
+      toast({ title: "Banner deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+      const res = await fetch(`/api/admin/banners/${id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/banners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/banners"] });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  async function handleBannerUpload(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      if (bannerTitle) formData.append("title", bannerTitle);
+      if (bannerLink) formData.append("linkUrl", bannerLink);
+      const res = await fetch("/api/admin/banners", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/banners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/banners"] });
+      setBannerTitle("");
+      setBannerLink("");
+      toast({ title: "Banner uploaded successfully" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const bannerCount = adminBanners?.length || 0;
+  const canAdd = bannerCount < 5;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-lg font-semibold">Home Banners</h3>
+          <p className="text-sm text-muted-foreground">{bannerCount}/5 banners uploaded. These display as a sliding carousel on the home page.</p>
+        </div>
+      </div>
+
+      {canAdd && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <p className="text-sm font-medium">Add New Banner</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Title (optional)</Label>
+                <Input value={bannerTitle} onChange={(e) => setBannerTitle(e.target.value)} placeholder="Banner title" data-testid="input-banner-title" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Link URL (optional)</Label>
+                <Input value={bannerLink} onChange={(e) => setBannerLink(e.target.value)} placeholder="/tournaments or https://..." data-testid="input-banner-link" />
+              </div>
+            </div>
+            <label className="cursor-pointer inline-block" data-testid="label-upload-banner">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleBannerUpload(file);
+                  e.target.value = "";
+                }}
+                data-testid="input-upload-banner"
+              />
+              <Button type="button" variant="outline" className="gap-1.5 pointer-events-none" tabIndex={-1} disabled={uploading}>
+                <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Banner Image"}
+              </Button>
+            </label>
+            <p className="text-[11px] text-muted-foreground">Recommended: 1200x400px or wider. JPG, PNG, GIF, WebP. Max 5MB.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+      ) : adminBanners && adminBanners.length > 0 ? (
+        <div className="space-y-3">
+          {adminBanners.map((banner, idx) => (
+            <Card key={banner.id} data-testid={`admin-banner-${banner.id}`}>
+              <CardContent className="p-3 flex items-center gap-4">
+                <div className="w-32 h-20 rounded-md overflow-hidden shrink-0 bg-muted">
+                  <img src={banner.imageUrl} alt={banner.title || `Banner ${idx + 1}`} className="w-full h-full object-cover" data-testid={`img-banner-${banner.id}`} />
+                </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="font-medium text-sm truncate">{banner.title || `Banner ${idx + 1}`}</p>
+                  {banner.linkUrl && <p className="text-xs text-muted-foreground truncate">{banner.linkUrl}</p>}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={`text-[10px] ${banner.enabled ? "text-chart-2" : "text-muted-foreground"}`}>
+                      {banner.enabled ? "Active" : "Disabled"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      checked={banner.enabled}
+                      onCheckedChange={(checked) => toggleMutation.mutate({ id: banner.id, enabled: checked })}
+                      data-testid={`switch-banner-${banner.id}`}
+                    />
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => deleteMutation.mutate(banner.id)}
+                    data-testid={`button-delete-banner-${banner.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm">No banners uploaded yet. Add up to 5 banners for the home page carousel.</p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
