@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Clock, TrendingUp, Ban, CheckCircle, AlertCircle } from "lucide-react";
@@ -29,12 +30,6 @@ export default function WalletPage() {
   const [upiId, setUpiId] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (!user) setLocation("/auth");
-  }, [user, setLocation]);
-
-  if (!user) return null;
 
   const { data: transactions, isLoading: txLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions/my"],
@@ -82,6 +77,7 @@ export default function WalletPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/withdrawals/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
       toast({ title: "Request submitted", description: "Your withdrawal request is being reviewed" });
       setWithdrawAmount("");
       setUpiId("");
@@ -92,21 +88,56 @@ export default function WalletPage() {
     },
   });
 
+  useEffect(() => {
+    if (!user) setLocation("/auth");
+  }, [user, setLocation]);
+
+  if (!user) return null;
+
+  const deposits = transactions?.filter(t => ["deposit", "admin_credit", "winning"].includes(t.type)) || [];
+  const expenses = transactions?.filter(t => ["entry_fee", "withdrawal", "admin_debit"].includes(t.type)) || [];
+  const totalDeposits = deposits.reduce((s, t) => s + t.amount, 0);
+  const totalWinnings = transactions?.filter(t => t.type === "winning").reduce((s, t) => s + t.amount, 0) || 0;
+  const totalSpent = expenses.reduce((s, t) => s + t.amount, 0);
+
   const txTypeIcons: Record<string, any> = {
-    deposit: { icon: ArrowDownLeft, color: "text-chart-3" },
-    winning: { icon: TrendingUp, color: "text-chart-3" },
-    admin_credit: { icon: Plus, color: "text-chart-3" },
-    entry_fee: { icon: ArrowUpRight, color: "text-destructive" },
-    withdrawal: { icon: ArrowUpRight, color: "text-destructive" },
-    admin_debit: { icon: Ban, color: "text-destructive" },
+    deposit: { icon: ArrowDownLeft, color: "text-chart-3", label: "Deposit" },
+    winning: { icon: TrendingUp, color: "text-chart-3", label: "Winning" },
+    admin_credit: { icon: Plus, color: "text-chart-3", label: "Credit" },
+    entry_fee: { icon: ArrowUpRight, color: "text-destructive", label: "Entry Fee" },
+    withdrawal: { icon: ArrowUpRight, color: "text-destructive", label: "Withdrawal" },
+    admin_debit: { icon: Ban, color: "text-destructive", label: "Debit" },
   };
 
-  const withdrawalStatusIcons: Record<string, any> = {
-    pending: { icon: Clock, color: "text-chart-4" },
-    approved: { icon: CheckCircle, color: "text-chart-3" },
-    rejected: { icon: Ban, color: "text-destructive" },
-    paid: { icon: CheckCircle, color: "text-chart-2" },
+  const withdrawalStatusConfig: Record<string, { icon: any; color: string; label: string }> = {
+    pending: { icon: Clock, color: "text-chart-4", label: "Pending" },
+    approved: { icon: CheckCircle, color: "text-chart-3", label: "Approved" },
+    rejected: { icon: Ban, color: "text-destructive", label: "Rejected" },
+    paid: { icon: CheckCircle, color: "text-chart-2", label: "Paid" },
   };
+
+  function TransactionRow({ tx }: { tx: Transaction }) {
+    const config = txTypeIcons[tx.type] || { icon: AlertCircle, color: "text-muted-foreground", label: tx.type };
+    const isCredit = ["deposit", "winning", "admin_credit"].includes(tx.type);
+    return (
+      <div className="flex items-center justify-between py-2.5 border-b border-border last:border-0" data-testid={`tx-${tx.id}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`p-1.5 rounded-md bg-muted ${config.color}`}>
+            <config.icon className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{tx.description || config.label}</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(tx.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+        </div>
+        <span className={`text-sm font-semibold shrink-0 ${isCredit ? "text-chart-3" : "text-destructive"}`}>
+          {isCredit ? "+" : "-"}{"\u20B9"}{(tx.amount / 100).toFixed(0)}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -148,7 +179,7 @@ export default function WalletPage() {
                         data-testid="input-add-amount"
                       />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {[50, 100, 200, 500].map((amt) => (
                         <Button key={amt} variant="outline" size="sm" onClick={() => setAddAmount(amt.toString())} data-testid={`button-quick-add-${amt}`}>
                           {"\u20B9"}{amt}
@@ -222,19 +253,25 @@ export default function WalletPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Deposits</span>
                 <span className="font-medium text-chart-3">
-                  {"\u20B9"}{((transactions?.filter((t) => t.type === "deposit" || t.type === "admin_credit").reduce((s, t) => s + t.amount, 0) || 0) / 100).toFixed(0)}
+                  {"\u20B9"}{(totalDeposits / 100).toFixed(0)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Winnings</span>
                 <span className="font-medium text-chart-3">
-                  {"\u20B9"}{((transactions?.filter((t) => t.type === "winning").reduce((s, t) => s + t.amount, 0) || 0) / 100).toFixed(0)}
+                  {"\u20B9"}{(totalWinnings / 100).toFixed(0)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Spent</span>
                 <span className="font-medium text-destructive">
-                  {"\u20B9"}{((transactions?.filter((t) => t.type === "entry_fee").reduce((s, t) => s + t.amount, 0) || 0) / 100).toFixed(0)}
+                  {"\u20B9"}{(totalSpent / 100).toFixed(0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm pt-2 border-t border-border">
+                <span className="text-muted-foreground">Pending Withdrawals</span>
+                <span className="font-medium text-chart-4">
+                  {withdrawals?.filter(w => w.status === "pending").length || 0}
                 </span>
               </div>
             </div>
@@ -242,82 +279,100 @@ export default function WalletPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Transaction History</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            {txLoading ? (
-              <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-            ) : transactions && transactions.length > 0 ? (
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {transactions.map((tx) => {
-                  const config = txTypeIcons[tx.type] || { icon: AlertCircle, color: "text-muted-foreground" };
-                  const isCredit = ["deposit", "winning", "admin_credit"].includes(tx.type);
-                  return (
-                    <div key={tx.id} className="flex items-center justify-between py-2.5 border-b border-border last:border-0" data-testid={`tx-${tx.id}`}>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-1.5 rounded-md bg-muted ${config.color}`}>
-                          <config.icon className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{tx.description || tx.type.replace("_", " ")}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(tx.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`text-sm font-semibold shrink-0 ${isCredit ? "text-chart-3" : "text-destructive"}`}>
-                        {isCredit ? "+" : "-"}{"\u20B9"}{(tx.amount / 100).toFixed(0)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No transactions yet
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="deposits" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsTrigger value="deposits" data-testid="tab-deposits">
+            <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Deposits
+          </TabsTrigger>
+          <TabsTrigger value="withdrawals" data-testid="tab-withdrawals">
+            <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" /> Withdrawals
+          </TabsTrigger>
+          <TabsTrigger value="all" data-testid="tab-all-transactions">
+            <Wallet className="w-3.5 h-3.5 mr-1.5" /> All
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Withdrawal Requests</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 pb-4">
-            {wdLoading ? (
-              <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-            ) : withdrawals && withdrawals.length > 0 ? (
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {withdrawals.map((wd) => {
-                  const config = withdrawalStatusIcons[wd.status] || { icon: Clock, color: "text-muted-foreground" };
-                  return (
-                    <div key={wd.id} className="flex items-center justify-between py-2.5 border-b border-border last:border-0" data-testid={`wd-${wd.id}`}>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-1.5 rounded-md bg-muted ${config.color}`}>
-                          <config.icon className="w-3.5 h-3.5" />
+        <TabsContent value="deposits">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Deposit History</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              {txLoading ? (
+                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : deposits.length > 0 ? (
+                <div className="space-y-1 max-h-80 overflow-y-auto">
+                  {deposits.map((tx) => <TransactionRow key={tx.id} tx={tx} />)}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No deposits yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="withdrawals">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Withdrawal Requests</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              {wdLoading ? (
+                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : withdrawals && withdrawals.length > 0 ? (
+                <div className="space-y-1 max-h-80 overflow-y-auto">
+                  {withdrawals.map((wd) => {
+                    const config = withdrawalStatusConfig[wd.status] || { icon: Clock, color: "text-muted-foreground", label: wd.status };
+                    return (
+                      <div key={wd.id} className="flex items-center justify-between py-2.5 border-b border-border last:border-0" data-testid={`wd-${wd.id}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`p-1.5 rounded-md bg-muted ${config.color}`}>
+                            <config.icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{"\u20B9"}{(wd.amount / 100).toFixed(0)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              UPI: {wd.upiId || "N/A"} | {new Date(wd.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{"\u20B9"}{(wd.amount / 100).toFixed(0)}</p>
-                          <p className="text-xs text-muted-foreground">{wd.upiId}</p>
-                        </div>
+                        <Badge variant="outline" className={`text-[10px] ${config.color}`}>{config.label}</Badge>
                       </div>
-                      <Badge variant="outline" className={`text-[10px] ${config.color}`}>{wd.status}</Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No withdrawal requests
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No withdrawal requests
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="all">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">All Transactions</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              {txLoading ? (
+                <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : transactions && transactions.length > 0 ? (
+                <div className="space-y-1 max-h-96 overflow-y-auto">
+                  {transactions.map((tx) => <TransactionRow key={tx.id} tx={tx} />)}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No transactions yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

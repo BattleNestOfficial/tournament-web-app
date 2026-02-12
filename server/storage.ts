@@ -1,9 +1,9 @@
 import { db } from "./db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
-  users, games, tournaments, registrations, transactions, withdrawals, results,
+  users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
-  type Registration, type Transaction, type Withdrawal, type Result,
+  type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
@@ -41,6 +41,14 @@ export interface IStorage {
 
   getResultsByTournament(tournamentId: number): Promise<Result[]>;
   createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result>;
+
+  createTeam(ownerId: number, name: string): Promise<Team>;
+  getTeamsByUser(userId: number): Promise<(Team & { members: (TeamMember & { username?: string })[] })[]>;
+  getTeamById(id: number): Promise<Team | undefined>;
+  addTeamMember(teamId: number, userId: number): Promise<TeamMember>;
+  removeTeamMember(teamId: number, userId: number): Promise<void>;
+  getTeamMembers(teamId: number): Promise<(TeamMember & { username?: string })[]>;
+  deleteTeam(id: number): Promise<void>;
 
   getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }>;
 
@@ -199,6 +207,53 @@ export class DatabaseStorage implements IStorage {
   async createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result> {
     const [r] = await db.insert(results).values(data).returning();
     return r;
+  }
+
+  async createTeam(ownerId: number, name: string): Promise<Team> {
+    const [team] = await db.insert(teams).values({ name, ownerId }).returning();
+    await db.insert(teamMembers).values({ teamId: team.id, userId: ownerId });
+    return team;
+  }
+
+  async getTeamsByUser(userId: number): Promise<(Team & { members: (TeamMember & { username?: string })[] })[]> {
+    const memberRows = await db.select().from(teamMembers).where(eq(teamMembers.userId, userId));
+    const teamIds = memberRows.map(m => m.teamId);
+    if (teamIds.length === 0) return [];
+    const teamList = await db.select().from(teams);
+    const userTeams = teamList.filter(t => teamIds.includes(t.id));
+    const result = await Promise.all(userTeams.map(async (team) => {
+      const members = await this.getTeamMembers(team.id);
+      return { ...team, members };
+    }));
+    return result;
+  }
+
+  async getTeamById(id: number): Promise<Team | undefined> {
+    const [team] = await db.select().from(teams).where(eq(teams.id, id));
+    return team;
+  }
+
+  async addTeamMember(teamId: number, userId: number): Promise<TeamMember> {
+    const [member] = await db.insert(teamMembers).values({ teamId, userId }).returning();
+    return member;
+  }
+
+  async removeTeamMember(teamId: number, userId: number): Promise<void> {
+    await db.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+  }
+
+  async getTeamMembers(teamId: number): Promise<(TeamMember & { username?: string })[]> {
+    const members = await db.select().from(teamMembers).where(eq(teamMembers.teamId, teamId));
+    const enriched = await Promise.all(members.map(async (m) => {
+      const user = await this.getUserById(m.userId);
+      return { ...m, username: user?.username };
+    }));
+    return enriched;
+  }
+
+  async deleteTeam(id: number): Promise<void> {
+    await db.delete(teamMembers).where(eq(teamMembers.teamId, id));
+    await db.delete(teams).where(eq(teams.id, id));
   }
 
   async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {

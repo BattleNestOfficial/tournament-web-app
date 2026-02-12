@@ -17,19 +17,14 @@ export default function ProfilePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (!user) setLocation("/auth");
-  }, [user, setLocation]);
-
-  if (!user) return null;
-
+  const [inGameName, setInGameName] = useState(user?.inGameName || "");
   const [gameIds, setGameIds] = useState({
-    bgmiId: user.bgmiId || "",
-    freeFireId: user.freeFireId || "",
-    codMobileId: user.codMobileId || "",
-    valorantId: user.valorantId || "",
-    cs2Id: user.cs2Id || "",
-    pubgId: user.pubgId || "",
+    bgmiId: user?.bgmiId || "",
+    freeFireId: user?.freeFireId || "",
+    codMobileId: user?.codMobileId || "",
+    valorantId: user?.valorantId || "",
+    cs2Id: user?.cs2Id || "",
+    pubgId: user?.pubgId || "",
   });
 
   const { data: registrations } = useQuery<(Registration & { tournament?: Tournament })[]>({
@@ -42,7 +37,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/users/profile", {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(gameIds),
+        body: JSON.stringify({ ...gameIds, inGameName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -56,6 +51,12 @@ export default function ProfilePage() {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
     },
   });
+
+  useEffect(() => {
+    if (!user) setLocation("/auth");
+  }, [user, setLocation]);
+
+  if (!user) return null;
 
   const gameIdFields = [
     { key: "bgmiId", label: "BGMI ID", placeholder: "Enter your BGMI player ID" },
@@ -102,10 +103,20 @@ export default function ProfilePage() {
         <Card className="md:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Gamepad2 className="w-4 h-4" /> Game IDs
+              <Gamepad2 className="w-4 h-4" /> Game Profile
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 space-y-3">
+          <CardContent className="pt-0 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">In-Game Name</Label>
+              <Input
+                placeholder="Enter your in-game display name"
+                value={inGameName}
+                onChange={(e) => setInGameName(e.target.value)}
+                data-testid="input-inGameName"
+              />
+              <p className="text-xs text-muted-foreground">This name will be shown in tournaments and leaderboards</p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {gameIdFields.map(({ key, label, placeholder }) => (
                 <div key={key} className="space-y-1.5">

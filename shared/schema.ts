@@ -22,6 +22,7 @@ export const users = pgTable("users", {
   valorantId: text("valorant_id"),
   cs2Id: text("cs2_id"),
   pubgId: text("pubg_id"),
+  inGameName: text("in_game_name"),
   banned: boolean("banned").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -82,6 +83,20 @@ export const withdrawals = pgTable("withdrawals", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const teams = pgTable("teams", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  ownerId: integer("owner_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const teamMembers = pgTable("team_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  teamId: integer("team_id").notNull(),
+  userId: integer("user_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const results = pgTable("results", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   tournamentId: integer("tournament_id").notNull(),
@@ -100,6 +115,7 @@ export const insertGameSchema = createInsertSchema(games).omit({ id: true, creat
 export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id: true, createdAt: true, filledSlots: true, status: true });
 export const insertWithdrawalSchema = z.object({ amount: z.number().min(50), upiId: z.string().optional(), bankDetails: z.string().optional() });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true, createdAt: true });
+export const insertTeamSchema = z.object({ name: z.string().min(2).max(50) });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -111,3 +127,5 @@ export type Registration = typeof registrations.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type Withdrawal = typeof withdrawals.$inferSelect;
 export type Result = typeof results.$inferSelect;
+export type Team = typeof teams.$inferSelect;
+export type TeamMember = typeof teamMembers.$inferSelect;

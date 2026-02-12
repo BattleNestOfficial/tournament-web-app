@@ -149,8 +149,8 @@ export async function registerRoutes(
   app.patch("/api/users/profile", authMiddleware, async (req, res) => {
     try {
       const userId = (req as any).userId;
-      const { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId } = req.body;
-      const updated = await storage.updateUserProfile(userId, { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId });
+      const { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId, inGameName } = req.body;
+      const updated = await storage.updateUserProfile(userId, { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId, inGameName });
       if (!updated) return res.status(404).json({ message: "User not found" });
       const { password, ...safeUser } = updated;
       res.json({ user: safeUser });
@@ -223,6 +223,81 @@ export async function registerRoutes(
     try {
       const wds = await storage.getWithdrawalsByUser((req as any).userId);
       res.json(wds);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Teams
+  app.get("/api/teams/my", authMiddleware, async (req, res) => {
+    try {
+      const teams = await storage.getTeamsByUser((req as any).userId);
+      res.json(teams);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/teams", authMiddleware, async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || name.length < 2) return res.status(400).json({ message: "Team name must be at least 2 characters" });
+      const team = await storage.createTeam((req as any).userId, name);
+      res.json(team);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/teams/:id/members", authMiddleware, async (req, res) => {
+    try {
+      const teamId = Number(req.params.id);
+      const team = await storage.getTeamById(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if (team.ownerId !== (req as any).userId) return res.status(403).json({ message: "Only team owner can add members" });
+
+      const { username } = req.body;
+      if (!username) return res.status(400).json({ message: "Username is required" });
+
+      const allUsers = await storage.getAllUsers();
+      const targetUser = allUsers.find(u => u.username === username);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+      const members = await storage.getTeamMembers(teamId);
+      if (members.some(m => m.userId === targetUser.id)) return res.status(400).json({ message: "User is already a member" });
+
+      const member = await storage.addTeamMember(teamId, targetUser.id);
+      res.json(member);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/teams/:id/members/:userId", authMiddleware, async (req, res) => {
+    try {
+      const teamId = Number(req.params.id);
+      const userId = Number(req.params.userId);
+      const team = await storage.getTeamById(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if (team.ownerId !== (req as any).userId) return res.status(403).json({ message: "Only team owner can remove members" });
+      if (userId === team.ownerId) return res.status(400).json({ message: "Cannot remove team owner" });
+
+      await storage.removeTeamMember(teamId, userId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/teams/:id", authMiddleware, async (req, res) => {
+    try {
+      const teamId = Number(req.params.id);
+      const team = await storage.getTeamById(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if (team.ownerId !== (req as any).userId) return res.status(403).json({ message: "Only team owner can delete team" });
+
+      await storage.deleteTeam(teamId);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

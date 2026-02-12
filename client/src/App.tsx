@@ -13,6 +13,7 @@ import TournamentDetailPage from "@/pages/tournament-detail";
 import WalletPage from "@/pages/wallet";
 import ProfilePage from "@/pages/profile";
 import AdminPage from "@/pages/admin";
+import TeamsPage from "@/pages/teams";
 import NotFound from "@/pages/not-found";
 
 function AppRoutes() {
@@ -30,6 +31,7 @@ function AppRoutes() {
         <Route path="/tournaments/:id" component={TournamentDetailPage} />
         <Route path="/wallet" component={WalletPage} />
         <Route path="/profile" component={ProfilePage} />
+        <Route path="/teams" component={TeamsPage} />
         <Route path="/admin" component={AdminPage} />
         <Route component={NotFound} />
       </Switch>

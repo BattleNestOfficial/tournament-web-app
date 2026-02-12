@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X } from "lucide-react";
+import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -19,11 +19,15 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const isAdmin = user?.role === "admin";
+
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/tournaments", label: "Tournaments", icon: Trophy },
-    { href: "/wallet", label: "Wallet", icon: Wallet },
-    { href: "/profile", label: "Profile", icon: User },
+    ...(!isAdmin ? [{ href: "/wallet", label: "Wallet", icon: Wallet }] : []),
+    ...(!isAdmin ? [{ href: "/teams", label: "Teams", icon: Users }] : []),
+    ...(!isAdmin ? [{ href: "/profile", label: "Profile", icon: User }] : []),
+    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   return (
@@ -56,7 +60,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            {user && (
+            {user && !isAdmin && (
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-card rounded-md border border-card-border text-sm">
                 <Wallet className="w-3.5 h-3.5 text-chart-3" />
                 <span className="font-medium" data-testid="text-wallet-balance">
@@ -85,13 +89,17 @@ export default function Layout({ children }: { children: ReactNode }) {
                     <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setLocation("/profile")} data-testid="menu-profile">
-                    <User className="w-4 h-4 mr-2" /> Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setLocation("/wallet")} data-testid="menu-wallet">
-                    <Wallet className="w-4 h-4 mr-2" /> Wallet
-                  </DropdownMenuItem>
-                  {user.role === "admin" && (
+                  {!isAdmin && (
+                    <DropdownMenuItem onClick={() => setLocation("/profile")} data-testid="menu-profile">
+                      <User className="w-4 h-4 mr-2" /> Profile
+                    </DropdownMenuItem>
+                  )}
+                  {!isAdmin && (
+                    <DropdownMenuItem onClick={() => setLocation("/wallet")} data-testid="menu-wallet">
+                      <Wallet className="w-4 h-4 mr-2" /> Wallet
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && (
                     <DropdownMenuItem onClick={() => setLocation("/admin")} data-testid="menu-admin">
                       <Shield className="w-4 h-4 mr-2" /> Admin Panel
                     </DropdownMenuItem>
@@ -137,7 +145,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
-            {user && (
+            {user && !isAdmin && (
               <div className="sm:hidden flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
                 <Wallet className="w-4 h-4 text-chart-3" />
                 Wallet: {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
