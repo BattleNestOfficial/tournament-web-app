@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Trophy, Users, Gamepad2, Wallet, Shield, Plus, Edit, Ban, CheckCircle, Clock,
-  BarChart3, TrendingUp, DollarSign, UserCheck, X,
+  BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
 } from "lucide-react";
 import type { Game, Tournament, User, Withdrawal } from "@shared/schema";
 
@@ -117,19 +117,47 @@ function TournamentManager({ token }: { token: string | null }) {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [prizes, setPrizes] = useState<{ position: number; prize: string }[]>([]);
   const [form, setForm] = useState({
     title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100",
-    matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "",
+    matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "",
   });
 
   const { data: tournaments, isLoading } = useQuery<Tournament[]>({ queryKey: ["/api/tournaments"] });
   const { data: games } = useQuery<Game[]>({ queryKey: ["/api/games"] });
 
+  async function handleImageUpload(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/admin/upload-image", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setForm((f) => ({ ...f, imageUrl: data.imageUrl }));
+      setImagePreview(data.imageUrl);
+      toast({ title: "Image uploaded" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const url = editId ? `/api/admin/tournaments/${editId}` : "/api/admin/tournaments";
       const method = editId ? "PATCH" : "POST";
-      const body = {
+      const prizeDistribution = prizes.length > 0
+        ? prizes.map((p) => ({ position: p.position, prize: Math.round(Number(p.prize) * 100) }))
+        : null;
+      const body: any = {
         title: form.title,
         gameId: Number(form.gameId),
         entryFee: Number(form.entryFee) * 100,
@@ -141,6 +169,8 @@ function TournamentManager({ token }: { token: string | null }) {
         roomPassword: form.roomPassword || null,
         rules: form.rules || null,
         mapName: form.mapName || null,
+        imageUrl: form.imageUrl || null,
+        prizeDistribution,
       };
       const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
@@ -175,8 +205,10 @@ function TournamentManager({ token }: { token: string | null }) {
   });
 
   function resetForm() {
-    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "" });
+    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "" });
     setEditId(null);
+    setImagePreview(null);
+    setPrizes([]);
   }
 
   function editTournament(t: Tournament) {
@@ -186,7 +218,15 @@ function TournamentManager({ token }: { token: string | null }) {
       prizePool: (t.prizePool / 100).toString(), maxSlots: t.maxSlots.toString(),
       matchType: t.matchType, startTime: new Date(t.startTime).toISOString().slice(0, 16),
       roomId: t.roomId || "", roomPassword: t.roomPassword || "", rules: t.rules || "", mapName: t.mapName || "",
+      imageUrl: t.imageUrl || "",
     });
+    setImagePreview(t.imageUrl || null);
+    const pd = t.prizeDistribution as { position: number; prize: number }[] | null;
+    if (pd && Array.isArray(pd) && pd.length > 0) {
+      setPrizes(pd.map((p) => ({ position: p.position, prize: (p.prize / 100).toString() })));
+    } else {
+      setPrizes([]);
+    }
     setDialogOpen(true);
   }
 
@@ -249,6 +289,63 @@ function TournamentManager({ token }: { token: string | null }) {
                   <Input type="number" value={form.maxSlots} onChange={(e) => setForm({ ...form, maxSlots: e.target.value })} placeholder="100" data-testid="input-tournament-slots" />
                 </div>
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="flex items-center gap-1.5"><Award className="w-3.5 h-3.5" /> Prize Distribution</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() => setPrizes([...prizes, { position: prizes.length + 1, prize: "" }])}
+                    data-testid="button-add-winner"
+                  >
+                    <Plus className="w-3 h-3" /> Add Winner
+                  </Button>
+                </div>
+                {prizes.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">No prize distribution set. Click "Add Winner" to define prizes for each position.</p>
+                )}
+                {prizes.map((p, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground w-16">
+                      <span className="font-medium">#{p.position}</span>
+                    </div>
+                    <Input
+                      type="number"
+                      value={p.prize}
+                      onChange={(e) => {
+                        const updated = [...prizes];
+                        updated[idx] = { ...updated[idx], prize: e.target.value };
+                        setPrizes(updated);
+                      }}
+                      placeholder="Prize amount"
+                      className="flex-1"
+                      data-testid={`input-prize-${idx}`}
+                    />
+                    <span className="text-xs text-muted-foreground shrink-0">{"\u20B9"}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-destructive"
+                      onClick={() => {
+                        const updated = prizes.filter((_, i) => i !== idx).map((pr, i) => ({ ...pr, position: i + 1 }));
+                        setPrizes(updated);
+                      }}
+                      data-testid={`button-remove-prize-${idx}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                {prizes.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Total: {"\u20B9"}{prizes.reduce((sum, p) => sum + (Number(p.prize) || 0), 0).toFixed(0)}
+                    {form.prizePool && ` / ${"\u20B9"}${form.prizePool} prize pool`}
+                  </p>
+                )}
+              </div>
               <div className="space-y-1.5">
                 <Label>Start Time</Label>
                 <Input type="datetime-local" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} data-testid="input-tournament-time" />
@@ -271,7 +368,50 @@ function TournamentManager({ token }: { token: string | null }) {
                 <Label>Rules (optional)</Label>
                 <Textarea value={form.rules} onChange={(e) => setForm({ ...form, rules: e.target.value })} placeholder="Tournament rules..." rows={3} data-testid="input-tournament-rules" />
               </div>
-              <Button className="w-full" disabled={saveMutation.isPending || !form.title || !form.gameId || !form.startTime} onClick={() => saveMutation.mutate()} data-testid="button-save-tournament">
+              <div className="space-y-1.5">
+                <Label>Tournament Image (optional)</Label>
+                <div className="flex items-start gap-3">
+                  <div className="w-24 h-24 rounded-md border border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                    {imagePreview ? (
+                      <img src={imagePreview} alt="Tournament" className="w-full h-full object-cover" data-testid="img-tournament-preview" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 flex-1">
+                    <label className="cursor-pointer" data-testid="label-upload-image">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageUpload(file);
+                          e.target.value = "";
+                        }}
+                        data-testid="input-upload-image"
+                      />
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 pointer-events-none" tabIndex={-1}>
+                        <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Image"}
+                      </Button>
+                    </label>
+                    <p className="text-[11px] text-muted-foreground">JPG, PNG, GIF, WebP. Max 5MB.</p>
+                    {imagePreview && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-fit gap-1 text-xs text-destructive"
+                        onClick={() => { setImagePreview(null); setForm((f) => ({ ...f, imageUrl: "" })); }}
+                        data-testid="button-remove-image"
+                      >
+                        <X className="w-3 h-3" /> Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Button className="w-full" disabled={saveMutation.isPending || uploading || !form.title || !form.gameId || !form.startTime} onClick={() => saveMutation.mutate()} data-testid="button-save-tournament">
                 {saveMutation.isPending ? "Saving..." : editId ? "Update Tournament" : "Create Tournament"}
               </Button>
             </div>

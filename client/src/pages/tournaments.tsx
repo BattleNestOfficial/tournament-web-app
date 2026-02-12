@@ -5,10 +5,28 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trophy, Users, Swords, Clock, Gamepad2, Search, Filter } from "lucide-react";
+import { Trophy, Users, Swords, Clock, Gamepad2, Search, Filter, ImageIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import type { Tournament, Game } from "@shared/schema";
+
+const GAME_GRADIENTS: Record<string, string> = {
+  bgmi: "from-amber-600/30 to-orange-900/40",
+  "free-fire": "from-red-600/30 to-yellow-900/40",
+  "cod-mobile": "from-green-700/30 to-emerald-900/40",
+  valorant: "from-red-500/30 to-pink-900/40",
+  cs2: "from-blue-600/30 to-indigo-900/40",
+  pubg: "from-yellow-600/30 to-amber-900/40",
+};
+
+const GAME_ICONS: Record<string, string> = {
+  bgmi: "B",
+  "free-fire": "FF",
+  "cod-mobile": "COD",
+  valorant: "V",
+  cs2: "CS",
+  pubg: "P",
+};
 
 export default function TournamentsPage() {
   const searchString = useSearch();
@@ -30,6 +48,7 @@ export default function TournamentsPage() {
   });
 
   const getGameName = (gameId: number) => games?.find((g) => g.id === gameId)?.name || "Unknown";
+  const getGameSlug = (gameId: number) => games?.find((g) => g.id === gameId)?.slug || "";
 
   const filtered = tournaments?.filter((t) => {
     if (gameFilter !== "all" && t.gameId !== Number(gameFilter)) return false;
@@ -116,19 +135,32 @@ export default function TournamentsPage() {
         </div>
       ) : filtered.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((t) => (
+          {filtered.map((t) => {
+            const slug = getGameSlug(t.gameId);
+            const gradient = GAME_GRADIENTS[slug] || "from-primary/20 to-primary/40";
+            const iconLetter = GAME_ICONS[slug] || getGameName(t.gameId).charAt(0).toUpperCase();
+            return (
             <Link key={t.id} href={`/tournaments/${t.id}`}>
-              <Card className="hover-elevate cursor-pointer h-full" data-testid={`card-tournament-${t.id}`}>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm truncate">{t.title}</p>
-                      <p className="text-xs text-muted-foreground">{getGameName(t.gameId)}</p>
+              <Card className="hover-elevate cursor-pointer h-full overflow-hidden" data-testid={`card-tournament-${t.id}`}>
+                <div className="relative h-32 w-full overflow-hidden">
+                  {t.imageUrl ? (
+                    <img src={t.imageUrl} alt={t.title} className="w-full h-full object-cover" data-testid={`img-tournament-${t.id}`} />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                      <span className="text-3xl font-bold text-foreground/30">{iconLetter}</span>
                     </div>
-                    <Badge variant="outline" className={`text-[10px] shrink-0 ${statusColors[t.status] || ""}`}>
+                  )}
+                  <div className="absolute top-2 right-2">
+                    <Badge variant="outline" className={`text-[10px] shrink-0 bg-background/80 backdrop-blur-sm ${statusColors[t.status] || ""}`}>
                       {t.status === "live" && <span className="w-1.5 h-1.5 bg-destructive rounded-full mr-1 animate-pulse" />}
                       {t.status}
                     </Badge>
+                  </div>
+                </div>
+                <CardContent className="p-4 space-y-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{t.title}</p>
+                    <p className="text-xs text-muted-foreground">{getGameName(t.gameId)}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -161,7 +193,8 @@ export default function TournamentsPage() {
                 </CardContent>
               </Card>
             </Link>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <Card>

@@ -5,8 +5,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
-import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star } from "lucide-react";
+import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star, ImageIcon } from "lucide-react";
 import type { Tournament, Game } from "@shared/schema";
+
+const GAME_GRADIENTS: Record<string, string> = {
+  bgmi: "from-amber-600/30 to-orange-900/40",
+  "free-fire": "from-red-600/30 to-yellow-900/40",
+  "cod-mobile": "from-green-700/30 to-emerald-900/40",
+  valorant: "from-red-500/30 to-pink-900/40",
+  cs2: "from-blue-600/30 to-indigo-900/40",
+  pubg: "from-yellow-600/30 to-amber-900/40",
+};
+
+const GAME_ICONS: Record<string, string> = {
+  bgmi: "B",
+  "free-fire": "FF",
+  "cod-mobile": "COD",
+  valorant: "V",
+  cs2: "CS",
+  pubg: "P",
+};
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -23,6 +41,7 @@ export default function HomePage() {
   const liveTournaments = tournaments?.filter((t) => t.status === "live").slice(0, 4) || [];
 
   const getGameName = (gameId: number) => games?.find((g) => g.id === gameId)?.name || "Unknown";
+  const getGameSlug = (gameId: number) => games?.find((g) => g.id === gameId)?.slug || "";
 
   const stats = [
     { label: "Active Players", value: "500+", icon: Users, color: "text-chart-2" },
@@ -100,7 +119,7 @@ export default function HomePage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {liveTournaments.map((t) => (
-              <TournamentCard key={t.id} tournament={t} gameName={getGameName(t.gameId)} />
+              <TournamentCard key={t.id} tournament={t} gameName={getGameName(t.gameId)} gameSlug={getGameSlug(t.gameId)} />
             ))}
           </div>
         </section>
@@ -122,7 +141,7 @@ export default function HomePage() {
         ) : upcomingTournaments.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingTournaments.map((t) => (
-              <TournamentCard key={t.id} tournament={t} gameName={getGameName(t.gameId)} />
+              <TournamentCard key={t.id} tournament={t} gameName={getGameName(t.gameId)} gameSlug={getGameSlug(t.gameId)} />
             ))}
           </div>
         ) : (
@@ -156,26 +175,43 @@ export default function HomePage() {
   );
 }
 
-function TournamentCard({ tournament, gameName }: { tournament: Tournament; gameName: string }) {
+function TournamentCard({ tournament, gameName, gameSlug }: { tournament: Tournament; gameName: string; gameSlug?: string }) {
   const statusColors: Record<string, string> = {
     upcoming: "bg-chart-2/10 text-chart-2",
     live: "bg-destructive/10 text-destructive",
     completed: "bg-muted text-muted-foreground",
   };
 
+  const gradient = GAME_GRADIENTS[gameSlug || ""] || "from-primary/20 to-primary/40";
+  const iconLetter = GAME_ICONS[gameSlug || ""] || gameName.charAt(0).toUpperCase();
+
   return (
     <Link href={`/tournaments/${tournament.id}`}>
-      <Card className="hover-elevate cursor-pointer h-full" data-testid={`card-tournament-${tournament.id}`}>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm truncate">{tournament.title}</p>
-              <p className="text-xs text-muted-foreground">{gameName}</p>
+      <Card className="hover-elevate cursor-pointer h-full overflow-hidden" data-testid={`card-tournament-${tournament.id}`}>
+        <div className="relative h-32 w-full overflow-hidden">
+          {tournament.imageUrl ? (
+            <img
+              src={tournament.imageUrl}
+              alt={tournament.title}
+              className="w-full h-full object-cover"
+              data-testid={`img-tournament-${tournament.id}`}
+            />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+              <span className="text-3xl font-bold text-foreground/30">{iconLetter}</span>
             </div>
-            <Badge variant="outline" className={`text-[10px] shrink-0 ${statusColors[tournament.status] || ""}`}>
+          )}
+          <div className="absolute top-2 right-2">
+            <Badge variant="outline" className={`text-[10px] shrink-0 bg-background/80 backdrop-blur-sm ${statusColors[tournament.status] || ""}`}>
               {tournament.status === "live" && <span className="w-1.5 h-1.5 bg-destructive rounded-full mr-1 animate-pulse" />}
               {tournament.status}
             </Badge>
+          </div>
+        </div>
+        <CardContent className="p-4 space-y-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">{tournament.title}</p>
+            <p className="text-xs text-muted-foreground">{gameName}</p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground">

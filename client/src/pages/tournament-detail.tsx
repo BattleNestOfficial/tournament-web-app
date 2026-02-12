@@ -8,8 +8,26 @@ import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Trophy, Users, Swords, Clock, MapPin, Shield, Wallet, ArrowLeft, CheckCircle, Star } from "lucide-react";
+import { Trophy, Users, Swords, Clock, MapPin, Shield, Wallet, ArrowLeft, CheckCircle, Star, ImageIcon } from "lucide-react";
 import type { Tournament, Game, Registration, Result } from "@shared/schema";
+
+const GAME_GRADIENTS: Record<string, string> = {
+  bgmi: "from-amber-600/30 to-orange-900/40",
+  "free-fire": "from-red-600/30 to-yellow-900/40",
+  "cod-mobile": "from-green-700/30 to-emerald-900/40",
+  valorant: "from-red-500/30 to-pink-900/40",
+  cs2: "from-blue-600/30 to-indigo-900/40",
+  pubg: "from-yellow-600/30 to-amber-900/40",
+};
+
+const GAME_ICONS: Record<string, string> = {
+  bgmi: "B",
+  "free-fire": "FF",
+  "cod-mobile": "COD",
+  valorant: "V",
+  cs2: "CS",
+  pubg: "P",
+};
 
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -92,6 +110,24 @@ export default function TournamentDetailPage() {
       <button onClick={() => setLocation("/tournaments")} className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="button-back-tournaments">
         <ArrowLeft className="w-4 h-4" /> Back to Tournaments
       </button>
+
+      {(() => {
+        const slug = game?.slug || "";
+        const gradient = GAME_GRADIENTS[slug] || "from-primary/20 to-primary/40";
+        const iconLetter = GAME_ICONS[slug] || (game?.name || "T").charAt(0).toUpperCase();
+        return (
+          <div className="relative h-48 sm:h-56 w-full rounded-md overflow-hidden">
+            {tournament.imageUrl ? (
+              <img src={tournament.imageUrl} alt={tournament.title} className="w-full h-full object-cover" data-testid="img-tournament-detail" />
+            ) : (
+              <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                <span className="text-6xl font-bold text-foreground/20">{iconLetter}</span>
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+          </div>
+        );
+      })()}
 
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
