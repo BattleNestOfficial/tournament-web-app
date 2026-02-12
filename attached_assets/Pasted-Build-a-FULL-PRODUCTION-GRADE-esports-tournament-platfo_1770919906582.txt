@@ -1,0 +1,191 @@
+Build a FULL PRODUCTION-GRADE esports tournament platform
+similar to popular BGMI / Free Fire tournament apps.
+
+========================
+TECH STACK (MANDATORY)
+========================
+Frontend:
+- React + Vite
+- Tailwind CSS
+- Responsive (mobile-first)
+- PWA ready (installable)
+
+Backend:
+- Node.js + Express
+- REST APIs
+- JWT authentication
+- Role-based access (USER, ADMIN)
+
+Database:
+- PostgreSQL
+- Drizzle ORM
+- Use DATABASE_URL from environment variables
+- DO NOT use any Replit-specific database or APIs
+
+Payments:
+- Razorpay integration
+- Webhook verification
+- Transaction safety checks
+
+Deployment compatibility:
+- Backend deployable on Render / Railway
+- Frontend deployable on Netlify
+- Database on Supabase
+- No vendor lock-in
+
+========================
+SUPPORTED GAMES
+========================
+- BGMI
+- Free Fire
+- Call of Duty Mobile
+- Valorant
+- CS2
+- PUBG
+- Allow adding MORE games dynamically from admin panel
+
+========================
+USER FEATURES
+========================
+1. Authentication
+   - Signup / Login
+   - Email or phone login
+   - Password reset
+
+2. User Profile
+   - Username
+   - Game IDs (BGMI ID, FF ID, COD ID etc.)
+   - Wallet balance
+   - Match history
+   - KYC status (optional)
+
+3. Tournament System
+   - View upcoming / live / completed tournaments
+   - Filters by game, entry fee, mode
+   - Tournament details page
+   - Rules, prize pool, slots, map, time
+   - Join tournament using wallet or Razorpay
+
+4. Match Types
+   - Solo
+   - Duo
+   - Squad
+   - Custom rooms
+   - Knockout / League format
+
+5. Wallet System
+   - Wallet balance
+   - Add money via Razorpay
+   - Entry fee deduction
+   - Winnings credited automatically
+   - Transaction history
+
+6. Withdrawals
+   - Withdraw request
+   - Bank / UPI details
+   - Minimum withdrawal limit
+   - Status: pending / approved / rejected
+
+7. Notifications
+   - Tournament updates
+   - Match start alerts
+   - Result announcements
+   - Withdrawal status
+
+========================
+ADMIN PANEL (VERY IMPORTANT)
+========================
+Create a FULL admin dashboard with:
+
+1. Admin Authentication
+   - Secure login
+   - Admin-only routes
+
+2. Game Management
+   - Add / edit / delete games
+   - Enable / disable games
+
+3. Tournament Management
+   - Create tournament
+   - Edit tournament
+   - Delete tournament
+   - Set:
+     - Game
+     - Entry fee
+     - Prize pool
+     - Slots
+     - Start time
+     - Room ID & password
+     - Rules
+   - Auto close when slots full
+
+4. Match Control
+   - Start / stop tournaments
+   - Update match results
+   - Declare winners
+   - Auto distribute prizes
+
+5. User Management
+   - View users
+   - Ban / unban users
+   - Edit wallet balance (admin override)
+   - View user history
+
+6. Withdrawal Management
+   - View withdraw requests
+   - Approve / reject requests
+   - Mark as paid
+   - Admin notes
+
+7. Payment Monitoring
+   - View Razorpay transactions
+   - Verify payment status
+   - Handle failed payments
+
+8. Analytics Dashboard
+   - Total users
+   - Total revenue
+   - Active tournaments
+   - Total payouts
+   - Daily / monthly stats
+
+========================
+SECURITY & QUALITY
+========================
+- Input validation
+- API rate limiting
+- Secure webhooks
+- Environment variables for secrets
+- No hardcoded keys
+- Proper error handling
+- Clean folder structure
+- Comments explaining logic
+
+========================
+PROJECT STRUCTURE
+========================
+/frontend
+  - pages
+  - components
+  - admin
+  - services (API calls)
+
+/backend
+  - routes
+  - controllers
+  - services
+  - middleware
+  - db (drizzle schema)
+  - utils
+
+========================
+FINAL REQUIREMENTS
+========================
+- App must run locally with npm install & npm run dev
+- Provide sample .env.example files
+- Provide SQL schema via Drizzle
+- Code must be readable & production ready
+- No Replit-only features
+- Assume less than 100 users initially
+
+Build the FULL application.
