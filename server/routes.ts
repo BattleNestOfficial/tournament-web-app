@@ -224,7 +224,7 @@ export async function registerRoutes(
       const regs = await storage.getRegistrationsByTournament(Number(req.params.id));
       const enriched = await Promise.all(regs.map(async (r) => {
         const user = await storage.getUserById(r.userId);
-        return { ...r, username: user?.username, inGameName: user?.inGameName };
+        return { ...r, username: user?.username, displayName: r.inGameName || user?.inGameName || user?.username };
       }));
       res.json(enriched);
     } catch (err: any) {
@@ -264,7 +264,8 @@ export async function registerRoutes(
         });
       }
 
-      await storage.createRegistration(userId, tournamentId);
+      const { inGameName } = req.body || {};
+      await storage.createRegistration(userId, tournamentId, inGameName);
       await storage.incrementSlots(tournamentId);
 
       await storage.createNotification({

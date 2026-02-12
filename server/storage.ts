@@ -33,7 +33,7 @@ export interface IStorage {
   deleteTournament(id: number): Promise<void>;
   incrementSlots(id: number): Promise<void>;
 
-  createRegistration(userId: number, tournamentId: number): Promise<Registration>;
+  createRegistration(userId: number, tournamentId: number, inGameName?: string): Promise<Registration>;
   getRegistrationsByUser(userId: number): Promise<Registration[]>;
   getRegistration(userId: number, tournamentId: number): Promise<Registration | undefined>;
   getRegistrationsByTournament(tournamentId: number): Promise<Registration[]>;
@@ -197,8 +197,8 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tournaments.id, id));
   }
 
-  async createRegistration(userId: number, tournamentId: number): Promise<Registration> {
-    const [reg] = await db.insert(registrations).values({ userId, tournamentId }).returning();
+  async createRegistration(userId: number, tournamentId: number, inGameName?: string): Promise<Registration> {
+    const [reg] = await db.insert(registrations).values({ userId, tournamentId, inGameName: inGameName || null }).returning();
     return reg;
   }
 

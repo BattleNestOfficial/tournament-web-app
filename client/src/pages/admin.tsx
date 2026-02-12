@@ -124,6 +124,8 @@ function TournamentManager({ token }: { token: string | null }) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [prizes, setPrizes] = useState<{ position: number; prize: string }[]>([]);
+  const [resultsDialogOpen, setResultsDialogOpen] = useState(false);
+  const [resultsTournament, setResultsTournament] = useState<Tournament | null>(null);
   const [form, setForm] = useState({
     title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100",
     matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "",
@@ -466,6 +468,9 @@ function TournamentManager({ token }: { token: string | null }) {
                   <Button size="sm" variant="outline" onClick={() => editTournament(t)} data-testid={`button-edit-tournament-${t.id}`}>
                     <Edit className="w-3.5 h-3.5" />
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => { setResultsTournament(t); setResultsDialogOpen(true); }} data-testid={`button-results-tournament-${t.id}`}>
+                    <Award className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -475,6 +480,23 @@ function TournamentManager({ token }: { token: string | null }) {
           )}
         </div>
       )}
+
+      <Dialog open={resultsDialogOpen} onOpenChange={setResultsDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" /> Declare Winners - {resultsTournament?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {resultsTournament && (
+            <ResultsForm
+              tournament={resultsTournament}
+              token={token}
+              onClose={() => { setResultsDialogOpen(false); setResultsTournament(null); }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -912,6 +934,137 @@ function BannerManager({ token }: { token: string | null }) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+type ParticipantData = { id: number; userId: number; username?: string; displayName?: string; inGameName?: string };
+
+function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; token: string | null; onClose: () => void }) {
+  const { toast } = useToast();
+  const [winners, setWinners] = useState<{ userId: string; position: number; kills: string; prize: string }[]>([
+    { userId: "", position: 1, kills: "0", prize: "" },
+  ]);
+
+  const { data: participants } = useQuery<ParticipantData[]>({
+    queryKey: ["/api/tournaments", tournament.id.toString(), "participants"],
+  });
+
+  const declareMutation = useMutation({
+    mutationFn: async () => {
+      const resultData = winners
+        .filter(w => w.userId)
+        .map(w => ({
+          userId: Number(w.userId),
+          position: w.position,
+          kills: Number(w.kills) || 0,
+          prize: Math.round(Number(w.prize || 0) * 100),
+        }));
+      if (resultData.length === 0) throw new Error("Add at least one winner");
+      const res = await fetch(`/api/admin/tournaments/${tournament.id}/results`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ results: resultData }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament.id.toString(), "results"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament.id.toString(), "participants"] });
+      toast({ title: "Winners declared and prizes distributed!" });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  function addWinner() {
+    setWinners(prev => [...prev, { userId: "", position: prev.length + 1, kills: "0", prize: "" }]);
+  }
+
+  function removeWinner(i: number) {
+    setWinners(prev => prev.filter((_, idx) => idx !== i).map((w, idx) => ({ ...w, position: idx + 1 })));
+  }
+
+  function updateWinner(i: number, field: string, value: string) {
+    setWinners(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: value } : w));
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Select winners from the participant list. Prizes are in Rupees and will be credited to winner wallets.
+      </p>
+
+      <div className="space-y-3">
+        {winners.map((w, i) => (
+          <Card key={i}>
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant="outline" className="text-xs">#{w.position}</Badge>
+                {winners.length > 1 && (
+                  <Button size="icon" variant="ghost" onClick={() => removeWinner(i)} data-testid={`button-remove-winner-${i}`}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Participant</Label>
+                <Select value={w.userId} onValueChange={(v) => updateWinner(i, "userId", v)}>
+                  <SelectTrigger className="text-xs" data-testid={`select-winner-${i}`}>
+                    <SelectValue placeholder="Select participant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {participants?.map(p => (
+                      <SelectItem key={p.userId} value={p.userId.toString()}>
+                        {p.displayName || p.username || `Player #${p.userId}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Kills</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={w.kills}
+                    onChange={(e) => updateWinner(i, "kills", e.target.value)}
+                    data-testid={`input-winner-kills-${i}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Prize ({"\u20B9"})</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={w.prize}
+                    onChange={(e) => updateWinner(i, "prize", e.target.value)}
+                    placeholder="0"
+                    data-testid={`input-winner-prize-${i}`}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Button variant="outline" className="w-full gap-2" onClick={addWinner} data-testid="button-add-winner">
+        <Plus className="w-4 h-4" /> Add Winner Position
+      </Button>
+
+      <Button
+        className="w-full"
+        disabled={declareMutation.isPending || winners.every(w => !w.userId)}
+        onClick={() => declareMutation.mutate()}
+        data-testid="button-declare-winners"
+      >
+        {declareMutation.isPending ? "Declaring..." : "Declare Winners & Distribute Prizes"}
+      </Button>
     </div>
   );
 }

@@ -65,6 +65,7 @@ export const registrations = pgTable("registrations", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull(),
   tournamentId: integer("tournament_id").notNull(),
+  inGameName: text("in_game_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
