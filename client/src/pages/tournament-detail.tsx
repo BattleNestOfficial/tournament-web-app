@@ -140,6 +140,9 @@ export default function TournamentDetailPage() {
           </div>
           <h1 className="text-2xl font-bold" data-testid="text-tournament-title">{tournament.title}</h1>
           <p className="text-sm text-muted-foreground mt-1">{game?.name || "Unknown Game"}</p>
+          {(tournament as any).description && (
+            <p className="text-sm mt-3 leading-relaxed">{(tournament as any).description}</p>
+          )}
         </div>
         <div className="flex gap-2">
           {isRegistered && (
@@ -205,7 +208,7 @@ export default function TournamentDetailPage() {
               </div>
             )}
 
-            {isRegistered && tournament.status === "live" && tournament.roomId && (
+            {isRegistered && (tournament.status === "live" || tournament.status === "upcoming") && tournament.roomId && (
               <Card>
                 <CardContent className="p-4 bg-primary/5 rounded-md">
                   <div className="flex items-center gap-2 mb-2">

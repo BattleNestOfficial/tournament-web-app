@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trophy, Users, Swords, Clock, Gamepad2, Search, Filter, ImageIcon } from "lucide-react";
+import { Trophy, Users, Swords, Clock, Gamepad2, Search, Filter, ImageIcon, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import type { Tournament, Game } from "@shared/schema";
@@ -180,6 +180,23 @@ export default function TournamentsPage() {
                       <span>{new Date(t.startTime).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
                   </div>
+                  {t.roomId && (
+                    <div className="mt-2 p-2 bg-primary/5 rounded border border-primary/10">
+                      <div className="flex items-center gap-1.5 text-[10px] text-primary font-bold mb-1 uppercase tracking-wider">
+                        <Shield className="w-3 h-3" /> Room Details
+                      </div>
+                      <div className="flex justify-between items-center gap-2">
+                        <div className="flex-1">
+                          <p className="text-[10px] text-muted-foreground leading-none mb-0.5">ID</p>
+                          <p className="text-xs font-mono font-bold truncate">{t.roomId}</p>
+                        </div>
+                        <div className="flex-1 text-right">
+                          <p className="text-[10px] text-muted-foreground leading-none mb-0.5">PASS</p>
+                          <p className="text-xs font-mono font-bold truncate">{t.roomPassword}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pt-1 border-t border-border">
                     <span className="text-xs font-medium">
                       {t.entryFee > 0 ? `Entry: \u20B9${(t.entryFee / 100).toFixed(0)}` : "Free Entry"}

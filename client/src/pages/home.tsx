@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
-import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star, ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trophy, Users, Gamepad2, ArrowRight, Swords, Clock, Zap, Star, ImageIcon, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { Tournament, Game, Banner } from "@shared/schema";
 
 const GAME_GRADIENTS: Record<string, string> = {
@@ -341,6 +341,23 @@ function TournamentCard({ tournament, gameName, gameSlug }: { tournament: Tourna
               <span>{new Date(tournament.startTime).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}</span>
             </div>
           </div>
+          {tournament.roomId && (
+            <div className="mt-2 p-2 bg-primary/5 rounded border border-primary/10">
+              <div className="flex items-center gap-1.5 text-[10px] text-primary font-bold mb-1 uppercase tracking-wider">
+                <Shield className="w-3 h-3" /> Room Details
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <div className="flex-1">
+                  <p className="text-[10px] text-muted-foreground leading-none mb-0.5">ID</p>
+                  <p className="text-xs font-mono font-bold truncate">{tournament.roomId}</p>
+                </div>
+                <div className="flex-1 text-right">
+                  <p className="text-[10px] text-muted-foreground leading-none mb-0.5">PASS</p>
+                  <p className="text-xs font-mono font-bold truncate">{tournament.roomPassword}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between pt-1 border-t border-border">
             <span className="text-xs font-medium">
               {tournament.entryFee > 0 ? `Entry: \u20B9${(tournament.entryFee / 100).toFixed(0)}` : "Free Entry"}

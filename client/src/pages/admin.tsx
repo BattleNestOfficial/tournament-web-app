@@ -127,6 +127,7 @@ function TournamentManager({ token }: { token: string | null }) {
   const [form, setForm] = useState({
     title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100",
     matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "",
+    description: "",
   });
 
   const { data: tournaments, isLoading } = useQuery<Tournament[]>({ queryKey: ["/api/tournaments"] });
@@ -174,6 +175,7 @@ function TournamentManager({ token }: { token: string | null }) {
         rules: form.rules || null,
         mapName: form.mapName || null,
         imageUrl: form.imageUrl || null,
+        description: form.description || null,
         prizeDistribution,
       };
       const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -209,7 +211,7 @@ function TournamentManager({ token }: { token: string | null }) {
   });
 
   function resetForm() {
-    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "" });
+    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "", description: "" });
     setEditId(null);
     setImagePreview(null);
     setPrizes([]);
@@ -222,7 +224,7 @@ function TournamentManager({ token }: { token: string | null }) {
       prizePool: (t.prizePool / 100).toString(), maxSlots: t.maxSlots.toString(),
       matchType: t.matchType, startTime: new Date(t.startTime).toISOString().slice(0, 16),
       roomId: t.roomId || "", roomPassword: t.roomPassword || "", rules: t.rules || "", mapName: t.mapName || "",
-      imageUrl: t.imageUrl || "",
+      imageUrl: t.imageUrl || "", description: (t as any).description || "",
     });
     setImagePreview(t.imageUrl || null);
     const pd = t.prizeDistribution as { position: number; prize: number }[] | null;
@@ -369,8 +371,12 @@ function TournamentManager({ token }: { token: string | null }) {
                 <Input value={form.mapName} onChange={(e) => setForm({ ...form, mapName: e.target.value })} placeholder="e.g. Erangel, Bermuda" data-testid="input-tournament-map" />
               </div>
               <div className="space-y-1.5">
-                <Label>Rules (optional)</Label>
-                <Textarea value={form.rules} onChange={(e) => setForm({ ...form, rules: e.target.value })} placeholder="Tournament rules..." rows={3} data-testid="input-tournament-rules" />
+                <Label>Description (optional)</Label>
+                <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short tournament description..." rows={2} data-testid="input-tournament-description" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Rules</Label>
+                <Textarea value={form.rules} onChange={(e) => setForm({ ...form, rules: e.target.value })} placeholder="Tournament rules..." rows={4} data-testid="input-tournament-rules" />
               </div>
               <div className="space-y-1.5">
                 <Label>Tournament Image (optional)</Label>
