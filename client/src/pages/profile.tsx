@@ -17,15 +17,14 @@ export default function ProfilePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const [inGameName, setInGameName] = useState(user?.inGameName || "");
-  const [gameIds, setGameIds] = useState({
-    bgmiId: user?.bgmiId || "",
-    freeFireId: user?.freeFireId || "",
-    codMobileId: user?.codMobileId || "",
-    valorantId: user?.valorantId || "",
-    cs2Id: user?.cs2Id || "",
-    pubgId: user?.pubgId || "",
-  });
+ const [gameIGNs, setGameIGNs] = useState({
+  bgmiIgn: user?.bgmiIgn || "",
+  freeFireIgn: user?.freeFireIgn || "",
+  codIgn: user?.codIgn || "",
+  valorantIgn: user?.valorantIgn || "",
+  cs2Ign: user?.cs2Ign || "",
+  pubgIgn: user?.pubgIgn || "",
+});
 
   const { data: registrations } = useQuery<(Registration & { tournament?: Tournament })[]>({
     queryKey: ["/api/registrations/my"],
