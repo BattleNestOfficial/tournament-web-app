@@ -1,21 +1,26 @@
 /* =====================================================================================
-   Tournament Detail Page
-   FIXED VERSION – BUILD SAFE – NO LOGIC REMOVED
+   BATTLE NEST – TOURNAMENT DETAIL PAGE
+   FULL STABLE VERSION – SOLO / DUO / SQUAD READY
    ===================================================================================== */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 
-/* -------------------------------- UI COMPONENTS -------------------------------- */
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+
 import {
   Dialog,
   DialogContent,
@@ -24,29 +29,20 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-/* -------------------------------- AUTH & HELPERS -------------------------------- */
-
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
-/* -------------------------------- ICONS -------------------------------- */
-
 import {
   Trophy,
   Users,
+  Wallet,
+  ArrowLeft,
   Swords,
   MapPin,
   Shield,
-  Wallet,
-  ArrowLeft,
-  CheckCircle,
-  Star,
-  Award,
-  Gamepad2,
+  Clock,
 } from "lucide-react";
-
-/* -------------------------------- TYPES -------------------------------- */
 
 import type {
   Tournament,
@@ -56,54 +52,26 @@ import type {
 } from "@shared/schema";
 
 /* =====================================================================================
-   CONSTANTS
+   HELPERS
    ===================================================================================== */
 
-const GAME_GRADIENTS: Record<string, string> = {
-  bgmi: "from-amber-600/30 to-orange-900/40",
-  "free-fire": "from-red-600/30 to-yellow-900/40",
-  "cod-mobile": "from-green-700/30 to-emerald-900/40",
-  valorant: "from-red-500/30 to-pink-900/40",
-  cs2: "from-blue-600/30 to-indigo-900/40",
-  pubg: "from-yellow-600/30 to-amber-900/40",
-};
+function getIGNForGame(slug: string, user: any): string {
+  if (!user) return "";
 
-const GAME_ICONS: Record<string, string> = {
-  bgmi: "B",
-  "free-fire": "FF",
-  "cod-mobile": "COD",
-  valorant: "V",
-  cs2: "CS",
-  pubg: "P",
-};
-
-/* =====================================================================================
-   TYPES
-   ===================================================================================== */
-
-type Participant = Registration & {
-  username?: string;
-  displayName?: string;
-  inGameName?: string | null;
-};
-
-/* =====================================================================================
-   HELPER FUNCTIONS
-   ===================================================================================== */
-
-function getIGNForGame(gameSlug: string, profile: any): string {
-  if (!profile) return "";
-
-  switch (gameSlug) {
+  switch (slug) {
     case "bgmi":
-      return profile.bgmiIgn || "";
+      return user.bgmiId || "";
     case "free-fire":
-      return profile.freeFireIgn || "";
+      return user.freeFireId || "";
     case "cod-mobile":
-      return profile.codIgn || "";
+      return user.codMobileId || "";
     default:
       return "";
   }
+}
+
+function formatCurrency(amount: number) {
+  return `₹${(amount / 100).toFixed(2)}`;
 }
 
 /* =====================================================================================
@@ -111,33 +79,35 @@ function getIGNForGame(gameSlug: string, profile: any): string {
    ===================================================================================== */
 
 export default function TournamentDetailPage() {
-  /* -------------------------------- ROUTING -------------------------------- */
-
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = params?.id;
   const [, setLocation] = useLocation();
-
-  /* -------------------------------- AUTH -------------------------------- */
 
   const { user, token } = useAuth();
   const { toast } = useToast();
 
-  /* -------------------------------- STATE -------------------------------- */
-
-  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
   const [ign, setIgn] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
-  /* =====================================================================================
-     QUERIES
-     ===================================================================================== */
+  /* ================================= SAFETY ================================= */
 
-  const { data: profile } = useQuery({
-    queryKey: ["/api/users/me"],
-    enabled: !!token,
-  });
+  if (!id) {
+    return (
+      <div className="text-center py-12">
+        <p>Invalid tournament ID</p>
+        <Button onClick={() => setLocation("/tournaments")}>
+          Back
+        </Button>
+      </div>
+    );
+  }
+
+  /* ================================= QUERIES ================================= */
 
   const { data: tournament, isLoading } = useQuery<Tournament>({
-    queryKey: ["/api/tournaments", id],
+    queryKey: ["tournament", id],
+    enabled: !!id,
     queryFn: async () => {
       const res = await fetch(`/api/tournaments/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -148,37 +118,56 @@ export default function TournamentDetailPage() {
   });
 
   const { data: games } = useQuery<Game[]>({
-    queryKey: ["/api/games"],
+    queryKey: ["games"],
   });
 
   const { data: myRegistrations } = useQuery<Registration[]>({
-    queryKey: ["/api/registrations/my"],
+    queryKey: ["my-registrations"],
     enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/registrations/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.json();
+    },
   });
 
   const { data: myTeams = [] } = useQuery<any[]>({
-    queryKey: ["/api/teams/my"],
+    queryKey: ["my-teams"],
     enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/teams/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.json();
+    },
   });
 
-  const { data: participants } = useQuery<Participant[]>({
-    queryKey: ["/api/tournaments", id, "participants"],
+  const { data: participants = [] } = useQuery<any[]>({
+    queryKey: ["participants", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${id}/participants`);
+      return res.json();
+    },
   });
 
-  const { data: results } = useQuery<Result[]>({
-    queryKey: ["/api/tournaments", id, "results"],
+  const { data: results = [] } = useQuery<Result[]>({
+    queryKey: ["results", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${id}/results`);
+      return res.json();
+    },
   });
 
-  /* =====================================================================================
-     DERIVED STATE
-     ===================================================================================== */
+  /* ================================= LOADING ================================= */
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="max-w-5xl mx-auto p-4 space-y-4">
+        <Skeleton className="h-8 w-60" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
@@ -186,17 +175,19 @@ export default function TournamentDetailPage() {
   if (!tournament) {
     return (
       <div className="text-center py-12">
-        <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <Trophy className="mx-auto mb-4" />
         <Button onClick={() => setLocation("/tournaments")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to tournaments
+          <ArrowLeft className="mr-2 w-4 h-4" />
+          Back
         </Button>
       </div>
     );
   }
 
+  /* ================================= DERIVED ================================= */
+
   const game = games?.find((g) => g.id === tournament.gameId);
-  const isRegistered = myRegistrations?.some(
+  const isJoined = myRegistrations?.some(
     (r) => r.tournamentId === Number(id)
   );
 
@@ -204,19 +195,24 @@ export default function TournamentDetailPage() {
   const isDuo = tournament.matchType === "duo";
   const isSquad = tournament.matchType === "squad";
 
-  const eligibleTeams = myTeams.filter((team) =>
-    isDuo ? team.type === "duo" : isSquad ? team.type === "squad" : false
+  const eligibleTeams = myTeams.filter((team: any) =>
+    isDuo ? team.members?.length === 2 :
+    isSquad ? team.members?.length === 4 :
+    false
   );
 
   const walletBalance = user?.walletBalance ?? 0;
-  const balanceAfter = walletBalance - tournament.entryFee;
+  const progress = (tournament.filledSlots / tournament.maxSlots) * 100;
 
-  /* =====================================================================================
-     MUTATION
-     ===================================================================================== */
+  /* ================================= JOIN ================================= */
 
   const joinMutation = useMutation({
-    mutationFn: async (payload: { inGameName?: string; teamId?: number }) => {
+    mutationFn: async () => {
+      const payload =
+        isSolo
+          ? { inGameName: ign }
+          : { teamId: selectedTeamId };
+
       const res = await fetch(`/api/tournaments/${id}/join`, {
         method: "POST",
         headers: {
@@ -227,162 +223,175 @@ export default function TournamentDetailPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Join failed");
+      if (!res.ok) throw new Error(data.message);
       return data;
     },
     onSuccess: () => {
-      setJoinDialogOpen(false);
-      setIgn("");
-      setSelectedTeamId(null);
-      queryClient.invalidateQueries();
       toast({ title: "Joined successfully" });
+      queryClient.invalidateQueries();
+      setJoinOpen(false);
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Join failed",
+        description: e.message,
+        variant: "destructive",
+      });
     },
   });
 
-  /* =====================================================================================
-     HANDLERS
-     ===================================================================================== */
-
-  function handleJoinClick() {
-    if (!user) return;
+  function openJoin() {
+    if (!user) {
+      toast({ title: "Login required", variant: "destructive" });
+      return;
+    }
 
     if (isSolo) {
-      const autoIgn = getIGNForGame(game?.slug || "", profile);
-      if (!autoIgn) {
+      const auto = getIGNForGame(game?.slug || "", user);
+      if (!auto) {
         toast({
-          title: "Set In-Game Name",
-          description: "Please set IGN in profile first",
+          title: "Set your IGN first",
+          description: "Go to profile and save your IGN",
           variant: "destructive",
         });
         return;
       }
-      setIgn(autoIgn);
+      setIgn(auto);
     }
 
-    setJoinDialogOpen(true);
+    setJoinOpen(true);
   }
 
-  function handleConfirmJoin() {
-    if (isSolo) {
-      if (!ign.trim()) return;
-      joinMutation.mutate({ inGameName: ign.trim() });
-      return;
-    }
-
-    if (!selectedTeamId) return;
-    joinMutation.mutate({ teamId: selectedTeamId });
-  }
-
-  /* =====================================================================================
-     RENDER
-     ===================================================================================== */
+  /* ================================= RENDER ================================= */
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto p-4 space-y-6">
 
-      {/* BACK */}
       <Button variant="ghost" onClick={() => setLocation("/tournaments")}>
-        <ArrowLeft className="w-4 h-4 mr-2" />
+        <ArrowLeft className="mr-2 w-4 h-4" />
         Back
       </Button>
 
-      {/* HEADER */}
       <h1 className="text-2xl font-bold">{tournament.title}</h1>
 
-      {/* JOIN BUTTON */}
-      <Button onClick={handleJoinClick} disabled={isRegistered}>
-        {isRegistered ? "Registered" : "Join Tournament"}
-      </Button>
+      <Card>
+        <CardContent className="space-y-4 p-4">
 
-      {/* =================================================================================
-         JOIN DIALOG
-         ================================================================================= */}
-
-      <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
-        <DialogContent>
-
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Swords className="w-5 h-5" />
-              Join Tournament
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-
-            {/* SOLO */}
-            {isSolo && (
-              <div className="space-y-2">
-                <Label>In-Game Name</Label>
-                <Input
-                  value={ign}
-                  onChange={(e) => setIgn(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* DUO / SQUAD */}
-            {(isDuo || isSquad) && (
-              <div className="space-y-2">
-                <Label>Select Team</Label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={selectedTeamId ?? ""}
-                  onChange={(e) =>
-                    setSelectedTeamId(Number(e.target.value))
-                  }
-                >
-                  <option value="">Select team</option>
-                  {eligibleTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* WALLET */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Wallet className="w-4 h-4" />
-                    Balance
-                  </span>
-                  <span>₹{(walletBalance / 100).toFixed(2)}</span>
-                </div>
-              </CardContent>
-            </Card>
-
+          <div className="flex justify-between">
+            <Badge>{tournament.matchType.toUpperCase()}</Badge>
+            <Badge variant="outline">{tournament.status}</Badge>
           </div>
 
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4" />
+            {tournament.filledSlots} / {tournament.maxSlots}
+          </div>
+
+          <Progress value={progress} />
+
+          <div className="flex items-center gap-3">
+            <Wallet className="w-4 h-4" />
+            Entry Fee: {formatCurrency(tournament.entryFee)}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Trophy className="w-4 h-4" />
+            Prize Pool: {formatCurrency(tournament.prizePool)}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Clock className="w-4 h-4" />
+            {new Date(tournament.startTime).toLocaleString("en-IN")}
+          </div>
+
+          {tournament.roomId && (
+            <div className="flex items-center gap-3 text-green-500">
+              <Shield className="w-4 h-4" />
+              Room ID: {tournament.roomId}
+            </div>
+          )}
+
+          <Button disabled={isJoined} onClick={openJoin}>
+            {isJoined ? "Registered" : "Join Tournament"}
+          </Button>
+
+        </CardContent>
+      </Card>
+
+      {/* PARTICIPANTS */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Participants ({participants.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {participants.map((p) => (
+            <div key={p.id} className="text-sm border-b pb-1">
+              {p.displayName || p.username}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* RESULTS */}
+      {results.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Results</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {results.map((r) => (
+              <div key={r.id} className="flex justify-between text-sm">
+                <span>Position #{r.position}</span>
+                <span>{formatCurrency(r.prize)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* JOIN DIALOG */}
+      <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Join</DialogTitle>
+          </DialogHeader>
+
+          {isSolo && (
+            <>
+              <Label>In-Game Name</Label>
+              <Input value={ign} onChange={(e) => setIgn(e.target.value)} />
+            </>
+          )}
+
+          {(isDuo || isSquad) && (
+            <>
+              <Label>Select Team</Label>
+              <select
+                className="w-full border rounded px-3 py-2"
+                value={selectedTeamId ?? ""}
+                onChange={(e) => setSelectedTeamId(Number(e.target.value))}
+              >
+                <option value="">Select Team</option>
+                {eligibleTeams.map((team: any) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setJoinDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setJoinOpen(false)}>
               Cancel
             </Button>
-
-            <Button
-              onClick={handleConfirmJoin}
-              disabled={
-                joinMutation.isPending ||
-                (isSolo && !ign.trim()) ||
-                ((isDuo || isSquad) && !selectedTeamId)
-              }
-            >
-              {joinMutation.isPending ? "Joining..." : "Confirm Join"}
+            <Button onClick={() => joinMutation.mutate()}>
+              {joinMutation.isPending ? "Joining..." : "Confirm"}
             </Button>
           </DialogFooter>
-
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
-
-/* =====================================================================================
-   END OF FILE – SAFE TO DEPLOY
-   ===================================================================================== */
