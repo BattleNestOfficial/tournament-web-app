@@ -58,14 +58,7 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  const gameIdFields = [
-    { key: "bgmiId", label: "BGMI ID", placeholder: "Enter your BGMI player ID" },
-    { key: "freeFireId", label: "Free Fire ID", placeholder: "Enter your Free Fire player ID" },
-    { key: "codMobileId", label: "COD Mobile ID", placeholder: "Enter your COD Mobile player ID" },
-    { key: "valorantId", label: "Valorant ID", placeholder: "Enter your Valorant ID (e.g. Name#TAG)" },
-    { key: "cs2Id", label: "CS2 ID", placeholder: "Enter your CS2 Steam ID" },
-    { key: "pubgId", label: "PUBG ID", placeholder: "Enter your PUBG player ID" },
-  ];
+ 
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
