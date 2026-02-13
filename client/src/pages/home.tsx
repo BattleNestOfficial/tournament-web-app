@@ -1,17 +1,13 @@
 /* =====================================================================================
-   BATTLE NEST – HOME PAGE (FORTNITE STYLE)
-   FULL ADVANCED VERSION – PRODUCTION SAFE
+   BATTLE NEST – ESPORTS HOME PAGE
+   AAA / EPIC GAMES STYLE – FUTURISTIC – FULLY ANIMATED
+   SAFE TO PASTE AS home.tsx
    ===================================================================================== */
 
-import { useMemo } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
 
 import {
   Trophy,
@@ -19,50 +15,38 @@ import {
   Wallet,
   Clock,
   Flame,
+  Gamepad2,
   ArrowRight,
 } from "lucide-react";
 
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+
+import { useAuth } from "@/lib/auth";
 import type { Tournament, Game } from "@shared/schema";
 
 /* =====================================================================================
-   HELPERS
+   CONSTANTS & STYLES
    ===================================================================================== */
 
-function formatMoney(amount: number) {
-  if (amount === 0) return "FREE";
-  return `₹${(amount / 100).toFixed(0)}`;
-}
+const GAME_COLORS: Record<string, string> = {
+  bgmi: "from-amber-500 to-orange-600",
+  "free-fire": "from-red-500 to-yellow-600",
+  "cod-mobile": "from-green-500 to-emerald-600",
+  valorant: "from-pink-500 to-red-600",
+  cs2: "from-blue-500 to-indigo-600",
+};
 
-function getStatus(t: Tournament) {
-  if (t.status === "live") return "LIVE";
-  if (t.status === "completed") return "COMPLETED";
-  return "UPCOMING";
-}
+const CARD_GLOW =
+  "before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-br before:opacity-0 hover:before:opacity-100 before:transition";
 
-function getStatusColor(status: string) {
-  switch (status) {
-    case "LIVE":
-      return "bg-green-500/20 text-green-400 border-green-500";
-    case "COMPLETED":
-      return "bg-gray-500/20 text-gray-400 border-gray-500";
-    default:
-      return "bg-yellow-500/20 text-yellow-400 border-yellow-500";
-  }
-}
-
-function countdown(target: Date) {
-  const diff = new Date(target).getTime() - Date.now();
-  if (diff <= 0) return "00:00:00";
-
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(
-    2,
-    "0"
-  )}:${String(s).padStart(2, "0")}`;
-}
+const fadeUp = {
+  hidden: { opacity: 0, y: 40 },
+  visible: { opacity: 1, y: 0 },
+};
 
 /* =====================================================================================
    MAIN COMPONENT
@@ -70,196 +54,242 @@ function countdown(target: Date) {
 
 export default function HomePage() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
 
-  /* -------------------------------- QUERIES -------------------------------- */
+  /* -------------------------------- FETCH DATA -------------------------------- */
 
-  const tournamentsQuery = useQuery<Tournament[]>({
+  const { data: tournaments, isLoading } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
   });
 
-  const gamesQuery = useQuery<Game[]>({
+  const { data: games } = useQuery<Game[]>({
     queryKey: ["/api/games"],
   });
 
-  const tournaments = tournamentsQuery.data || [];
-  const games = gamesQuery.data || [];
+  /* -------------------------------- GROUP DATA -------------------------------- */
 
-  /* -------------------------------- DERIVED -------------------------------- */
-
-  const featured = useMemo(
-    () => tournaments.filter((t) => t.status !== "completed").slice(0, 6),
-    [tournaments]
-  );
-
-  const upcoming = useMemo(
-    () => tournaments.filter((t) => t.status === "upcoming"),
-    [tournaments]
-  );
-
-  const totalPlayers = tournaments.reduce(
-    (acc, t) => acc + t.filledSlots,
-    0
-  );
-
-  /* -------------------------------- LOADING -------------------------------- */
-
-  if (tournamentsQuery.isLoading || gamesQuery.isLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  const upcoming = tournaments?.filter((t) => t.status === "upcoming") || [];
+  const live = tournaments?.filter((t) => t.status === "live") || [];
+  const completed = tournaments?.filter((t) => t.status === "completed") || [];
 
   /* =====================================================================================
      RENDER
      ===================================================================================== */
 
   return (
-    <div className="space-y-10 px-6 py-6">
+    <div className="relative min-h-screen bg-gradient-to-br from-[#070B14] via-[#0B1220] to-black text-white overflow-hidden">
 
-      {/* ===================== HERO ===================== */}
-      <div className="relative rounded-xl overflow-hidden bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 p-8">
+      {/* ============================ HERO SECTION ============================ */}
 
-        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))]" />
+      <section className="relative px-6 py-24 max-w-7xl mx-auto">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={fadeUp}
+          transition={{ duration: 0.8 }}
+          className="grid md:grid-cols-2 gap-10 items-center"
+        >
+          {/* LEFT */}
+          <div className="space-y-6">
+            <Badge className="bg-purple-600/20 text-purple-400 border-purple-500/30">
+              ⚡ Competitive Esports Platform
+            </Badge>
 
-        <div className="relative z-10 grid md:grid-cols-2 gap-6 items-center">
-          <div>
-            <h1 className="text-4xl font-extrabold text-white mb-2">
-              COMPETE & WIN
+            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight">
+              Compete.
+              <span className="block bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+                Win Big.
+              </span>
+              Dominate.
             </h1>
-            <p className="text-white/70 max-w-md">
-              Join high-stakes esports tournaments. Play solo, duo or squad.
-              Win real cash prizes.
+
+            <p className="text-gray-400 text-lg max-w-xl">
+              Join elite tournaments across BGMI, Free Fire, COD Mobile and more.
+              Skill decides everything.
             </p>
 
-            <div className="flex gap-6 mt-6 text-white">
-              <div>
-                <p className="text-xl font-bold">{tournaments.length}</p>
-                <p className="text-xs opacity-70">Tournaments</p>
-              </div>
-              <div>
-                <p className="text-xl font-bold">{totalPlayers}</p>
-                <p className="text-xs opacity-70">Players</p>
-              </div>
-              <div>
-                <p className="text-xl font-bold">
-                  {tournaments.filter(t => t.status === "live").length}
-                </p>
-                <p className="text-xs opacity-70">Live Now</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="hidden md:block">
-            <div className="h-48 rounded-lg bg-black/30 flex items-center justify-center text-white/50">
-              GAME ARTWORK
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ===================== FEATURED ===================== */}
-      <section>
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Flame className="w-5 h-5 text-orange-500" />
-          Featured Tournaments
-        </h2>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {featured.map((t) => {
-            const game = games.find((g) => g.id === t.gameId);
-            const status = getStatus(t);
-
-            return (
-              <Card
-                key={t.id}
-                className="group cursor-pointer hover:scale-[1.02] transition"
-                onClick={() => setLocation(`/tournaments/${t.id}`)}
+            <div className="flex gap-4">
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
+                onClick={() => setLocation("/tournaments")}
               >
-                <CardContent className="p-4 space-y-3">
+                Explore Tournaments <ArrowRight className="ml-2 w-4 h-4" />
+              </Button>
 
-                  {/* IMAGE */}
-                  <div className="h-32 rounded-md bg-muted flex items-center justify-center">
-                    {game?.name || "GAME"}
-                  </div>
+              {!user && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setLocation("/auth")}
+                >
+                  Sign In
+                </Button>
+              )}
+            </div>
+          </div>
 
-                  {/* STATUS */}
-                  <Badge
-                    className={`w-fit ${getStatusColor(status)}`}
-                    variant="outline"
-                  >
-                    {status}
+          {/* RIGHT IMAGE */}
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 6 }}
+            className="relative"
+          >
+            <div className="aspect-[16/9] rounded-2xl bg-gradient-to-br from-purple-800/40 to-pink-800/20 border border-white/10 backdrop-blur-xl flex items-center justify-center">
+              <Gamepad2 className="w-24 h-24 text-purple-400 opacity-80" />
+            </div>
+          </motion.div>
+        </motion.div>
+      </section>
+
+      {/* ============================ LIVE TOURNAMENTS ============================ */}
+
+      {live.length > 0 && (
+        <Section title="🔥 Live Tournaments" accent="red">
+          <TournamentGrid
+            tournaments={live}
+            games={games}
+            onOpen={(id) => setLocation(`/tournaments/${id}`)}
+          />
+        </Section>
+      )}
+
+      {/* ============================ UPCOMING ============================ */}
+
+      <Section title="⏳ Upcoming Battles" accent="purple">
+        {isLoading ? (
+          <SkeletonGrid />
+        ) : (
+          <TournamentGrid
+            tournaments={upcoming}
+            games={games}
+            onOpen={(id) => setLocation(`/tournaments/${id}`)}
+          />
+        )}
+      </Section>
+
+      {/* ============================ COMPLETED ============================ */}
+
+      {completed.length > 0 && (
+        <Section title="🏆 Completed Tournaments" accent="gold">
+          <TournamentGrid
+            tournaments={completed}
+            games={games}
+            completed
+            onOpen={(id) => setLocation(`/tournaments/${id}`)}
+          />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================================================
+   SECTION WRAPPER
+   ===================================================================================== */
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  accent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="max-w-7xl mx-auto px-6 py-12">
+      <h2 className="text-2xl font-bold mb-6">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/* =====================================================================================
+   TOURNAMENT GRID
+   ===================================================================================== */
+
+function TournamentGrid({
+  tournaments,
+  games,
+  completed,
+  onOpen,
+}: any) {
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {tournaments.map((t: Tournament) => {
+        const game = games?.find((g: Game) => g.id === t.gameId);
+        const progress = (t.filledSlots / t.maxSlots) * 100;
+
+        return (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            viewport={{ once: true }}
+          >
+            <Card
+              onClick={() => onOpen(t.id)}
+              className={`relative cursor-pointer overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl hover:scale-[1.02] transition ${CARD_GLOW}`}
+            >
+              {/* IMAGE PLACEHOLDER */}
+              <div className="h-40 bg-gradient-to-br from-black to-gray-900 flex items-center justify-center">
+                <Trophy className="w-12 h-12 text-white/40" />
+              </div>
+
+              <CardContent className="p-4 space-y-4">
+                <div className="flex justify-between">
+                  <Badge variant="outline">{game?.name}</Badge>
+                  <Badge className="bg-purple-600/20 text-purple-300">
+                    {t.matchType.toUpperCase()}
                   </Badge>
+                </div>
 
-                  {/* TITLE */}
-                  <h3 className="font-semibold line-clamp-2">
-                    {t.title}
-                  </h3>
+                <h3 className="font-semibold text-lg line-clamp-2">
+                  {t.title}
+                </h3>
 
-                  {/* META */}
-                  <div className="text-xs text-muted-foreground flex justify-between">
-                    <span>{t.matchType.toUpperCase()}</span>
-                    <span>{formatMoney(t.entryFee)}</span>
-                  </div>
-
-                  {/* PROGRESS */}
-                  <Progress
-                    value={(t.filledSlots / t.maxSlots) * 100}
-                  />
-
-                  <div className="flex justify-between text-xs">
+                <div className="space-y-2 text-sm text-gray-400">
+                  <div className="flex justify-between">
                     <span>
-                      <Users className="inline w-3 h-3 mr-1" />
+                      <Users className="inline w-4 h-4 mr-1" />
                       {t.filledSlots}/{t.maxSlots}
                     </span>
                     <span>
-                      <Trophy className="inline w-3 h-3 mr-1" />
+                      <Wallet className="inline w-4 h-4 mr-1" />
                       ₹{(t.prizePool / 100).toFixed(0)}
                     </span>
                   </div>
 
-                  {/* TIMER */}
-                  {status !== "COMPLETED" && (
-                    <div className="text-xs flex items-center gap-1 text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      {countdown(t.startTime)}
-                    </div>
+                  {!completed && (
+                    <Progress value={progress} className="h-2" />
                   )}
+                </div>
 
-                  {/* BUTTON */}
-                  <Button className="w-full">
-                    Join Tournament
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
+                <Button
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600"
+                >
+                  View Details
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* ===================== UPCOMING ===================== */}
-      <section>
-        <h2 className="text-xl font-bold mb-4">
-          Upcoming Tournaments
-        </h2>
+/* =====================================================================================
+   SKELETON GRID
+   ===================================================================================== */
 
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          {upcoming.map((t) => (
-            <div
-              key={t.id}
-              className="min-w-[260px] bg-muted rounded-lg p-4 opacity-80"
-            >
-              <h3 className="font-medium">{t.title}</h3>
-              <p className="text-xs text-muted-foreground">
-                Starts at {new Date(t.startTime).toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+function SkeletonGrid() {
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-72 rounded-xl" />
+      ))}
     </div>
   );
 }
