@@ -23,7 +23,6 @@ export function verifyToken(
   }
 }
 
-// 🔐 REQUIRED AUTH (login mandatory)
 export function authMiddleware(
   req: Request,
   res: Response,
@@ -45,19 +44,11 @@ export function authMiddleware(
   next();
 }
 
-// 👑 ADMIN ONLY
-export function adminMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  if ((req as any).userRole !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  next();
-}
-
-// 👀 OPTIONAL AUTH (guest / user / admin)
+/**
+ * ✅ OPTIONAL AUTH
+ * - Allows guests
+ * - Adds userId + role if token exists
+ */
 export function authOptionalMiddleware(
   req: Request,
   _res: Response,
@@ -66,18 +57,28 @@ export function authOptionalMiddleware(
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(); // guest
+    return next(); // guest user
   }
 
   const token = authHeader.slice(7);
   const payload = verifyToken(token);
 
   if (!payload) {
-    return next(); // invalid token → guest
+    return next(); // invalid token → treat as guest
   }
 
   (req as any).userId = payload.userId;
   (req as any).userRole = payload.role;
+  next();
+}
 
+export function adminMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  if ((req as any).userRole !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
   next();
 }
