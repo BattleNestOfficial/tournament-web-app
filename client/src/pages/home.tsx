@@ -1,62 +1,62 @@
 /* =====================================================================================
-   BATTLE NEST – ESPORTS HOME PAGE
-   AAA / EPIC GAMES STYLE – FUTURISTIC – FULLY ANIMATED
-   SAFE TO PASTE AS home.tsx
+   BATTLE NEST – GOD TIER ESPORTS HOME
+   CYBERPUNK / EPIC GAMES / FORTNITE INSPIRED
+   PURE FRONTEND – FULL MOTION – FUTURISTIC
    ===================================================================================== */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
-
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Trophy,
   Users,
   Wallet,
-  Clock,
-  Flame,
   Gamepad2,
+  Flame,
   ArrowRight,
+  Zap,
 } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 
-import { useAuth } from "@/lib/auth";
 import type { Tournament, Game } from "@shared/schema";
 
 /* =====================================================================================
-   CONSTANTS & STYLES
+   MOTION PRESETS
    ===================================================================================== */
 
-const GAME_COLORS: Record<string, string> = {
-  bgmi: "from-amber-500 to-orange-600",
-  "free-fire": "from-red-500 to-yellow-600",
-  "cod-mobile": "from-green-500 to-emerald-600",
-  valorant: "from-pink-500 to-red-600",
-  cs2: "from-blue-500 to-indigo-600",
+const floatSlow = {
+  animate: {
+    y: [0, -12, 0],
+  },
+  transition: {
+    duration: 6,
+    repeat: Infinity,
+    ease: "easeInOut",
+  },
 };
 
-const CARD_GLOW =
-  "before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-br before:opacity-0 hover:before:opacity-100 before:transition";
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0 },
+const glowPulse = {
+  animate: {
+    opacity: [0.4, 0.8, 0.4],
+  },
+  transition: {
+    duration: 3,
+    repeat: Infinity,
+  },
 };
 
 /* =====================================================================================
-   MAIN COMPONENT
+   MAIN PAGE
    ===================================================================================== */
 
 export default function HomePage() {
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
-
-  /* -------------------------------- FETCH DATA -------------------------------- */
+  const [hovered, setHovered] = useState<number | null>(null);
 
   const { data: tournaments, isLoading } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -66,156 +66,152 @@ export default function HomePage() {
     queryKey: ["/api/games"],
   });
 
-  /* -------------------------------- GROUP DATA -------------------------------- */
-
-  const upcoming = tournaments?.filter((t) => t.status === "upcoming") || [];
-  const live = tournaments?.filter((t) => t.status === "live") || [];
-  const completed = tournaments?.filter((t) => t.status === "completed") || [];
-
-  /* =====================================================================================
-     RENDER
-     ===================================================================================== */
+  const upcoming = tournaments?.filter(t => t.status === "upcoming") || [];
+  const live = tournaments?.filter(t => t.status === "live") || [];
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#070B14] via-[#0B1220] to-black text-white overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden bg-[#05070d] text-white">
 
-      {/* ============================ HERO SECTION ============================ */}
+      {/* =================== MOVING GRADIENT BACKGROUND =================== */}
+      <motion.div
+        className="absolute inset-0 -z-20"
+        animate={{
+          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+        }}
+        transition={{ duration: 30, repeat: Infinity }}
+        style={{
+          background:
+            "linear-gradient(120deg,#4f46e5,#9333ea,#ec4899,#4f46e5)",
+          backgroundSize: "400% 400%",
+        }}
+      />
 
-      <section className="relative px-6 py-24 max-w-7xl mx-auto">
+      {/* =================== NOISE OVERLAY =================== */}
+      <div className="absolute inset-0 -z-10 bg-[url('/noise.png')] opacity-[0.03]" />
+
+      {/* =================== HERO =================== */}
+      <section className="relative px-6 pt-28 pb-32 max-w-7xl mx-auto">
         <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={fadeUp}
-          transition={{ duration: 0.8 }}
-          className="grid md:grid-cols-2 gap-10 items-center"
+          initial={{ opacity: 0, y: 80 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1 }}
+          className="grid md:grid-cols-2 gap-16 items-center"
         >
           {/* LEFT */}
-          <div className="space-y-6">
-            <Badge className="bg-purple-600/20 text-purple-400 border-purple-500/30">
-              ⚡ Competitive Esports Platform
-            </Badge>
-
-            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight">
-              Compete.
-              <span className="block bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                Win Big.
+          <div className="space-y-8">
+            <motion.h1
+              className="text-6xl md:text-7xl font-extrabold leading-tight"
+              initial={{ letterSpacing: "0.2em" }}
+              animate={{ letterSpacing: "0em" }}
+              transition={{ duration: 1.2 }}
+            >
+              ENTER THE
+              <span className="block bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent">
+                ARENA
               </span>
-              Dominate.
-            </h1>
+            </motion.h1>
 
-            <p className="text-gray-400 text-lg max-w-xl">
-              Join elite tournaments across BGMI, Free Fire, COD Mobile and more.
-              Skill decides everything.
+            <p className="text-gray-300 text-lg max-w-xl">
+              Elite esports tournaments. Real rewards. No mercy.
             </p>
 
-            <div className="flex gap-4">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90"
-                onClick={() => setLocation("/tournaments")}
-              >
-                Explore Tournaments <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-
-              {!user && (
+            <div className="flex gap-6">
+              <motion.div whileHover={{ scale: 1.08 }}>
                 <Button
                   size="lg"
-                  variant="outline"
-                  onClick={() => setLocation("/auth")}
+                  className="relative overflow-hidden bg-gradient-to-r from-pink-600 to-purple-700 shadow-[0_0_40px_#9333ea]"
+                  onClick={() => setLocation("/tournaments")}
                 >
-                  Sign In
+                  <span className="relative z-10 flex items-center gap-2">
+                    Join Battles <ArrowRight />
+                  </span>
+                  <motion.span
+                    className="absolute inset-0 bg-white/20"
+                    initial={{ x: "-100%" }}
+                    whileHover={{ x: "100%" }}
+                    transition={{ duration: 0.6 }}
+                  />
                 </Button>
-              )}
+              </motion.div>
+
+              <Button
+                variant="outline"
+                size="lg"
+                className="border-white/30"
+              >
+                How It Works
+              </Button>
             </div>
           </div>
 
-          {/* RIGHT IMAGE */}
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ repeat: Infinity, duration: 6 }}
-            className="relative"
-          >
-            <div className="aspect-[16/9] rounded-2xl bg-gradient-to-br from-purple-800/40 to-pink-800/20 border border-white/10 backdrop-blur-xl flex items-center justify-center">
-              <Gamepad2 className="w-24 h-24 text-purple-400 opacity-80" />
+          {/* RIGHT */}
+          <motion.div {...floatSlow} className="relative">
+            <div className="aspect-square rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center shadow-[0_0_80px_#6366f1]">
+              <Gamepad2 className="w-28 h-28 text-purple-400" />
             </div>
           </motion.div>
         </motion.div>
       </section>
 
-      {/* ============================ LIVE TOURNAMENTS ============================ */}
-
+      {/* =================== LIVE =================== */}
       {live.length > 0 && (
-        <Section title="🔥 Live Tournaments" accent="red">
+        <Section title="🔥 LIVE BATTLES">
           <TournamentGrid
             tournaments={live}
             games={games}
-            onOpen={(id) => setLocation(`/tournaments/${id}`)}
+            hovered={hovered}
+            setHovered={setHovered}
+            onOpen={id => setLocation(`/tournaments/${id}`)}
           />
         </Section>
       )}
 
-      {/* ============================ UPCOMING ============================ */}
-
-      <Section title="⏳ Upcoming Battles" accent="purple">
+      {/* =================== UPCOMING =================== */}
+      <Section title="⚡ UPCOMING TOURNAMENTS">
         {isLoading ? (
           <SkeletonGrid />
         ) : (
           <TournamentGrid
             tournaments={upcoming}
             games={games}
-            onOpen={(id) => setLocation(`/tournaments/${id}`)}
+            hovered={hovered}
+            setHovered={setHovered}
+            onOpen={id => setLocation(`/tournaments/${id}`)}
           />
         )}
       </Section>
-
-      {/* ============================ COMPLETED ============================ */}
-
-      {completed.length > 0 && (
-        <Section title="🏆 Completed Tournaments" accent="gold">
-          <TournamentGrid
-            tournaments={completed}
-            games={games}
-            completed
-            onOpen={(id) => setLocation(`/tournaments/${id}`)}
-          />
-        </Section>
-      )}
     </div>
   );
 }
 
 /* =====================================================================================
-   SECTION WRAPPER
+   SECTION
    ===================================================================================== */
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  accent: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: any) {
   return (
-    <section className="max-w-7xl mx-auto px-6 py-12">
-      <h2 className="text-2xl font-bold mb-6">{title}</h2>
+    <section className="max-w-7xl mx-auto px-6 py-20">
+      <h2 className="text-3xl font-bold mb-10 tracking-wide">
+        {title}
+      </h2>
       {children}
     </section>
   );
 }
 
 /* =====================================================================================
-   TOURNAMENT GRID
+   TOURNAMENT CARD GRID
    ===================================================================================== */
 
 function TournamentGrid({
   tournaments,
   games,
-  completed,
+  hovered,
+  setHovered,
   onOpen,
 }: any) {
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10">
       {tournaments.map((t: Tournament) => {
         const game = games?.find((g: Game) => g.id === t.gameId);
         const progress = (t.filledSlots / t.maxSlots) * 100;
@@ -223,56 +219,55 @@ function TournamentGrid({
         return (
           <motion.div
             key={t.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4 }}
-            viewport={{ once: true }}
+            onMouseEnter={() => setHovered(t.id)}
+            onMouseLeave={() => setHovered(null)}
+            whileHover={{ scale: 1.05 }}
+            className="relative group"
           >
-            <Card
+            {/* GLOW */}
+            <motion.div
+              className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 blur-xl"
+              variants={glowPulse}
+              animate={hovered === t.id ? "animate" : undefined}
+            />
+
+            {/* CARD */}
+            <div
               onClick={() => onOpen(t.id)}
-              className={`relative cursor-pointer overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl hover:scale-[1.02] transition ${CARD_GLOW}`}
+              className="relative z-10 rounded-3xl bg-black/70 backdrop-blur-xl border border-white/10 p-6 space-y-6 cursor-pointer"
             >
-              {/* IMAGE PLACEHOLDER */}
-              <div className="h-40 bg-gradient-to-br from-black to-gray-900 flex items-center justify-center">
-                <Trophy className="w-12 h-12 text-white/40" />
+              {/* IMAGE */}
+              <div className="h-44 rounded-xl bg-gradient-to-br from-black to-gray-900 flex items-center justify-center relative overflow-hidden">
+                <Flame className="w-14 h-14 text-white/30" />
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                  initial={{ x: "-100%" }}
+                  animate={{ x: "100%" }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
               </div>
 
-              <CardContent className="p-4 space-y-4">
+              <div className="flex justify-between">
+                <Badge>{game?.name}</Badge>
+                <Badge variant="outline">
+                  {t.matchType.toUpperCase()}
+                </Badge>
+              </div>
+
+              <h3 className="text-xl font-semibold">{t.title}</h3>
+
+              <div className="space-y-2 text-sm text-gray-300">
                 <div className="flex justify-between">
-                  <Badge variant="outline">{game?.name}</Badge>
-                  <Badge className="bg-purple-600/20 text-purple-300">
-                    {t.matchType.toUpperCase()}
-                  </Badge>
+                  <span><Users className="inline w-4 h-4 mr-1" /> {t.filledSlots}/{t.maxSlots}</span>
+                  <span><Wallet className="inline w-4 h-4 mr-1" /> ₹{(t.prizePool / 100).toFixed(0)}</span>
                 </div>
+                <Progress value={progress} className="h-2" />
+              </div>
 
-                <h3 className="font-semibold text-lg line-clamp-2">
-                  {t.title}
-                </h3>
-
-                <div className="space-y-2 text-sm text-gray-400">
-                  <div className="flex justify-between">
-                    <span>
-                      <Users className="inline w-4 h-4 mr-1" />
-                      {t.filledSlots}/{t.maxSlots}
-                    </span>
-                    <span>
-                      <Wallet className="inline w-4 h-4 mr-1" />
-                      ₹{(t.prizePool / 100).toFixed(0)}
-                    </span>
-                  </div>
-
-                  {!completed && (
-                    <Progress value={progress} className="h-2" />
-                  )}
-                </div>
-
-                <Button
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600"
-                >
-                  View Details
-                </Button>
-              </CardContent>
-            </Card>
+              <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600">
+                View Arena
+              </Button>
+            </div>
           </motion.div>
         );
       })}
@@ -281,14 +276,14 @@ function TournamentGrid({
 }
 
 /* =====================================================================================
-   SKELETON GRID
+   SKELETON
    ===================================================================================== */
 
 function SkeletonGrid() {
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10">
       {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-72 rounded-xl" />
+        <Skeleton key={i} className="h-96 rounded-3xl" />
       ))}
     </div>
   );
