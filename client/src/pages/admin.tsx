@@ -211,33 +211,7 @@ function TournamentManager({ token }: { token: string | null }) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      const deleteTournamentMutation = useMutation({
-  mutationFn: async (id: number) => {
-    const res = await fetch(`/api/admin/tournaments/${id}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Failed to delete tournament");
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
-    toast({
-      title: "Tournament deleted",
-      description: "Tournament removed successfully",
-    });
-  },
-  onError: (err: Error) => {
-    toast({
-      title: "Delete failed",
-      description: err.message,
-      variant: "destructive",
-    });
-  },
-});
+     
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       return data;
