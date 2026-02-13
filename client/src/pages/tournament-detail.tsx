@@ -46,9 +46,21 @@ export default function TournamentDetailPage() {
   const [ign, setIgn] = useState("");
 
   const { data: tournament, isLoading } = useQuery<Tournament>({
-    queryKey: ["/api/tournaments", id],
-  });
+  queryKey: ["/api/tournaments", id],
+  queryFn: async () => {
+    const res = await fetch(`/api/tournaments/${id}`, {
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+    });
 
+    if (!res.ok) {
+      throw new Error("Failed to fetch tournament");
+    }
+
+    return res.json();
+  },
+});
   const { data: games } = useQuery<Game[]>({ queryKey: ["/api/games"] });
   const { data: myRegistrations } = useQuery<Registration[]>({
     queryKey: ["/api/registrations/my"],
