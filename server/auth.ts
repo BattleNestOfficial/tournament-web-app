@@ -10,15 +10,25 @@ export function generateToken(userId: number, role: string): string {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "7d" });
 }
 
-export function verifyToken(token: string): { userId: number; role: string } | null {
+export function verifyToken(
+  token: string
+): { userId: number; role: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: number; role: string };
+    return jwt.verify(token, JWT_SECRET) as {
+      userId: number;
+      role: string;
+    };
   } catch {
     return null;
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+// 🔐 REQUIRED AUTH (login mandatory)
+export function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Authentication required" });
@@ -35,9 +45,39 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
-export function adminMiddleware(req: Request, res: Response, next: NextFunction) {
+// 👑 ADMIN ONLY
+export function adminMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   if ((req as any).userRole !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
+  next();
+}
+
+// 👀 OPTIONAL AUTH (guest / user / admin)
+export function authOptionalMiddleware(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next(); // guest
+  }
+
+  const token = authHeader.slice(7);
+  const payload = verifyToken(token);
+
+  if (!payload) {
+    return next(); // invalid token → guest
+  }
+
+  (req as any).userId = payload.userId;
+  (req as any).userRole = payload.role;
+
   next();
 }
