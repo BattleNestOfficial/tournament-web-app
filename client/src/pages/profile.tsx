@@ -33,7 +33,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/users/profile", {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...gameIds, inGameName }),
+       body: JSON.stringify({
+  bgmiIgn: gameIGNs.bgmiIgn || null,
+  freeFireIgn: gameIGNs.freeFireIgn || null,
+  codIgn: gameIGNs.codIgn || null,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
