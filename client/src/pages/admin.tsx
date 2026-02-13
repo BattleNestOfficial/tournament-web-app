@@ -34,6 +34,13 @@ export default function AdminPage() {
     setLocation("/");
   }
 }, [user, setLocation]);
+  if (user === undefined) {
+  return (
+    <div className="p-8 text-center text-muted-foreground">
+      Loading admin panel...
+    </div>
+  );
+}
 
 
 
