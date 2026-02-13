@@ -849,9 +849,12 @@ export async function registerRoutes(
   app.patch("/api/admin/tournaments/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const data = { ...req.body };
-      if (data.startTime && typeof data.startTime === "string") {
-        data.startTime = new Date(data.startTime);
-      }
+      if (data.startTime) {
+  data.startTime = new Date(data.startTime);
+  if (isNaN(data.startTime.getTime())) {
+    return res.status(400).json({ message: "Invalid start time" });
+  }
+}
       if (data.prizeDistribution && typeof data.prizeDistribution === "string") {
         data.prizeDistribution = JSON.parse(data.prizeDistribution);
       }
