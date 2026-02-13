@@ -31,89 +31,54 @@ export default function ProfilePage() {
   });
 
   const updateMutation = useMutation({
-  mutationFn: async () => {
-    const payload: any = {};
+    mutationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
 
-    if (gameIGNs.bgmiIgn.trim()) {
-      payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
-    }
+      const payload: any = {};
 
-    if (gameIGNs.freeFireIgn.trim()) {
-      payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
-    }
+      if (gameIGNs.bgmiIgn.trim()) {
+        payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
+      }
 
-    if (gameIGNs.codIgn.trim()) {
-      payload.codIgn = gameIGNs.codIgn.trim();
-    }
+      if (gameIGNs.freeFireIgn.trim()) {
+        payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
+      }
 
-    if (Object.keys(payload).length === 0) {
-      throw new Error("No values to set");
-    }
+      if (gameIGNs.codIgn.trim()) {
+        payload.codIgn = gameIGNs.codIgn.trim();
+      }
 
-    const res = await fetch("/api/users/profile", {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+      if (Object.keys(payload).length === 0) {
+        throw new Error("No values to set");
+      }
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Update failed");
-    return data;
-  },
-
-  onSuccess: (data) => {
-    if (data.user) updateUser(data.user);
-    toast({
-      title: "Profile updated",
-      description: "Your in-game names were saved",
-    });
-  },
-
-  onError: (err: Error) => {
-    toast({
-      title: "Update failed",
-      description: err.message,
-      variant: "destructive",
-    });
-  },
-});
-const payload: any = {};
-
-if (gameIGNs.bgmiIgn.trim()) {
-  payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
-}
-
-if (gameIGNs.freeFireIgn.trim()) {
-  payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
-}
-
-if (gameIGNs.codIgn.trim()) {
-  payload.codIgn = gameIGNs.codIgn.trim();
-}
-
-const res = await fetch("/api/users/profile", {
-  method: "PATCH",
-  headers: {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify(payload),
-});
+      const res = await fetch("/api/users/profile", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Update failed");
+      }
+
       return data;
     },
+
     onSuccess: (data) => {
       if (data.user) updateUser(data.user);
+
       toast({
         title: "Profile updated",
         description: "Your in-game names were saved",
       });
     },
+
     onError: (err: Error) => {
       toast({
         title: "Update failed",
