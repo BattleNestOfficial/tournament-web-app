@@ -150,7 +150,7 @@ export default function HomePage() {
             ))}
           </div>
         ) : upcomingTournaments.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {upcomingTournaments.map((t) => (
               <TournamentCard key={t.id} tournament={t} gameName={getGameName(t.gameId)} gameSlug={getGameSlug(t.gameId)} />
             ))}
