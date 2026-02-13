@@ -333,6 +333,17 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+  // 🔓 Public: Total registered users (email + Google)
+app.get("/api/stats/total-users", async (_req, res) => {
+  try {
+    const users = await storage.getAllUsers();
+    res.json({ count: users.length });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+  
   // Protected routes
   app.post("/api/tournaments/:id/join", authMiddleware, async (req, res) => {
     try {
