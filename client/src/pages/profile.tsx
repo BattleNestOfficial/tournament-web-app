@@ -108,13 +108,6 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="pt-0 space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">In-Game Name</Label>
-              <Input
-                placeholder="Enter your in-game display name"
-                value={inGameName}
-                onChange={(e) => setInGameName(e.target.value)}
-                data-testid="input-inGameName"
-              />
               <p className="text-xs text-muted-foreground">This name will be shown in tournaments and leaderboards</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
