@@ -38,6 +38,27 @@ const GAME_ICONS: Record<string, string> = {
 
 type Participant = Registration & { username?: string; displayName?: string; inGameName?: string | null };
 
+function getIGNForGame(gameSlug: string, profile: any) {
+  if (!profile) return "";
+
+  switch (gameSlug) {
+    case "bgmi":
+      return profile.bgmiId || "";
+    case "free-fire":
+      return profile.freeFireId || "";
+    case "cod-mobile":
+      return profile.codMobileId || "";
+    case "valorant":
+      return profile.valorantId || "";
+    case "cs2":
+      return profile.cs2Id || "";
+    case "pubg":
+      return profile.pubgId || "";
+    default:
+      return "";
+  }
+}
+
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, token, updateUser } = useAuth();
