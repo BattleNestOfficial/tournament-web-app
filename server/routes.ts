@@ -225,7 +225,15 @@ export async function registerRoutes(
 app.get("/api/tournaments", async (_req, res) => {
   try {
     const all = await storage.getAllTournaments();
-    res.json(all);
+
+    // 🔒 NEVER expose room details in list API
+    const safe = all.map(t => ({
+      ...t,
+      roomId: null,
+      roomPassword: null,
+    }));
+
+    res.json(safe);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
