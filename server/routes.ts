@@ -218,11 +218,10 @@ export async function registerRoutes(
   // Tournaments (public)
   app.get(
   "/api/tournaments/:id",
-  optionalAuthMiddleware, // 👈 IMPORTANT
+  authOptionalMiddleware, // 👈 IMPORTANT
   async (req, res) => {
     try {
       const tournamentId = Number(req.params.id);
-
       const userId = (req as any).userId ?? null;
       const userRole = (req as any).userRole ?? "user";
 
@@ -230,7 +229,8 @@ export async function registerRoutes(
       if (!t) return res.status(404).json({ message: "Tournament not found" });
 
       let isJoined = false;
-      if (userId) {
+
+      if (userId !== null) {
         const reg = await storage.getRegistration(userId, tournamentId);
         isJoined = !!reg;
       }
@@ -243,7 +243,8 @@ export async function registerRoutes(
         roomPassword: isAdmin || isJoined ? t.roomPassword : null,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error("GET /api/tournaments/:id failed", err);
+      res.status(500).json({ message: "Server error" });
     }
   }
 );
