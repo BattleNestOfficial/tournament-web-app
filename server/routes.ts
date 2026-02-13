@@ -230,10 +230,10 @@ app.get(
       const userId = (req as any).userId ?? null;
       const userRole = (req as any).userRole ?? "user";
 
-      const all = await storage.getAllTournaments();
+      const tournaments = await storage.getAllTournaments();
 
-      const enriched = await Promise.all(
-        all.map(async (t) => {
+      const result = await Promise.all(
+        tournaments.map(async (t) => {
           let isJoined = false;
 
           if (userId) {
@@ -253,7 +253,7 @@ app.get(
         })
       );
 
-      res.json(enriched);
+      res.json(result);
     } catch (err) {
       console.error("Tournament list error:", err);
       res.status(500).json({ message: "Server error" });
