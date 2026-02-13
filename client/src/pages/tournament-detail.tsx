@@ -463,35 +463,50 @@ const isSquad = tournament.matchType === "squad";
               <Swords className="w-5 h-5 text-primary" /> Join Tournament
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-           {isSolo && (
-      {/* DUO / SQUAD TEAM SELECTOR */}
-{(isDuo || isSquad) && (
-  <div className="space-y-2">
-    <Label>Select Team</Label>
+      <div className="space-y-4 py-2">
 
-    {eligibleTeams.length > 0 ? (
-      <select
-        className="w-full border rounded px-3 py-2 text-sm bg-background"
-        value={selectedTeamId ?? ""}
-        onChange={(e) => setSelectedTeamId(Number(e.target.value))}
-      >
-        <option value="">Select your team</option>
-
-        {eligibleTeams.map((team: any) => (
-          <option key={team.id} value={team.id}>
-            {team.name}
-          </option>
-        ))}
-      </select>
-    ) : (
-      <p className="text-xs text-destructive">
-        No {isDuo ? "duo" : "squad"} team found. Please create one first.
+  {/* SOLO → IGN INPUT */}
+  {isSolo && (
+    <div className="space-y-2">
+      <Label htmlFor="ign">In-Game Name (IGN)</Label>
+      <Input
+        id="ign"
+        placeholder="Enter your in-game name"
+        value={ign}
+        onChange={(e) => setIgn(e.target.value)}
+      />
+      <p className="text-xs text-muted-foreground">
+        This will be shown in the participants list
       </p>
-    )}
-  </div>
-)}
+    </div>
+  )}
+
+  {/* DUO / SQUAD → TEAM SELECT */}
+  {(isDuo || isSquad) && (
+    <div className="space-y-2">
+      <Label>Select Team</Label>
+
+      {eligibleTeams.length > 0 ? (
+        <select
+          className="w-full border rounded px-3 py-2 text-sm bg-background"
+          value={selectedTeamId ?? ""}
+          onChange={(e) => setSelectedTeamId(Number(e.target.value))}
+        >
+          <option value="">Select your team</option>
+
+          {eligibleTeams.map((team: any) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className="text-xs text-destructive">
+          No {isDuo ? "duo" : "squad"} team found. Please create one first.
+        </p>
+      )}
+    </div>
+  )}
   <div className="space-y-2">
     <Label htmlFor="ign">In-Game Name (IGN)</Label>
 
