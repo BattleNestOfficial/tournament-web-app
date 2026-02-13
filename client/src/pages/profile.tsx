@@ -38,11 +38,13 @@ export default function ProfilePage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          bgmiIgn: gameIGNs.bgmiIgn || null,
-          freeFireIgn: gameIGNs.freeFireIgn || null,
-          codIgn: gameIGNs.codIgn || null,
-        }),
+        const payload: any = {};
+
+if (gameIGNs.bgmiIgn.trim()) payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
+if (gameIGNs.freeFireIgn.trim()) payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
+if (gameIGNs.codIgn.trim()) payload.codIgn = gameIGNs.codIgn.trim();
+
+body: JSON.stringify(payload),
       });
 
       const data = await res.json();
