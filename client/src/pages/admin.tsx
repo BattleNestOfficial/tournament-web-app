@@ -228,9 +228,7 @@ function editTournament(t: Tournament) {
     prizePool: (t.prizePool / 100).toString(),
     maxSlots: t.maxSlots.toString(),
     matchType: t.matchType,
-    startTime: t.startTime
-      ? new Date(t.startTime).toISOString().slice(0, 16)
-      : "",
+    startTime: t.startTime,
     roomId: t.roomId || "",
     roomPassword: t.roomPassword || "",
     rules: t.rules || "",
