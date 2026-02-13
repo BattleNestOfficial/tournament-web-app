@@ -1,237 +1,291 @@
-import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useParams, useLocation } from "wouter";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Clock, Wallet } from "lucide-react";
-import type { Registration, Tournament } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
+import {
+  Trophy,
+  Users,
+  Swords,
+  Clock,
+  MapPin,
+  Shield,
+  Wallet,
+  ArrowLeft,
+  CheckCircle,
+} from "lucide-react";
+import type { Tournament, Game, Registration } from "@shared/schema";
 
-export default function ProfilePage() {
+/* ---------------- HELPER ---------------- */
+
+function getIGNForGame(gameSlug: string, user: any) {
+  if (!user) return "";
+
+  switch (gameSlug) {
+    case "bgmi":
+      return user.bgmiIgn || "";
+    case "free-fire":
+      return user.freeFireIgn || "";
+    case "cod-mobile":
+      return user.codIgn || "";
+    default:
+      return "";
+  }
+}
+
+/* ---------------- PAGE ---------------- */
+
+export default function TournamentDetailPage() {
+  const { id } = useParams<{ id: string }>();
   const { user, token, updateUser } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const [gameIGNs, setGameIGNs] = useState({
-    bgmiIgn: user?.bgmiIgn || "",
-    freeFireIgn: user?.freeFireIgn || "",
-    codIgn: user?.codIgn || "",
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [ign, setIgn] = useState("");
+
+  const { data: tournament, isLoading } = useQuery<Tournament>({
+    queryKey: ["/api/tournaments", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed to load tournament");
+      return res.json();
+    },
   });
 
-  const { data: registrations } = useQuery<
-    (Registration & { tournament?: Tournament })[]
-  >({
+  const { data: games } = useQuery<Game[]>({
+    queryKey: ["/api/games"],
+  });
+
+  const { data: myRegistrations } = useQuery<Registration[]>({
     queryKey: ["/api/registrations/my"],
     enabled: !!user,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/users/profile", {
-        method: "PATCH",
+  const isRegistered = myRegistrations?.some(
+    (r) => r.tournamentId === Number(id)
+  );
+
+  const game = games?.find((g) => g.id === tournament?.gameId);
+
+  /* ---------------- JOIN CLICK ---------------- */
+
+  function handleJoinClick() {
+    if (!user || !game) return;
+
+    const savedIgn = getIGNForGame(game.slug, user);
+
+    if (!savedIgn) {
+      toast({
+        title: "Profile incomplete",
+        description: `Please set ${game.name} in-game name in profile`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIgn(savedIgn);
+    setJoinDialogOpen(true);
+  }
+
+  /* ---------------- JOIN MUTATION ---------------- */
+
+  const joinMutation = useMutation({
+    mutationFn: async (inGameName: string) => {
+      const res = await fetch(`/api/tournaments/${id}/join`, {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          bgmiIgn: gameIGNs.bgmiIgn || null,
-          freeFireIgn: gameIGNs.freeFireIgn || null,
-          codIgn: gameIGNs.codIgn || null,
-        }),
+        body: JSON.stringify({ inGameName }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Join failed");
       return data;
     },
-    onSuccess: (data) => {
-      if (data.user) updateUser(data.user);
+
+    onSuccess: async () => {
+      // 🔥 AUTO SAVE IGN ON FIRST JOIN
+      if (game && user) {
+        let field: string | null = null;
+
+        if (game.slug === "bgmi" && !user.bgmiIgn) field = "bgmiIgn";
+        if (game.slug === "free-fire" && !user.freeFireIgn)
+          field = "freeFireIgn";
+        if (game.slug === "cod-mobile" && !user.codIgn) field = "codIgn";
+
+        if (field) {
+          const res = await fetch("/api/users/profile", {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ [field]: ign }),
+          });
+
+          const data = await res.json();
+          if (data.user) updateUser(data.user);
+        }
+      }
+
+      setJoinDialogOpen(false);
+      setIgn("");
+
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/registrations/my"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/tournaments", id],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/tournaments", id, "participants"],
+      });
+
       toast({
-        title: "Profile updated",
-        description: "Your in-game names were saved",
+        title: "Joined successfully",
+        description: "You are registered for this tournament",
       });
     },
+
     onError: (err: Error) => {
       toast({
-        title: "Update failed",
+        title: "Join failed",
         description: err.message,
         variant: "destructive",
       });
     },
   });
 
-  useEffect(() => {
-    if (!user) setLocation("/auth");
-  }, [user, setLocation]);
+  /* ---------------- LOADING ---------------- */
 
-  if (!user) return null;
+  if (isLoading || !tournament) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  const isFull = tournament.filledSlots >= tournament.maxSlots;
+  const canJoin =
+    tournament.status === "upcoming" &&
+    !isFull &&
+    !isRegistered &&
+    !!user;
+
+  const slotPercentage =
+    (tournament.filledSlots / tournament.maxSlots) * 100;
+
+  /* ---------------- UI ---------------- */
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      <h1 className="text-2xl font-bold">Profile</h1>
+      <button
+        onClick={() => setLocation("/tournaments")}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground"
+      >
+        <ArrowLeft className="w-4 h-4" /> Back to Tournaments
+      </button>
 
-      {/* USER CARD */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card>
-          <CardContent className="p-5 text-center space-y-3">
-            <Avatar className="w-20 h-20 mx-auto">
-              <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
-                {user.username?.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">{tournament.title}</h1>
+          <p className="text-sm text-muted-foreground">
+            {game?.name}
+          </p>
+        </div>
 
-            <div>
-              <p className="font-bold text-lg">{user.username}</p>
-              <p className="text-sm text-muted-foreground">{user.email}</p>
-            </div>
+        {isRegistered && (
+          <Badge className="bg-chart-3/10 text-chart-3 gap-1">
+            <CheckCircle className="w-3 h-3" /> Registered
+          </Badge>
+        )}
 
-            <div className="flex items-center justify-center gap-2">
-              <Badge variant="outline" className="capitalize">
-                {user.role}
-              </Badge>
-              {user.banned && <Badge variant="destructive">Banned</Badge>}
-            </div>
-
-            <div className="pt-2 border-t border-border">
-              <div className="flex items-center justify-center gap-1.5 text-sm">
-                <Wallet className="w-4 h-4 text-chart-3" />
-                <span className="font-semibold">
-                  ₹{((user.walletBalance || 0) / 100).toFixed(0)}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Wallet Balance
-              </p>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Member since{" "}
-              {new Date(user.createdAt).toLocaleDateString("en-IN", {
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* GAME PROFILE */}
-        <Card className="md:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Gamepad2 className="w-4 h-4" /> Game Profile
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent className="pt-0 space-y-4">
-            <p className="text-xs text-muted-foreground">
-              These names will be auto-filled when you join tournaments
-            </p>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label className="text-xs">BGMI In-Game Name</Label>
-                <Input
-                  placeholder="Enter BGMI name"
-                  value={gameIGNs.bgmiIgn}
-                  onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      bgmiIgn: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Free Fire In-Game Name</Label>
-                <Input
-                  placeholder="Enter Free Fire name"
-                  value={gameIGNs.freeFireIgn}
-                  onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      freeFireIgn: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">COD Mobile In-Game Name</Label>
-                <Input
-                  placeholder="Enter COD name"
-                  value={gameIGNs.codIgn}
-                  onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      codIgn: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            <Button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending}
-              className="gap-2"
-            >
-              <Save className="w-4 h-4" />
-              {updateMutation.isPending ? "Saving..." : "Save In-Game Names"}
-            </Button>
-          </CardContent>
-        </Card>
+        {canJoin && (
+          <Button onClick={handleJoinClick}>
+            {tournament.entryFee > 0
+              ? `Join ₹${(tournament.entryFee / 100).toFixed(0)}`
+              : "Join Free"}
+          </Button>
+        )}
       </div>
 
-      {/* MATCH HISTORY */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Trophy className="w-4 h-4" /> Match History
-          </CardTitle>
-        </CardHeader>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground flex items-center gap-1">
+              <Users className="w-3 h-3" /> Slots
+            </span>
+            <span>
+              {tournament.filledSlots}/{tournament.maxSlots}
+            </span>
+          </div>
+          <Progress value={slotPercentage} className="h-2" />
 
-        <CardContent className="pt-0 pb-4">
-          {registrations && registrations.length > 0 ? (
-            <div className="space-y-1">
-              {registrations.map((reg) => (
-                <div
-                  key={reg.id}
-                  className="flex items-center justify-between py-2.5 border-b border-border last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-md bg-muted text-primary">
-                      <Trophy className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        Tournament #{reg.tournamentId}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(reg.createdAt).toLocaleDateString("en-IN")}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    Registered
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              <Trophy className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              No match history yet
+          {tournament.mapName && (
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className="w-4 h-4" />
+              {tournament.mapName}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* JOIN DIALOG */}
+      <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Swords className="w-5 h-5 text-primary" /> Join Tournament
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Label>In-Game Name</Label>
+            <Input value={ign} disabled />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJoinDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => joinMutation.mutate(ign)}
+              disabled={joinMutation.isPending}
+            >
+              {joinMutation.isPending ? "Joining..." : "Confirm Join"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
