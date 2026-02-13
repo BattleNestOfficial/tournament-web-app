@@ -217,6 +217,7 @@ const isSquad = tournament.matchType === "squad";
 }
 
   function handleConfirmJoin() {
+  // ✅ SOLO JOIN
   if (isSolo) {
     if (!ign.trim()) {
       toast({
@@ -227,10 +228,27 @@ const isSquad = tournament.matchType === "squad";
       return;
     }
 
-    joinMutation.mutate(ign.trim());
+    joinMutation.mutate({
+      inGameName: ign.trim(),
+    });
+    return;
   }
 
-  // Team join will be handled next
+  // ✅ DUO / SQUAD JOIN
+  if (isDuo || isSquad) {
+    if (!selectedTeamId) {
+      toast({
+        title: "Team Required",
+        description: "Please select a team",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    joinMutation.mutate({
+      teamId: selectedTeamId,
+    });
+  }
 }
 
   return (
