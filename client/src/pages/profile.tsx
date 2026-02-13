@@ -30,26 +30,31 @@ export default function ProfilePage() {
     enabled: !!user,
   });
 
+  // 🔹 Helper: check if anything actually changed
+  function hasChanges() {
+    return (
+      (user?.bgmiIgn || "") !== gameIGNs.bgmiIgn.trim() ||
+      (user?.freeFireIgn || "") !== gameIGNs.freeFireIgn.trim() ||
+      (user?.codIgn || "") !== gameIGNs.codIgn.trim()
+    );
+  }
+
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!token) throw new Error("Not authenticated");
 
       const payload: any = {};
 
-      if (gameIGNs.bgmiIgn.trim()) {
+      if (gameIGNs.bgmiIgn.trim() !== (user?.bgmiIgn || "")) {
         payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
       }
 
-      if (gameIGNs.freeFireIgn.trim()) {
+      if (gameIGNs.freeFireIgn.trim() !== (user?.freeFireIgn || "")) {
         payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
       }
 
-      if (gameIGNs.codIgn.trim()) {
+      if (gameIGNs.codIgn.trim() !== (user?.codIgn || "")) {
         payload.codIgn = gameIGNs.codIgn.trim();
-      }
-
-      if (Object.keys(payload).length === 0) {
-        throw new Error("No values to set");
       }
 
       const res = await fetch("/api/users/profile", {
@@ -159,13 +164,9 @@ export default function ProfilePage() {
               <div>
                 <Label className="text-xs">BGMI In-Game Name</Label>
                 <Input
-                  placeholder="Enter BGMI name"
                   value={gameIGNs.bgmiIgn}
                   onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      bgmiIgn: e.target.value,
-                    }))
+                    setGameIGNs((p) => ({ ...p, bgmiIgn: e.target.value }))
                   }
                 />
               </div>
@@ -173,13 +174,9 @@ export default function ProfilePage() {
               <div>
                 <Label className="text-xs">Free Fire In-Game Name</Label>
                 <Input
-                  placeholder="Enter Free Fire name"
                   value={gameIGNs.freeFireIgn}
                   onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      freeFireIgn: e.target.value,
-                    }))
+                    setGameIGNs((p) => ({ ...p, freeFireIgn: e.target.value }))
                   }
                 />
               </div>
@@ -187,21 +184,27 @@ export default function ProfilePage() {
               <div>
                 <Label className="text-xs">COD Mobile In-Game Name</Label>
                 <Input
-                  placeholder="Enter COD name"
                   value={gameIGNs.codIgn}
                   onChange={(e) =>
-                    setGameIGNs((p) => ({
-                      ...p,
-                      codIgn: e.target.value,
-                    }))
+                    setGameIGNs((p) => ({ ...p, codIgn: e.target.value }))
                   }
                 />
               </div>
             </div>
 
             <Button
-              onClick={() => updateMutation.mutate()}
               disabled={updateMutation.isPending}
+              onClick={() => {
+                if (!hasChanges()) {
+                  toast({
+                    title: "No changes detected",
+                    description: "Update a name before saving",
+                  });
+                  return;
+                }
+
+                updateMutation.mutate();
+              }}
               className="gap-2"
             >
               <Save className="w-4 h-4" />
@@ -220,36 +223,27 @@ export default function ProfilePage() {
         </CardHeader>
 
         <CardContent className="pt-0 pb-4">
-          {registrations && registrations.length > 0 ? (
+          {registrations?.length ? (
             <div className="space-y-1">
               {registrations.map((reg) => (
                 <div
                   key={reg.id}
-                  className="flex items-center justify-between py-2.5 border-b border-border last:border-0"
+                  className="flex items-center justify-between py-2.5 border-b last:border-0"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-md bg-muted text-primary">
-                      <Trophy className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        Tournament #{reg.tournamentId}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(reg.createdAt).toLocaleDateString("en-IN")}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-sm font-medium">
+                      Tournament #{reg.tournamentId}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(reg.createdAt).toLocaleDateString("en-IN")}
+                    </p>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    Registered
-                  </Badge>
+                  <Badge variant="outline">Registered</Badge>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              <Trophy className="w-8 h-8 mx-auto mb-2 opacity-50" />
               No match history yet
             </div>
           )}
