@@ -445,15 +445,22 @@ const isSquad = tournament.matchType === "squad";
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="ign">In-Game Name (IGN)</Label>
-              <Input
-                id="ign"
-                placeholder="Enter your in-game name"
-                value={ign}
-                onChange={(e) => setIgn(e.target.value)}
-                data-testid="input-join-ign"
-              />
-              <p className="text-xs text-muted-foreground">This will be shown in the participants list</p>
+           {isSolo && (
+  <div className="space-y-2">
+    <Label htmlFor="ign">In-Game Name (IGN)</Label>
+
+    <Input
+      id="ign"
+      placeholder="Enter your in-game name"
+      value={ign}
+      onChange={(e) => setIgn(e.target.value)}
+    />
+
+    <p className="text-xs text-muted-foreground">
+      This will be shown in the participants list
+    </p>
+  </div>
+)}
             </div>
 
             <Card>
