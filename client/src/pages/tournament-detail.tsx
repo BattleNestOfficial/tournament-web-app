@@ -191,12 +191,21 @@ const isSquad = tournament.matchType === "squad";
 }
 
   function handleConfirmJoin() {
+  if (isSolo) {
     if (!ign.trim()) {
-      toast({ title: "IGN Required", description: "Please enter your In-Game Name", variant: "destructive" });
+      toast({
+        title: "IGN Required",
+        description: "Please enter your In-Game Name",
+        variant: "destructive",
+      });
       return;
     }
+
     joinMutation.mutate(ign.trim());
   }
+
+  // Team join will be handled next
+}
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
