@@ -1,7 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { generateToken, authMiddleware, adminMiddleware } from "./auth";
+import {
+  generateToken,
+  authMiddleware,
+  authOptionalMiddleware,
+  adminMiddleware,
+} from "./auth";
 import { loginSchema, signupSchema } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
