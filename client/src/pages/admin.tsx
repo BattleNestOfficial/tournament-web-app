@@ -224,7 +224,7 @@ function TournamentManager({ token }: { token: string | null }) {
     setForm({
       title: t.title, gameId: t.gameId.toString(), entryFee: (t.entryFee / 100).toString(),
       prizePool: (t.prizePool / 100).toString(), maxSlots: t.maxSlots.toString(),
-      matchType: t.matchType, startTime: new Date(t.startTime).toISOString().slice(0, 16),
+      matchType: t.matchType, startTime: new Date(t.startTime + "Z").toISOString().slice(0, 16),
       roomId: t.roomId || "", roomPassword: t.roomPassword || "", rules: t.rules || "", mapName: t.mapName || "",
       imageUrl: t.imageUrl || "", description: (t as any).description || "",
     });
