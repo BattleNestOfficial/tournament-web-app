@@ -822,7 +822,9 @@ export async function registerRoutes(
   app.post("/api/admin/tournaments", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const t = await storage.createTournament(req.body);
-
+if (req.body.startTime && typeof req.body.startTime === "string") {
+  req.body.startTime = new Date(req.body.startTime);
+}
       await storage.createAdminLog({
         adminId: (req as any).userId,
         action: "create_tournament",
