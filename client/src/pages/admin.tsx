@@ -211,7 +211,7 @@ function TournamentManager({ token }: { token: string | null }) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-     
+  
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       return data;
@@ -222,6 +222,31 @@ function TournamentManager({ token }: { token: string | null }) {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+  const deleteTournamentMutation = useMutation({
+  mutationFn: async (id: number) => {
+    const res = await fetch(`/api/admin/tournaments/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to delete tournament");
+    return data;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+    toast({ title: "Tournament deleted successfully" });
+  },
+  onError: (err: Error) => {
+    toast({
+      title: "Delete failed",
+      description: err.message,
+      variant: "destructive",
+    });
+  },
+});
 
   function resetForm() {
     setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "", description: "" });
