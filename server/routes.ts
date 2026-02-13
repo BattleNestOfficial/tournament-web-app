@@ -820,26 +820,31 @@ export async function registerRoutes(
 
   // Admin Tournaments
   app.post("/api/admin/tournaments", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      console.log("BODY RECEIVED:", req.body);
-console.log("START TIME TYPE:", typeof req.body.startTime);
-console.log("START TIME VALUE:", req.body.startTime);
-      const t = await storage.createTournament(req.body);
-if (req.body.startTime && typeof req.body.startTime === "string") {
-  req.body.startTime = new Date(req.body.startTime);
-}
-      await storage.createAdminLog({
-        adminId: (req as any).userId,
-        action: "create_tournament",
-        targetType: "tournament",
-        targetId: t.id,
-      });
+  try {
+    const data = { ...req.body };
 
-      res.json(t);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    // 🔴 CRITICAL FIX: normalize startTime
+    if (data.startTime) {
+      data.startTime = new Date(data.startTime);
     }
-  });
+
+    // Safety check
+    if (isNaN(data.startTime.getTime())) {
+      return res.status(400).json({ message: "Invalid start time" });
+    }
+
+    // Parse prizeDistribution if needed
+    if (typeof data.prizeDistribution === "string") {
+      data.prizeDistribution = JSON.parse(data.prizeDistribution);
+    }
+
+    const t = await storage.createTournament(data);
+    res.json(t);
+  } catch (err: any) {
+    console.error("CREATE TOURNAMENT ERROR:", err);
+    res.status(500).json({ message: err.message || "Server error" });
+  }
+});
 
   app.patch("/api/admin/tournaments/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
