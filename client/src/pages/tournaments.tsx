@@ -157,7 +157,7 @@ export default function TournamentsPage() {
             return (
             <Link key={t.id} href={`/tournaments/${t.id}`}>
               <Card className="hover-elevate cursor-pointer h-full overflow-hidden" data-testid={`card-tournament-${t.id}`}>
-                <div className="relative h-32 w-full overflow-hidden">
+                <div className="relative h-28 w-full overflow-hidden">
                   {t.imageUrl ? (
                     <img src={t.imageUrl} alt={t.title} className="w-full h-full object-cover" data-testid={`img-tournament-${t.id}`} />
                   ) : (
@@ -172,9 +172,9 @@ export default function TournamentsPage() {
                     </Badge>
                   </div>
                 </div>
-                <CardContent className="p-4 space-y-3">
+                <CardContent className="p-3 space-y-2">
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{t.title}</p>
+                    <p className="font-semibold text-xs truncate">{t.title}</p>
                     <p className="text-xs text-muted-foreground">{getGameName(t.gameId)}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
