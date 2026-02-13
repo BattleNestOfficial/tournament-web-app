@@ -43,17 +43,11 @@ function getIGNForGame(gameSlug: string, profile: any) {
 
   switch (gameSlug) {
     case "bgmi":
-      return profile.bgmiId || "";
+      return profile.bgmiIgn || "";
     case "free-fire":
-      return profile.freeFireId || "";
+      return profile.freeFireIgn || "";
     case "cod-mobile":
-      return profile.codMobileId || "";
-    case "valorant":
-      return profile.valorantId || "";
-    case "cs2":
-      return profile.cs2Id || "";
-    case "pubg":
-      return profile.pubgId || "";
+      return profile.codIgn || "";
     default:
       return "";
   }
