@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { generateToken, authMiddleware, adminMiddleware } from "./auth";
 import { loginSchema, signupSchema } from "@shared/schema";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import path from "path";
