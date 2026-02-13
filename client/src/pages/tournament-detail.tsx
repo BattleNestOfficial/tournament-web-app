@@ -116,7 +116,7 @@ export default function TournamentDetailPage() {
     if (!res.ok) throw new Error(data.message || "Failed to join");
     return data;
   },
-  onSuccess: (data) => {
+  onSuccess: () => {
     setJoinDialogOpen(false);
     setIgn("");
     setSelectedTeamId(null);
@@ -126,22 +126,12 @@ export default function TournamentDetailPage() {
     queryClient.invalidateQueries({ queryKey: ["/api/registrations/my"] });
     queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
 
-    if (data.user) updateUser(data.user);
-
     toast({
       title: "Joined!",
-      description: "You have been registered for this tournament",
-    });
-  },
-  onError: (err: Error) => {
-    toast({
-      title: "Failed to join",
-      description: err.message,
-      variant: "destructive",
+      description: "Successfully registered",
     });
   },
 });
-
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
