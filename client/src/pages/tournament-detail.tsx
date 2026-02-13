@@ -163,11 +163,31 @@ const isSquad = tournament.matchType === "squad";
   };
 
   function handleJoinClick() {
-  const slug = game?.slug || "";
-  const autoIgn = getIGNForGame(slug, profile);
+  if (!user) return;
 
-  setIgn(autoIgn);
-  setJoinDialogOpen(true);
+  const slug = game?.slug || "";
+
+  // SOLO → use profile IGN
+  if (isSolo) {
+    const autoIgn = getIGNForGame(slug, profile);
+
+    if (!autoIgn) {
+      toast({
+        title: "Set In-Game Name",
+        description: "Please set your game name in Profile first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIgn(autoIgn);
+    setJoinDialogOpen(true);
+  }
+
+  // DUO / SQUAD → open team selection (we will build next)
+  if (isDuo || isSquad) {
+    setJoinDialogOpen(true);
+  }
 }
 
   function handleConfirmJoin() {
