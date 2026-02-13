@@ -1154,15 +1154,15 @@ export async function registerRoutes(
   });
 
   // Seed and push DB schema on startup
+  // Seed only in development (never push schema in production)
+if (process.env.NODE_ENV !== "production") {
   try {
-    const { execSync } = await import("child_process");
-    execSync("npx drizzle-kit push --force", { stdio: "pipe" });
-    console.log("Database schema pushed successfully");
     await storage.seedData();
     console.log("Seed data initialized");
   } catch (err: any) {
-    console.error("DB setup error:", err.message);
+    console.error("Seed error:", err.message);
   }
+}
 
   return httpServer;
 }
