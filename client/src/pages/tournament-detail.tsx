@@ -41,6 +41,10 @@ type Participant = Registration & { username?: string; displayName?: string; inG
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, token, updateUser } = useAuth();
+  const { data: profile } = useQuery({
+  queryKey: ["/api/users/me"],
+  enabled: !!token,
+});
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
