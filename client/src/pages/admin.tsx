@@ -435,9 +435,7 @@ function editTournament(t: Tournament) {
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-red-500">
-  startTime = {form.startTime || "EMPTY"}
-</p>
+             
               <Button className="w-full" disabled={saveMutation.isPending || uploading || !form.title || !form.gameId || !form.startTime} onClick={() => saveMutation.mutate()} data-testid="button-save-tournament">
                 {saveMutation.isPending ? "Saving..." : editId ? "Update Tournament" : "Create Tournament"}
               </Button>
