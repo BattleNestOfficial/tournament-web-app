@@ -216,14 +216,33 @@ export async function registerRoutes(
   });
 
   // Tournaments (public)
-  app.get("/api/tournaments", async (_req, res) => {
-    try {
-      const all = await storage.getAllTournaments();
-      res.json(all);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+  app.get("/api/tournaments/:id", async (req, res) => {
+  try {
+    const tournamentId = Number(req.params.id);
+    const userId = (req as any).userId || null;
+    const userRole = (req as any).userRole || "user";
+
+    const t = await storage.getTournamentById(tournamentId);
+    if (!t) return res.status(404).json({ message: "Tournament not found" });
+
+    let isJoined = false;
+
+    if (userId) {
+      const reg = await storage.getRegistration(userId, tournamentId);
+      isJoined = !!reg;
     }
-  });
+
+    const isAdmin = userRole === "admin";
+
+    res.json({
+      ...t,
+      roomId: isAdmin || isJoined ? t.roomId : null,
+      roomPassword: isAdmin || isJoined ? t.roomPassword : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
   app.get("/api/tournaments/:id", async (req, res) => {
     try {
