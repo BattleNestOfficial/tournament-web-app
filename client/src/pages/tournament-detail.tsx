@@ -86,6 +86,11 @@ export default function TournamentDetailPage() {
     queryKey: ["/api/registrations/my"],
     enabled: !!user,
   });
+
+  const { data: myTeams = [] } = useQuery({
+  queryKey: ["/api/teams/my"],
+  enabled: !!user,
+});
   const { data: results } = useQuery<Result[]>({
     queryKey: ["/api/tournaments", id, "results"],
   });
