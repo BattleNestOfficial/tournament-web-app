@@ -38,6 +38,10 @@ export default function HomePage() {
     queryKey: ["/api/games"],
   });
 
+  const { data: totalUsers } = useQuery<{ count: number }>({
+  queryKey: ["/api/stats/total-users"],
+});
+
   const { data: homeBanners } = useQuery<Banner[]>({
     queryKey: ["/api/banners"],
   });
