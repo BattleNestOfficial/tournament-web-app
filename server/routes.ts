@@ -252,7 +252,9 @@ app.get(
       const userRole = (req as any).userRole ?? "user";
 
       const t = await storage.getTournamentById(tournamentId);
-      if (!t) return res.status(404).json({ message: "Tournament not found" });
+      if (!t) {
+        return res.status(404).json({ message: "Tournament not found" });
+      }
 
       let isJoined = false;
       if (userId) {
@@ -260,20 +262,22 @@ app.get(
         isJoined = !!reg;
       }
 
-      const isAdmin = userRole === "admin";
+      // ✅ CORE LOGIC (THIS IS WHAT YOU ASKED)
+      const canSeeRoom =
+        userRole === "admin" ||
+        (isJoined && t.status === "live");
 
       res.json({
         ...t,
-        roomId: isAdmin || isJoined ? t.roomId : null,
-        roomPassword: isAdmin || isJoined ? t.roomPassword : null,
+        roomId: canSeeRoom ? t.roomId : null,
+        roomPassword: canSeeRoom ? t.roomPassword : null,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Tournament fetch error:", err);
       res.status(500).json({ message: "Server error" });
     }
   }
 );
-
 // 🔓 Tournament results
 app.get("/api/tournaments/:id/results", async (req, res) => {
   try {
