@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { generateToken, authMiddleware, adminMiddleware } from "./auth";
 import { loginSchema, signupSchema } from "@shared/schema";
-import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
@@ -90,14 +89,11 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    // ✅ HASH PASSWORD (FIX)
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = await storage.createUser({
-      username,
-      email,
-      password: hashedPassword,
-    });
+  username,
+  email,
+  password, // plain password
+});
 
     const token = generateToken(user.id, user.role);
     const { password: _pw, ...safeUser } = user;
