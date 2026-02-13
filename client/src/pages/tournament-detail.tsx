@@ -102,30 +102,45 @@ export default function TournamentDetailPage() {
   const isRegistered = myRegistrations?.some((r) => r.tournamentId === Number(id));
 
   const joinMutation = useMutation({
-    mutationFn: async (inGameName: string) => {
-      const res = await fetch(`/api/tournaments/${id}/join`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ inGameName }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to join");
-      return data;
-    },
-    onSuccess: (data) => {
-      setJoinDialogOpen(false);
-      setIgn("");
-      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", id, "participants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/registrations/my"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
-      if (data.user) updateUser(data.user);
-      toast({ title: "Joined!", description: "You have been registered for this tournament" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to join", description: err.message, variant: "destructive" });
-    },
-  });
+  mutationFn: async (payload: { inGameName?: string; teamId?: number }) => {
+    const res = await fetch(`/api/tournaments/${id}/join`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to join");
+    return data;
+  },
+  onSuccess: (data) => {
+    setJoinDialogOpen(false);
+    setIgn("");
+    setSelectedTeamId(null);
+
+    queryClient.invalidateQueries({ queryKey: ["/api/tournaments", id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tournaments", id, "participants"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/registrations/my"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+
+    if (data.user) updateUser(data.user);
+
+    toast({
+      title: "Joined!",
+      description: "You have been registered for this tournament",
+    });
+  },
+  onError: (err: Error) => {
+    toast({
+      title: "Failed to join",
+      description: err.message,
+      variant: "destructive",
+    });
+  },
+});
 
   if (isLoading) {
     return (
