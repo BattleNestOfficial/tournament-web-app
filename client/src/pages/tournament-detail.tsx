@@ -56,6 +56,7 @@ function getIGNForGame(gameSlug: string, profile: any) {
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, token, updateUser } = useAuth();
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { data: profile } = useQuery({
   queryKey: ["/api/users/me"],
   enabled: !!token,
