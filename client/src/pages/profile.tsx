@@ -21,9 +21,6 @@ export default function ProfilePage() {
   bgmiIgn: user?.bgmiIgn || "",
   freeFireIgn: user?.freeFireIgn || "",
   codIgn: user?.codIgn || "",
-  valorantIgn: user?.valorantIgn || "",
-  cs2Ign: user?.cs2Ign || "",
-  pubgIgn: user?.pubgIgn || "",
 });
 
   const { data: registrations } = useQuery<(Registration & { tournament?: Tournament })[]>({
