@@ -84,7 +84,12 @@ export async function registerRoutes(
       const existing = await storage.getUserByEmail(parsed.data.email);
       if (existing) return res.status(400).json({ message: "Email already registered" });
 
-      const user = await storage.createUser(parsed.data);
+      const hashedPassword = await bcrypt.hash(parsed.data.password, 10);
+
+      const user = await storage.createUser({
+        ...parsed.data,
+        password: hashedPassword,
+      });
       const token = generateToken(user.id, user.role);
       const { password, ...safeUser } = user;
       res.json({ token, user: safeUser });
