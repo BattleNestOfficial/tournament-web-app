@@ -52,12 +52,32 @@ export default function HomePage() {
   const getGameName = (gameId: number) => games?.find((g) => g.id === gameId)?.name || "Unknown";
   const getGameSlug = (gameId: number) => games?.find((g) => g.id === gameId)?.slug || "";
 
-  const stats = [
-    { label: "Active Players", value: "500+", icon: Users, color: "text-chart-2" },
-    { label: "Tournaments", value: tournaments?.length?.toString() || "0", icon: Trophy, color: "text-chart-4" },
-    { label: "Games", value: games?.filter((g) => g.enabled).length?.toString() || "0", icon: Gamepad2, color: "text-chart-3" },
-    { label: "Prize Pool", value: `\u20B9${((tournaments?.reduce((s, t) => s + t.prizePool, 0) || 0) / 100).toFixed(0)}`, icon: Star, color: "text-chart-1" },
-  ];
+const stats = [
+  {
+    label: "Total Players",
+    value: totalUsers?.count?.toString() || "0",
+    icon: Users,
+    color: "text-chart-2",
+  },
+  {
+    label: "Tournaments",
+    value: tournaments?.length?.toString() || "0",
+    icon: Trophy,
+    color: "text-chart-4",
+  },
+  {
+    label: "Games",
+    value: games?.filter((g) => g.enabled).length?.toString() || "0",
+    icon: Gamepad2,
+    color: "text-chart-3",
+  },
+  {
+    label: "Prize Pool",
+    value: `₹${((tournaments?.reduce((s, t) => s + t.prizePool, 0) || 0) / 100).toFixed(0)}`,
+    icon: Star,
+    color: "text-chart-1",
+  },
+];
 
   return (
     <div className="space-y-8 pb-8">
