@@ -511,6 +511,23 @@ function editTournament(t: Tournament) {
                   <Button size="sm" variant="outline" onClick={() => { setResultsTournament(t); setResultsDialogOpen(true); }} data-testid={`button-results-tournament-${t.id}`}>
                     <Award className="w-3.5 h-3.5" />
                   </Button>
+                  <Button
+  size="sm"
+  variant="outline"
+  className="text-destructive hover:bg-destructive/10"
+  disabled={deleteTournamentMutation.isPending}
+  onClick={() => {
+    const confirmDelete = window.confirm(
+      "Are you sure? This will permanently delete this tournament."
+    );
+    if (confirmDelete) {
+      deleteTournamentMutation.mutate(t.id);
+    }
+  }}
+  data-testid={`button-delete-tournament-${t.id}`}
+>
+  <Trash2 className="w-3.5 h-3.5" />
+</Button>
                 </div>
               </CardContent>
             </Card>
