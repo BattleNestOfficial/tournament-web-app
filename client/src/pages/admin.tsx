@@ -171,7 +171,7 @@ function TournamentManager({ token }: { token: string | null }) {
         prizePool: Number(form.prizePool) * 100,
         maxSlots: Number(form.maxSlots),
         matchType: form.matchType,
-        startTime: new Date(form.startTime).toISOString(),
+        startTime: form.startTime,
         roomId: form.roomId || null,
         roomPassword: form.roomPassword || null,
         rules: form.rules || null,
