@@ -530,7 +530,6 @@ const isSquad = tournament.matchType === "squad";
       )}
     </div>
   )}
-</div>
 
             <Card>
               <CardContent className="p-4 space-y-3">
