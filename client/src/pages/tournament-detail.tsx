@@ -283,6 +283,16 @@ export default function TournamentDetailPage() {
                 </CardContent>
               </Card>
             )}
+            <div>
+  <h3 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+    <Shield className="w-4 h-4" /> Description
+  </h3>
+  <div className="text-sm text-muted-foreground whitespace-pre-line bg-muted p-3 rounded-md">
+    {(tournament as any).description?.trim()
+      ? (tournament as any).description
+      : "No description provided for this tournament."}
+  </div>
+</div>
 
             {tournament.rules && (
               <div>
