@@ -75,29 +75,52 @@ export async function registerRoutes(
 
   // Auth routes
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
-    try {
-      const parsed = signupSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid input" });
-      }
-
-      const existing = await storage.getUserByEmail(parsed.data.email);
-      if (existing) return res.status(400).json({ message: "Email already registered" });
-
-      const hashedPassword = await bcrypt.hash(parsed.data.password, 10);
-
-      const user = await storage.createUser({
-        ...parsed.data,
-        password: hashedPassword,
+  try {
+    const parsed = signupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.errors[0]?.message || "Invalid input",
       });
-      const token = generateToken(user.id, user.role);
-      const { password, ...safeUser } = user;
-      res.json({ token, user: safeUser });
-    } catch (err: any) {
-      if (err.code === "23505") return res.status(400).json({ message: "Username or email already taken" });
-      res.status(500).json({ message: err.message || "Server error" });
     }
-  });
+
+    const { username, email, password } = parsed.data;
+
+    const existing = await storage.getUserByEmail(email);
+    if (existing) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+
+    // ✅ HASH PASSWORD (FIX)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await storage.createUser({
+      username,
+      email,
+      password: hashedPassword,
+    });
+
+    const token = generateToken(user.id, user.role);
+    const { password: _pw, ...safeUser } = user;
+
+    return res.status(201).json({
+      token,
+      user: safeUser,
+    });
+  } catch (err: any) {
+    console.error("Signup error:", err);
+
+    const code = err?.code || err?.cause?.code;
+    if (code === "23505") {
+      return res.status(400).json({
+        message: "Username or email already taken",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Server error during signup",
+    });
+  }
+});
 
   app.post("/api/auth/login", authLimiter, async (req, res) => {
     try {
