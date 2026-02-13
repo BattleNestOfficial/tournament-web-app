@@ -38,14 +38,28 @@ export default function ProfilePage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        const payload: any = {};
+const payload: any = {};
 
-if (gameIGNs.bgmiIgn.trim()) payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
-if (gameIGNs.freeFireIgn.trim()) payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
-if (gameIGNs.codIgn.trim()) payload.codIgn = gameIGNs.codIgn.trim();
+if (gameIGNs.bgmiIgn.trim()) {
+  payload.bgmiIgn = gameIGNs.bgmiIgn.trim();
+}
 
-body: JSON.stringify(payload),
-      });
+if (gameIGNs.freeFireIgn.trim()) {
+  payload.freeFireIgn = gameIGNs.freeFireIgn.trim();
+}
+
+if (gameIGNs.codIgn.trim()) {
+  payload.codIgn = gameIGNs.codIgn.trim();
+}
+
+const res = await fetch("/api/users/profile", {
+  method: "PATCH",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(payload),
+});
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
