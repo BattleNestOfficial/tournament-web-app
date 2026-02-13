@@ -222,23 +222,44 @@ export async function registerRoutes(
 
   // Tournaments (public)
   // 🔓 Get all tournaments (public)
-app.get("/api/tournaments", async (_req, res) => {
-  try {
-    const all = await storage.getAllTournaments();
+app.get(
+  "/api/tournaments",
+  authOptionalMiddleware,
+  async (req, res) => {
+    try {
+      const userId = (req as any).userId ?? null;
+      const userRole = (req as any).userRole ?? "user";
 
-    // 🔒 NEVER expose room details in list API
-    const safe = all.map(t => ({
-      ...t,
-      roomId: null,
-      roomPassword: null,
-    }));
+      const all = await storage.getAllTournaments();
 
-    res.json(safe);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
+      const enriched = await Promise.all(
+        all.map(async (t) => {
+          let isJoined = false;
+
+          if (userId) {
+            const reg = await storage.getRegistration(userId, t.id);
+            isJoined = !!reg;
+          }
+
+          const canSeeRoom =
+            userRole === "admin" ||
+            (isJoined && t.status === "live");
+
+          return {
+            ...t,
+            roomId: canSeeRoom ? t.roomId : null,
+            roomPassword: canSeeRoom ? t.roomPassword : null,
+          };
+        })
+      );
+
+      res.json(enriched);
+    } catch (err) {
+      console.error("Tournament list error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
   }
-});
-
+);
 // 🔓 Get single tournament
 // Room ID & Password ONLY for admin or joined users
 app.get(
