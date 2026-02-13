@@ -1155,7 +1155,8 @@ export async function registerRoutes(
 
   // Seed and push DB schema on startup
   // Seed only in development (never push schema in production)
-if (process.env.NODE_ENV !== "production") {
+// ❌ REMOVE ALL AUTO DB PUSHING IN PROD
+if (process.env.NODE_ENV === "development") {
   try {
     const { execSync } = await import("child_process");
     execSync("npx drizzle-kit push", { stdio: "inherit" });
