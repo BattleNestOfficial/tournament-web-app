@@ -187,9 +187,11 @@ export default function TournamentDetailPage() {
           </div>
           <h1 className="text-2xl font-bold" data-testid="text-tournament-title">{tournament.title}</h1>
           <p className="text-sm text-muted-foreground mt-1">{game?.name || "Unknown Game"}</p>
-          {(tournament as any).description && (
-            <p className="text-sm mt-3 leading-relaxed">{(tournament as any).description}</p>
-          )}
+         {(tournament as any).description && (
+  <p className="text-sm mt-3 leading-relaxed">
+    {(tournament as any).description}
+  </p>
+)}
         </div>
         <div className="flex gap-2">
           {isRegistered && (
