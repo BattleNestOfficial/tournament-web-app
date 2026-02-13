@@ -166,9 +166,12 @@ export default function TournamentDetailPage() {
   };
 
   function handleJoinClick() {
-    setIgn(user?.inGameName || "");
-    setJoinDialogOpen(true);
-  }
+  const slug = game?.slug || "";
+  const autoIgn = getIGNForGame(slug, profile);
+
+  setIgn(autoIgn);
+  setJoinDialogOpen(true);
+}
 
   function handleConfirmJoin() {
     if (!ign.trim()) {
