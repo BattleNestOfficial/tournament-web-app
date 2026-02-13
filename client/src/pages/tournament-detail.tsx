@@ -148,6 +148,9 @@ export default function TournamentDetailPage() {
   const isFull = tournament.filledSlots >= tournament.maxSlots;
   const isLive = tournament.status === "live";
   const canJoin = tournament.status === "upcoming" && !isFull && !isRegistered && !!user;
+  const isSolo = tournament.matchType === "solo";
+const isDuo = tournament.matchType === "duo";
+const isSquad = tournament.matchType === "squad";
   const prizeDistribution = tournament.prizeDistribution as Record<string, number>[] | null;
   const entryFeeDisplay = tournament.entryFee > 0 ? (tournament.entryFee / 100).toFixed(0) : "0";
   const walletBalance = user?.walletBalance ?? 0;
