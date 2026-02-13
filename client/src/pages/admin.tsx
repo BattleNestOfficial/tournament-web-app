@@ -219,24 +219,38 @@ function TournamentManager({ token }: { token: string | null }) {
     setPrizes([]);
   }
 
-  function editTournament(t: Tournament) {
-    setEditId(t.id);
-    setForm({
-      title: t.title, gameId: t.gameId.toString(), entryFee: (t.entryFee / 100).toString(),
-      prizePool: (t.prizePool / 100).toString(), maxSlots: t.maxSlots.toString(),
-      matchType: t.matchType, startTime: new Date(t.startTime + "Z").toISOString().slice(0, 16),
-      roomId: t.roomId || "", roomPassword: t.roomPassword || "", rules: t.rules || "", mapName: t.mapName || "",
-      imageUrl: t.imageUrl || "", description: (t as any).description || "",
-    });
-    setImagePreview(t.imageUrl || null);
-    const pd = t.prizeDistribution as { position: number; prize: number }[] | null;
-    if (pd && Array.isArray(pd) && pd.length > 0) {
-      setPrizes(pd.map((p) => ({ position: p.position, prize: (p.prize / 100).toString() })));
-    } else {
-      setPrizes([]);
-    }
-    setDialogOpen(true);
+function editTournament(t: Tournament) {
+  setEditId(t.id);
+  setForm({
+    title: t.title,
+    gameId: t.gameId.toString(),
+    entryFee: (t.entryFee / 100).toString(),
+    prizePool: (t.prizePool / 100).toString(),
+    maxSlots: t.maxSlots.toString(),
+    matchType: t.matchType,
+    startTime: t.startTime
+      ? new Date(t.startTime).toISOString().slice(0, 16)
+      : "",
+    roomId: t.roomId || "",
+    roomPassword: t.roomPassword || "",
+    rules: t.rules || "",
+    mapName: t.mapName || "",
+    imageUrl: t.imageUrl || "",
+    description: (t as any).description || "",
+  });
+
+  setImagePreview(t.imageUrl || null);
+
+  const pd = t.prizeDistribution as { position: number; prize: number }[] | null;
+  if (pd && Array.isArray(pd) && pd.length > 0) {
+    setPrizes(pd.map((p) => ({ position: p.position, prize: (p.prize / 100).toString() })));
+  } else {
+    setPrizes([]);
   }
+
+  setDialogOpen(true);
+}
+   
 
   const statusColors: Record<string, string> = {
     upcoming: "text-chart-2", live: "text-destructive", completed: "text-muted-foreground", cancelled: "text-muted-foreground",
