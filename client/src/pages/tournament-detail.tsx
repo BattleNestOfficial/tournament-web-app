@@ -156,6 +156,11 @@ export default function TournamentDetailPage() {
   const isSolo = tournament.matchType === "solo";
 const isDuo = tournament.matchType === "duo";
 const isSquad = tournament.matchType === "squad";
+  const eligibleTeams = myTeams.filter((team: any) => {
+  if (isDuo) return team.type === "duo";
+  if (isSquad) return team.type === "squad";
+  return false;
+});
   const prizeDistribution = tournament.prizeDistribution as Record<string, number>[] | null;
   const entryFeeDisplay = tournament.entryFee > 0 ? (tournament.entryFee / 100).toFixed(0) : "0";
   const walletBalance = user?.walletBalance ?? 0;
