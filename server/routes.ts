@@ -216,12 +216,25 @@ export async function registerRoutes(
   });
 
   // Tournaments (public)
-  app.get(
+  // 🔓 Get all tournaments (public)
+app.get("/api/tournaments", async (_req, res) => {
+  try {
+    const all = await storage.getAllTournaments();
+    res.json(all);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 🔓 Get single tournament
+// Room ID & Password ONLY for admin or joined users
+app.get(
   "/api/tournaments/:id",
-  authOptionalMiddleware, // 👈 IMPORTANT
+  authOptionalMiddleware,
   async (req, res) => {
     try {
       const tournamentId = Number(req.params.id);
+
       const userId = (req as any).userId ?? null;
       const userRole = (req as any).userRole ?? "user";
 
@@ -229,8 +242,7 @@ export async function registerRoutes(
       if (!t) return res.status(404).json({ message: "Tournament not found" });
 
       let isJoined = false;
-
-      if (userId !== null) {
+      if (userId) {
         const reg = await storage.getRegistration(userId, tournamentId);
         isJoined = !!reg;
       }
@@ -242,34 +254,47 @@ export async function registerRoutes(
         roomId: isAdmin || isJoined ? t.roomId : null,
         roomPassword: isAdmin || isJoined ? t.roomPassword : null,
       });
-    } catch (err: any) {
-      console.error("GET /api/tournaments/:id failed", err);
+    } catch (err) {
+      console.error(err);
       res.status(500).json({ message: "Server error" });
     }
   }
 );
-  app.get("/api/tournaments/:id/results", async (req, res) => {
-    try {
-      const r = await storage.getResultsByTournament(Number(req.params.id));
-      res.json(r);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
 
-  app.get("/api/tournaments/:id/participants", async (req, res) => {
-    try {
-      const regs = await storage.getRegistrationsByTournament(Number(req.params.id));
-      const enriched = await Promise.all(regs.map(async (r) => {
+// 🔓 Tournament results
+app.get("/api/tournaments/:id/results", async (req, res) => {
+  try {
+    const r = await storage.getResultsByTournament(Number(req.params.id));
+    res.json(r);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 🔓 Tournament participants
+app.get("/api/tournaments/:id/participants", async (req, res) => {
+  try {
+    const regs = await storage.getRegistrationsByTournament(
+      Number(req.params.id)
+    );
+
+    const enriched = await Promise.all(
+      regs.map(async (r) => {
         const user = await storage.getUserById(r.userId);
-        return { ...r, username: user?.username, displayName: r.inGameName || user?.inGameName || user?.username };
-      }));
-      res.json(enriched);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
+        return {
+          ...r,
+          username: user?.username,
+          displayName:
+            r.inGameName || user?.inGameName || user?.username,
+        };
+      })
+    );
 
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
   // Protected routes
   app.post("/api/tournaments/:id/join", authMiddleware, async (req, res) => {
     try {
