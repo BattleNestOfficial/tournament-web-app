@@ -411,17 +411,40 @@ app.get("/api/stats/total-users", async (_req, res) => {
 
   // User profile
   app.patch("/api/users/profile", authMiddleware, async (req, res) => {
-    try {
-      const userId = (req as any).userId;
-      const { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId, inGameName } = req.body;
-      const updated = await storage.updateUserProfile(userId, { bgmiId, freeFireId, codMobileId, valorantId, cs2Id, pubgId, inGameName });
-      if (!updated) return res.status(404).json({ message: "User not found" });
-      const { password, ...safeUser } = updated;
-      res.json({ user: safeUser });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+  try {
+    const userId = (req as any).userId;
+
+    const {
+      bgmiIgn,
+      freeFireIgn,
+      codIgn,
+    } = req.body;
+
+    const updates: any = {};
+
+    // allow empty string overwrite
+    if (bgmiIgn !== undefined) updates.bgmiIgn = bgmiIgn;
+    if (freeFireIgn !== undefined) updates.freeFireIgn = freeFireIgn;
+    if (codIgn !== undefined) updates.codIgn = codIgn;
+
+    // if nothing to update, return current user (NO ERROR)
+    if (Object.keys(updates).length === 0) {
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const { password, ...safeUser } = user;
+      return res.json({ user: safeUser });
     }
-  });
+
+    const updated = await storage.updateUserProfile(userId, updates);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+
+    const { password, ...safeUser } = updated;
+    res.json({ user: safeUser });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
   // Wallet
   app.post("/api/wallet/add", authMiddleware, async (req, res) => {
