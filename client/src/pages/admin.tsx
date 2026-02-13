@@ -29,8 +29,11 @@ export default function AdminPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!user || user.role !== "admin") setLocation("/");
-  }, [user, setLocation]);
+  if (user === undefined) return; // still loading
+  if (!user || user.role !== "admin") {
+    setLocation("/");
+  }
+}, [user, setLocation]);
 
 
 
