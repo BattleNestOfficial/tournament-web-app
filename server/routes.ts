@@ -244,16 +244,6 @@ export async function registerRoutes(
   }
 });
 
-  app.get("/api/tournaments/:id", async (req, res) => {
-    try {
-      const t = await storage.getTournamentById(Number(req.params.id));
-      if (!t) return res.status(404).json({ message: "Tournament not found" });
-      res.json(t);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
   app.get("/api/tournaments/:id/results", async (req, res) => {
     try {
       const r = await storage.getResultsByTournament(Number(req.params.id));
