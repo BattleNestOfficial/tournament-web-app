@@ -262,7 +262,6 @@ app.get(
         isJoined = !!reg;
       }
 
-      // ✅ CORE LOGIC (THIS IS WHAT YOU ASKED)
       const canSeeRoom =
         userRole === "admin" ||
         (isJoined && t.status === "live");
@@ -273,7 +272,6 @@ app.get(
         roomPassword: canSeeRoom ? t.roomPassword : null,
       });
     } catch (err) {
-      console.error("Tournament fetch error:", err);
       res.status(500).json({ message: "Server error" });
     }
   }
