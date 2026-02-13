@@ -548,7 +548,12 @@ const isSquad = tournament.matchType === "squad";
             <Button variant="outline" onClick={() => setJoinDialogOpen(false)} data-testid="button-join-cancel">Cancel</Button>
             <Button
               onClick={handleConfirmJoin}
-              disabled={joinMutation.isPending || (tournament.entryFee > 0 && balanceAfter < 0) || !ign.trim()}
+              disabled={
+  joinMutation.isPending ||
+  (tournament.entryFee > 0 && balanceAfter < 0) ||
+  (isSolo && !ign.trim()) ||
+  ((isDuo || isSquad) && !selectedTeamId)
+}
               data-testid="button-join-confirm"
             >
               {joinMutation.isPending ? "Joining..." : "Confirm Join"}
