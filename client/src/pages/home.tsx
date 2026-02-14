@@ -276,13 +276,15 @@ export default function TournamentsPageGod() {
     queryKey: ["/api/games"],
   });
 
-  const featured = useMemo(
-    () =>
-      tournaments
-        .filter((t) => t.status === "upcoming")
-        .slice(0, 6),
-    [tournaments]
-  );
+  const liveTournaments = useMemo(
+  () => tournaments.filter((t) => t.status === "live"),
+  [tournaments]
+);
+
+const upcomingTournaments = useMemo(
+  () => tournaments.filter((t) => t.status === "upcoming"),
+  [tournaments]
+);
 
   const [visible, setVisible] = useState(8);
   const visibleTournaments = useMemo(
