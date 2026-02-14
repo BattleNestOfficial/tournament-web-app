@@ -443,10 +443,7 @@ const fadeUp = {
                           </h3>
 
                           {/* COUNTDOWN */}
-                          <div className="flex items-center gap-2 text-xs text-indigo-400">
-                            <Clock className="w-3 h-3" />
-                            {countdown}
-                          </div>
+                         <CountdownText startTime={t.startTime} />
 
                           {/* STATS */}
                           <div className="grid grid-cols-3 gap-2 text-xs">
