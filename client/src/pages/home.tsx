@@ -688,47 +688,7 @@ export default function TournamentsPageGod() {
   );
 }
 
-/* =====================================================================================
-   MAGNETIC BUTTON COMPONENT
-   ===================================================================================== */
 
-
-
-/* =====================================================================================
-   HOLO CARD WRAPPER (3D GLOW)
-   ===================================================================================== */
-
-
-/* =====================================================================================
-   COUNTDOWN HOOK
-   ===================================================================================== */
-
-function useCountdown(target: string | Date) {
-  const [time, setTime] = useState("");
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const diff =
-        new Date(target).getTime() - new Date().getTime();
-
-      if (diff <= 0) {
-        setTime("Started");
-        return;
-      }
-
-      const hours = Math.floor(diff / 1000 / 60 / 60);
-      const minutes = Math.floor(
-        (diff / 1000 / 60) % 60
-      );
-
-      setTime(`${hours}h ${minutes}m left`);
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [target]);
-
-  return time;
-}
 
 /* =====================================================================================
    PARTICLE FIELD (ESPORTS ATMOSPHERE)
