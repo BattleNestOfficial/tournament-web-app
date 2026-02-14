@@ -91,6 +91,16 @@ function useCountdown(target: string) {
 
   return time;
 }
+function CountdownText({ startTime }: { startTime: string }) {
+  const countdown = useCountdown(startTime);
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-indigo-400">
+      <Clock className="w-3 h-3" />
+      {countdown}
+    </div>
+  );
+}
 
 /* =====================================================================================
    MAGNETIC BUTTON COMPONENT
