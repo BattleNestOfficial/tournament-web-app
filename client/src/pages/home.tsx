@@ -679,5 +679,18 @@ const fadeUp = {
             Every match is a battlefield. Every victory builds your legacy.
             Climb the leaderboard. Earn rewards. Become unstoppable.
           </p>
+                     <div className="mt-8">
+            <Link href="/tournaments">
+              <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
+                Browse Tournaments
+              </button>
+            </Link>
+          </div>
 
+        </motion.div>
+      </section>
+
+    </div>
+  );
+}
 
