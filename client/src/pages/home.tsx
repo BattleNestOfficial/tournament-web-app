@@ -571,13 +571,29 @@ const fadeUp = {
                       >
 
                         {/* LIVE PULSE */}
-                        {isLive && (
-                          <div className="absolute top-3 right-3 flex items-center gap-1 text-xs text-red-400 font-bold">
-                            <span className="w-2 h-2 bg-red-500 rounded-full animate-ping absolute" />
-                            <span className="w-2 h-2 bg-red-500 rounded-full" />
-                            LIVE
-                          </div>
-                        )}
+                      <div
+  className={`absolute top-3 right-3 flex items-center gap-1 text-xs font-bold ${
+    t.status === "live"
+      ? "text-red-400"
+      : "text-indigo-400"
+  }`}
+>
+  <span
+    className={`w-2 h-2 rounded-full ${
+      t.status === "live"
+        ? "bg-red-500 animate-ping absolute"
+        : "bg-indigo-500 animate-pulse absolute"
+    }`}
+  />
+  <span
+    className={`w-2 h-2 rounded-full ${
+      t.status === "live"
+        ? "bg-red-500"
+        : "bg-indigo-500"
+    }`}
+  />
+  {t.status === "live" ? "LIVE" : "UPCOMING"}
+</div>
 
                         {/* IMAGE */}
                         <div className="relative h-40 overflow-hidden">
