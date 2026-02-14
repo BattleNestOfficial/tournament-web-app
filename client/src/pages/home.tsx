@@ -408,8 +408,6 @@ const fadeUp = {
               const progress =
                 (t.filledSlots / t.maxSlots) * 100;
 
-              const countdown = useCountdown(t.startTime);
-
               return (
                 <motion.div
                   key={`${t.id}-${i}`}
