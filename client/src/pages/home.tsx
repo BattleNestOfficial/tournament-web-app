@@ -426,14 +426,16 @@ const fadeUp = {
                 >
                   <HoloCard>
                     <Link href={`/tournaments/${t.id}`}>
-                <Card
-  className="group relative overflow-hidden border
-  bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl
-  border-yellow-400/80
-  shadow-[0_0_25px_rgba(250,204,21,0.6)]
-  hover:shadow-[0_0_45px_rgba(250,204,21,0.95)]
-  transition-all duration-300 cursor-pointer"
->
+  <div className="relative p-[2px] rounded-xl bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 animate-pulse">
+    
+    <div className="absolute inset-0 rounded-xl blur-xl opacity-70 bg-yellow-400" />
+
+    <Card
+      className="relative rounded-xl overflow-hidden
+      bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl
+      border border-yellow-400/60
+      transition-all duration-300 cursor-pointer"
+    >
 
   {/* IMAGE */}
   <div className="relative h-40 overflow-hidden rounded-t-xl">
@@ -510,6 +512,7 @@ const fadeUp = {
 
   </CardContent>
 </Card>
+  </div>
                     </Link>
                   </HoloCard>
                 </motion.div>
