@@ -390,10 +390,25 @@ const fadeUp = {
 
       {hotTournaments.length > 0 && (
         <section className="px-6 pb-24 max-w-7xl mx-auto">
-          <div className="flex items-center gap-2 mb-8">
-            <Flame className="text-orange-400" />
-            <h2 className="text-2xl font-bold">Hot Tournaments</h2>
-          </div>
+         <div className="flex items-center gap-3 mb-8">
+
+  <Flame className="text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.9)]" />
+
+  <h2 className="text-3xl font-extrabold 
+    bg-gradient-to-r 
+    from-yellow-300 
+    via-yellow-500 
+    to-amber-600 
+    bg-clip-text 
+    text-transparent 
+    drop-shadow-[0_0_18px_rgba(234,179,8,0.8)] 
+    animate-pulse">
+    
+    HOT TOURNAMENTS
+    
+  </h2>
+
+</div>
 
           <div
             ref={railRef}
