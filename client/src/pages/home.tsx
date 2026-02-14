@@ -672,19 +672,4 @@ const fadeUp = {
             Climb the leaderboard. Earn rewards. Become unstoppable.
           </p>
 
-          <MagneticButton>
-            Browse More Matches
-          </MagneticButton>
-        </motion.div>
-      </section>
-
-    </div>
-  );
-}
-
-
-
-/* =====================================================================================
-   PARTICLE FIELD (ESPORTS ATMOSPHERE)
-   ===================================================================================== */
 
