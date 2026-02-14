@@ -286,11 +286,6 @@ const upcomingTournaments = useMemo(
   [tournaments]
 );
 
-  const [visible, setVisible] = useState(8);
-  const visibleTournaments = useMemo(
-  () => tournaments.slice(0, visible),
-  [tournaments, visible]
-);
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
