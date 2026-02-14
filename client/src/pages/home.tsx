@@ -433,7 +433,7 @@ const fadeUp = {
                           <Badge
   className={`absolute top-3 left-3 border ${
     t.status === "live"
-      ? "bg-red-500/20 text-red-400 border-red-500/40"
+      ? "bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.6)] animate-pulse"
       : "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
   }`}
 >
