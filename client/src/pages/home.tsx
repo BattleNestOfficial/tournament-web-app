@@ -492,7 +492,7 @@ const fadeUp = {
         <div className="flex items-center justify-between mb-10">
           <h2 className="text-3xl font-bold flex items-center gap-2">
             <Sparkles className="text-fuchsia-400" />
-            Upcoming Tournaments
+            Live Tournaments
           </h2>
 
           <MagneticButton>
