@@ -334,19 +334,7 @@ const fadeUp = {
      LOAD MORE ENGINE (INFINITE FEEL)
      ===================================================================================== */
 
-  useEffect(() => {
-    function handleScroll() {
-      if (
-        window.innerHeight + window.scrollY >=
-        document.body.offsetHeight - 400
-      ) {
-        setVisible((v) => v + 4);
-      }
-    }
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  
 
   /* =====================================================================================
      RENDER START
