@@ -431,12 +431,14 @@ const fadeUp = {
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
 
                           <Badge
-                            className={`absolute top-3 left-3 border ${
-                              STATUS_COLOR[t.status]
-                            }`}
-                          >
-                            {t.status.toUpperCase()}
-                          </Badge>
+  className={`absolute top-3 left-3 border ${
+    t.status === "live"
+      ? "bg-red-500/20 text-red-400 border-red-500/40"
+      : "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
+  }`}
+>
+  {t.status === "live" ? "LIVE" : "UPCOMING"}
+</Badge>
                         </div>
 
                         <CardContent className="p-4 space-y-3">
