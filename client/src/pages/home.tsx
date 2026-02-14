@@ -692,17 +692,7 @@ export default function TournamentsPageGod() {
    MAGNETIC BUTTON COMPONENT
    ===================================================================================== */
 
-function MagneticButton({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.button
-      whileHover={{ scale: 1.1 }}
-      whileTap={{ scale: 0.95 }}
-      className="px-10 py-5 rounded-xl bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-bold text-white shadow-[0_0_30px_rgba(99,102,241,0.6)]"
-    >
-      {children}
-    </motion.button>
-  );
-}
+
 
 /* =====================================================================================
    HOLO CARD WRAPPER (3D GLOW)
