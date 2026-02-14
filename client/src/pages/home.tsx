@@ -406,7 +406,7 @@ const fadeUp = {
             ref={railRef}
             className="flex gap-6 overflow-hidden whitespace-nowrap"
           >
-            {[...featured, ...featured].map((t, i) => {
+           liveTournaments.map((t, i) => {
               const progress =
                 (t.filledSlots / t.maxSlots) * 100;
 
