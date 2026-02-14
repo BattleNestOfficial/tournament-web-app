@@ -472,26 +472,36 @@ const fadeUp = {
                          <CountdownText startTime={t.startTime} />
 
                           {/* STATS */}
-                          <div className="grid grid-cols-3 gap-2 text-xs">
+                          {/* STATS */}
+<div className="grid grid-cols-2 gap-3 text-xs">
 
-                            <div className="flex items-center gap-1 text-yellow-400">
-                              <Trophy className="w-3 h-3" />
-                              {formatMoney(t.prizePool)}
-                            </div>
+  <div className="flex items-center gap-2 text-yellow-400">
+    <Trophy className="w-3 h-3" />
+    <span className="font-semibold">
+      {formatMoney(t.prizePool)}
+    </span>
+  </div>
 
-                            <div className="flex items-center gap-1 text-emerald-400">
-                              <Wallet className="w-3 h-3" />
-                              {t.entryFee > 0
-                                ? formatMoney(t.entryFee)
-                                : "FREE"}
-                            </div>
+  <div className="flex items-center gap-2 text-emerald-400">
+    <Wallet className="w-3 h-3" />
+    {t.entryFee > 0
+      ? formatMoney(t.entryFee)
+      : "FREE"}
+  </div>
 
-                            <div className="flex items-center gap-1 text-blue-400">
-                              <Users className="w-3 h-3" />
-                              {t.filledSlots}/{t.maxSlots}
-                            </div>
+  <div className="flex items-center gap-2 text-blue-400">
+    <Users className="w-3 h-3" />
+    {t.filledSlots}/{t.maxSlots}
+  </div>
 
-                          </div>
+  <div className="flex items-center gap-2 text-fuchsia-400">
+    <Swords className="w-3 h-3" />
+    <span className="capitalize">
+      {t.matchType}
+    </span>
+  </div>
+
+</div>
 
                           {/* SLOT PROGRESS */}
                           <Progress value={progress} className="h-1.5" />
