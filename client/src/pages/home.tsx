@@ -427,87 +427,88 @@ const fadeUp = {
                   <HoloCard>
                     <Link href={`/tournaments/${t.id}`}>
                    <Card
-  className={`relative overflow-hidden cursor-pointer
+  className={`group relative overflow-hidden rounded-xl cursor-pointer
     bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl
     border border-yellow-400/70
     shadow-[0_0_35px_rgba(250,204,21,0.8)]
     transition-all duration-300`}
 >
 
-                        {/* IMAGE */}
-                        <div className="relative h-40 overflow-hidden">
-                          {t.imageUrl ? (
-                            <img
-                              src={t.imageUrl}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div
-                              className={`h-full w-full bg-gradient-to-br ${
-                                MATCH_COLOR[t.matchType]
-                              }`}
-                            />
-                          )}
+  {/* IMAGE */}
+  <div className="relative h-40 overflow-hidden rounded-t-xl">
+    {t.imageUrl ? (
+      <img
+        src={t.imageUrl}
+        className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+      />
+    ) : (
+      <div
+        className={`h-full w-full bg-gradient-to-br ${
+          MATCH_COLOR[t.matchType]
+        } flex items-center justify-center`}
+      >
+        <Shield className="w-10 h-10 opacity-20" />
+      </div>
+    )}
 
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
 
-                          <Badge
-  className={`absolute top-3 left-3 border ${
-    t.status === "live"
-      ? "bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.6)] animate-pulse"
-      : "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
-  }`}
->
-  {t.status === "live" ? "LIVE" : "UPCOMING"}
-</Badge>
-                        </div>
-
-                        <CardContent className="p-4 space-y-3">
-
-                          <h3 className="font-bold text-lg truncate">
-                            {t.title}
-                          </h3>
-
-                          {/* COUNTDOWN */}
-                         <CountdownText startTime={t.startTime} />
-
-                          {/* STATS */}
-                          {/* STATS */}
-<div className="grid grid-cols-2 gap-3 text-xs">
-
-  <div className="flex items-center gap-2 text-yellow-400">
-    <Trophy className="w-3 h-3" />
-    <span className="font-semibold">
-      {formatMoney(t.prizePool)}
-    </span>
+    {/* UPCOMING INDICATOR (RIGHT SIDE LIKE LIVE) */}
+    <div className="absolute top-3 right-3 flex items-center gap-1 text-xs font-bold text-yellow-400">
+      <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse absolute" />
+      <span className="w-2 h-2 rounded-full bg-yellow-500" />
+      UPCOMING
+    </div>
   </div>
 
-  <div className="flex items-center gap-2 text-emerald-400">
-    <Wallet className="w-3 h-3" />
-    {t.entryFee > 0
-      ? formatMoney(t.entryFee)
-      : "FREE"}
-  </div>
+  <CardContent className="p-5 space-y-4">
 
-  <div className="flex items-center gap-2 text-blue-400">
-    <Users className="w-3 h-3" />
-    {t.filledSlots}/{t.maxSlots}
-  </div>
+    {/* TITLE */}
+    <h3 className="font-bold text-lg truncate">
+      {t.title}
+    </h3>
 
-  <div className="flex items-center gap-2 text-fuchsia-400">
-    <Swords className="w-3 h-3" />
-    <span className="capitalize">
-      {t.matchType}
-    </span>
-  </div>
+    {/* COUNTDOWN */}
+    <CountdownText startTime={t.startTime} />
 
-</div>
+    {/* SAME GRID AS LIVE */}
+    <div className="grid grid-cols-2 gap-3 text-xs">
 
-                          {/* SLOT PROGRESS */}
-                          <Progress value={progress} className="h-1.5" />
+      <div className="flex items-center gap-2 text-yellow-400">
+        <Trophy className="w-3 h-3" />
+        <span className="font-semibold">
+          {formatMoney(t.prizePool)}
+        </span>
+      </div>
 
-                        </CardContent>
-                      </Card>
+      <div className="flex items-center gap-2 text-emerald-400">
+        <Wallet className="w-3 h-3" />
+        {t.entryFee > 0
+          ? formatMoney(t.entryFee)
+          : "FREE"}
+      </div>
+
+      <div className="flex items-center gap-2 text-blue-400">
+        <Users className="w-3 h-3" />
+        {t.filledSlots}/{t.maxSlots}
+      </div>
+
+      <div className="flex items-center gap-2 text-fuchsia-400">
+        <Swords className="w-3 h-3" />
+        <span className="capitalize">
+          {t.matchType}
+        </span>
+      </div>
+
+    </div>
+
+    {/* MATCH LIVE CARD PROGRESS HEIGHT */}
+    <div>
+      <Progress value={(t.filledSlots / t.maxSlots) * 100} className="h-2" />
+    </div>
+
+  </CardContent>
+</Card>
                     </Link>
                   </HoloCard>
                 </motion.div>
