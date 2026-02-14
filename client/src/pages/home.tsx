@@ -275,6 +275,15 @@ export default function TournamentsPageGod() {
   );
 
   const [visible, setVisible] = useState(8);
+  const visibleTournaments = useMemo(
+  () => tournaments.slice(0, visible),
+  [tournaments, visible]
+);
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 40 },
+  visible: { opacity: 1, y: 0 },
+};
      /* =====================================================================================
      HERO SECTION – CYBER GLASS BANNER
      ===================================================================================== */
