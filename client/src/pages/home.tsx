@@ -523,7 +523,7 @@ const fadeUp = {
         ) : liveTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
-            {upcomingTournaments.map((t, index) => {
+            {liveTournaments.map((t, index) => {
               const progress =
                 (t.filledSlots / t.maxSlots) * 100;
 
