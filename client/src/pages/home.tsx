@@ -388,7 +388,7 @@ const fadeUp = {
          FEATURED RAIL (AUTO MOVING)
          ================================================================================= */}
 
-      {liveTournaments.length > 0 && (
+      {hotTournaments.length > 0 && (
         <section className="px-6 pb-24 max-w-7xl mx-auto">
           <div className="flex items-center gap-2 mb-8">
             <Flame className="text-orange-400" />
