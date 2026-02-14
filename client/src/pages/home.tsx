@@ -426,7 +426,13 @@ const fadeUp = {
                 >
                   <HoloCard>
                     <Link href={`/tournaments/${t.id}`}>
-                      <Card className="relative border border-white/10 bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl overflow-hidden cursor-pointer">
+                      <Card
+  className={`relative overflow-hidden cursor-pointer
+    bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl
+    border border-red-500/60
+    shadow-[0_0_25px_rgba(239,68,68,0.6)]
+    transition-all duration-300`}
+>
 
                         {/* IMAGE */}
                         <div className="relative h-40 overflow-hidden">
