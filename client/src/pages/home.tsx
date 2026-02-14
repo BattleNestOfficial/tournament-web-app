@@ -1,174 +1,97 @@
 /* =====================================================================================
-   BATTLE NEST – HOME PAGE
-   AAA ESPORTS UI – FUTURISTIC – ANIMATED – STABLE
+   BATTLE NEST – TOURNAMENTS PAGE ULTRA
+   3D TILT + INFINITE SCROLL + COUNTDOWN + AUTO FEATURED
+   PRODUCTION SAFE – ADVANCED
    ===================================================================================== */
 
-import React, { useEffect, useMemo, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "wouter";
+import { motion } from "framer-motion";
 
-/* -------------------------------- UI -------------------------------- */
-
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-
-/* -------------------------------- ICONS -------------------------------- */
+import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   Trophy,
   Users,
   Wallet,
-  Swords,
   Clock,
   Flame,
-  Crown,
-  Sparkles,
-  ArrowRight,
 } from "lucide-react";
 
-/* -------------------------------- TYPES -------------------------------- */
-
 import type { Tournament, Game } from "@shared/schema";
-
-/* =====================================================================================
-   ANIMATIONS
-   ===================================================================================== */
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0 },
-};
-
-const glowPulse = {
-  animate: {
-    boxShadow: [
-      "0 0 10px rgba(99,102,241,0.2)",
-      "0 0 30px rgba(99,102,241,0.6)",
-      "0 0 10px rgba(99,102,241,0.2)",
-    ],
-  },
-};
 
 /* =====================================================================================
    HELPERS
    ===================================================================================== */
 
-function formatMoney(v: number) {
-  return `₹${(v / 100).toFixed(0)}`;
+const formatMoney = (v: number) => `₹${(v / 100).toFixed(0)}`;
+
+function getCountdown(startTime: string) {
+  const diff = new Date(startTime).getTime() - Date.now();
+
+  if (diff <= 0) return "LIVE";
+
+  const h = Math.floor(diff / (1000 * 60 * 60));
+  const m = Math.floor((diff / (1000 * 60)) % 60);
+  const s = Math.floor((diff / 1000) % 60);
+
+  return `${h}h ${m}m ${s}s`;
 }
 
-function matchTypeColor(type: string) {
-  switch (type) {
-    case "solo":
-      return "bg-emerald-500/10 text-emerald-400";
-    case "duo":
-      return "bg-indigo-500/10 text-indigo-400";
-    case "squad":
-      return "bg-rose-500/10 text-rose-400";
-    default:
-      return "bg-muted text-muted-foreground";
+/* =====================================================================================
+   3D TILT COMPONENT
+   ===================================================================================== */
+
+function TiltCard({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  function handleMove(e: React.MouseEvent) {
+    const el = ref.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const rotateX = -(y - rect.height / 2) / 15;
+    const rotateY = (x - rect.width / 2) / 15;
+
+    el.style.transform = `
+      perspective(800px)
+      rotateX(${rotateX}deg)
+      rotateY(${rotateY}deg)
+      scale(1.03)
+    `;
   }
-}
 
-/* =====================================================================================
-   CHAMPION CARD
-   ===================================================================================== */
+  function reset() {
+    const el = ref.current;
+    if (!el) return;
+    el.style.transform = `perspective(800px) rotateX(0deg) rotateY(0deg) scale(1)`;
+  }
 
-function ChampionCard({
-  position,
-  prize,
-  name,
-  glow,
-  crown,
-}: {
-  position: string;
-  prize: string;
-  name: string;
-  glow: string;
-  crown?: boolean;
-}) {
   return (
-    <motion.div
-      whileHover={{ scale: 1.05 }}
-      className={`relative rounded-2xl border border-white/10 bg-gradient-to-br ${glow} to-black/40 p-6 text-center backdrop-blur`}
+    <div
+      ref={ref}
+      onMouseMove={handleMove}
+      onMouseLeave={reset}
+      className="transition-transform duration-200"
     >
-      {crown && <Crown className="mx-auto mb-2 text-yellow-400" />}
-      <div className="text-sm text-muted-foreground">{position}</div>
-      <div className="text-2xl font-bold mt-1">{name}</div>
-      <div className="text-primary mt-2">{prize}</div>
-    </motion.div>
+      {children}
+    </div>
   );
 }
 
 /* =====================================================================================
-   PARTICLE BACKGROUND
+   MAIN COMPONENT
    ===================================================================================== */
 
-function ParticleBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    let raf: number;
-
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    resize();
-    window.addEventListener("resize", resize);
-
-    const particles = Array.from({ length: 80 }).map(() => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      size: Math.random() * 2 + 1,
-    }));
-
-    const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.08)";
-        ctx.fill();
-      });
-      raf = requestAnimationFrame(draw);
-    };
-
-    draw();
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 -z-20 pointer-events-none"
-    />
-  );
-}
-
-/* =====================================================================================
-   MAIN HOME PAGE
-   ===================================================================================== */
-
-export default function HomePage() {
-  const [, setLocation] = useLocation();
-
-  const { data: tournaments = [] } = useQuery<Tournament[]>({
+export default function TournamentsPage() {
+  const { data: tournaments = [], isLoading } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
   });
 
@@ -176,115 +99,150 @@ export default function HomePage() {
     queryKey: ["/api/games"],
   });
 
-  const featured = useMemo(
-    () => tournaments.filter((t) => t.status === "upcoming").slice(0, 6),
-    [tournaments]
-  );
+  /* ==============================================
+     INFINITE SCROLL
+  ============================================== */
+
+  const [visibleCount, setVisibleCount] = useState(8);
+
+  useEffect(() => {
+    function handleScroll() {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - 400
+      ) {
+        setVisibleCount((prev) => prev + 4);
+      }
+    }
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const visibleTournaments = tournaments.slice(0, visibleCount);
+
+  /* ==============================================
+     FEATURED AUTO SCROLL
+  ============================================== */
+
+  const featured = tournaments.filter(t => t.status === "upcoming").slice(0, 6);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    let frame: number;
+
+    function autoScroll() {
+      container.scrollLeft += 0.5;
+      frame = requestAnimationFrame(autoScroll);
+    }
+
+    frame = requestAnimationFrame(autoScroll);
+
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  /* ==============================================
+     COUNTDOWN STATE
+  ============================================== */
+
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  /* =====================================================================================
+     RENDER
+     ===================================================================================== */
 
   return (
-    <div className="relative min-h-screen bg-black text-white overflow-hidden">
-      <ParticleBackground />
+    <div className="min-h-screen bg-black text-white px-6 py-16">
 
-      {/* HERO */}
-      <section className="px-6 py-28 text-center max-w-7xl mx-auto">
-        <motion.div variants={fadeUp} initial="hidden" animate="visible">
-          <Badge className="mb-4 bg-primary/10 text-primary">
-            India’s Next-Gen Esports Platform
-          </Badge>
+      {/* ================= FEATURED AUTO SCROLL ================= */}
 
-          <h1 className="text-6xl font-extrabold">
-            COMPETE. <span className="text-primary">DOMINATE.</span> WIN BIG.
-          </h1>
+      <h2 className="text-3xl font-bold mb-6 flex items-center gap-2">
+        <Flame className="text-orange-400" />
+        Featured Battles
+      </h2>
 
-          <p className="mt-6 text-muted-foreground max-w-2xl mx-auto">
-            High-stakes tournaments. Real money. Real champions.
-          </p>
-
-          <div className="mt-10 flex justify-center gap-4">
-            <Button size="lg" onClick={() => setLocation("/tournaments")}>
-              Explore Tournaments <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
+      <div
+        ref={scrollRef}
+        className="flex gap-6 overflow-x-auto scrollbar-hide mb-16"
+      >
+        {featured.map((t) => (
+          <div key={t.id} className="min-w-[300px]">
+            <TiltCard>
+              <Card className="bg-black/70 border border-white/10">
+                <CardContent className="p-5 space-y-3">
+                  <h3 className="font-bold">{t.title}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {formatMoney(t.prizePool)}
+                  </p>
+                </CardContent>
+              </Card>
+            </TiltCard>
           </div>
-        </motion.div>
-      </section>
+        ))}
+      </div>
 
-      {/* FEATURED */}
-      <section className="px-6 pb-32 max-w-7xl mx-auto">
-        <h2 className="text-3xl font-bold mb-8 flex gap-2">
-          <Flame className="text-orange-400" /> Featured Matches
-        </h2>
+      {/* ================= GRID ================= */}
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence>
-            {featured.map((t, i) => {
-              const game = games.find((g) => g.id === t.gameId);
-              const progress = (t.filledSlots / t.maxSlots) * 100;
+      {isLoading ? (
+        <div className="grid grid-cols-4 gap-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-4 gap-6">
+          {visibleTournaments.map((t) => {
+            const progress = (t.filledSlots / t.maxSlots) * 100;
 
-              return (
-                <motion.div
-                  key={t.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.08 }}
-                >
-                  <motion.div variants={glowPulse} animate="animate">
-                    <Card
-                      onClick={() => setLocation(`/tournaments/${t.id}`)}
-                      className="cursor-pointer bg-black/60 border-white/10 hover:border-primary/40 transition"
-                    >
-                      <CardContent className="p-5 space-y-4">
-                        <Badge className={matchTypeColor(t.matchType)}>
-                          {t.matchType.toUpperCase()}
-                        </Badge>
+            return (
+              <TiltCard key={t.id}>
+                <Link href={`/tournaments/${t.id}`}>
+                  <Card className="cursor-pointer bg-black/60 border border-white/10 hover:border-primary transition-all">
+                    <CardContent className="p-4 space-y-3">
+                      <Badge>{t.status}</Badge>
 
-                        <h3 className="font-bold">{t.title}</h3>
-                        <p className="text-xs text-muted-foreground">
-                          {game?.name}
-                        </p>
+                      <h3 className="font-bold text-sm">{t.title}</h3>
 
-                        <div className="grid grid-cols-3 text-xs">
-                          <span className="flex gap-1">
-                            <Trophy className="w-3 h-3 text-yellow-400" />
-                            {formatMoney(t.prizePool)}
-                          </span>
-                          <span className="flex gap-1">
-                            <Wallet className="w-3 h-3 text-green-400" />
-                            {t.entryFee ? formatMoney(t.entryFee) : "FREE"}
-                          </span>
-                          <span className="flex gap-1">
-                            <Users className="w-3 h-3 text-blue-400" />
-                            {t.filledSlots}/{t.maxSlots}
-                          </span>
-                        </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <span className="flex gap-1">
+                          <Trophy className="w-3 h-3 text-yellow-400" />
+                          {formatMoney(t.prizePool)}
+                        </span>
 
-                        <Progress value={progress} />
+                        <span className="flex gap-1">
+                          <Users className="w-3 h-3 text-blue-400" />
+                          {t.filledSlots}/{t.maxSlots}
+                        </span>
 
-                        <div className="text-xs text-muted-foreground flex gap-1">
+                        <span className="flex gap-1">
+                          <Wallet className="w-3 h-3 text-green-400" />
+                          {t.entryFee ? formatMoney(t.entryFee) : "FREE"}
+                        </span>
+
+                        <span className="flex gap-1">
                           <Clock className="w-3 h-3" />
-                          {new Date(t.startTime).toLocaleString("en-IN")}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-      </section>
+                          {getCountdown(t.startTime)}
+                        </span>
+                      </div>
 
-      {/* CHAMPIONS */}
-      <section className="px-6 pb-32 max-w-7xl mx-auto">
-        <h2 className="text-3xl font-bold mb-10 flex gap-2">
-          <Crown className="text-yellow-400" /> Recent Champions
-        </h2>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          <ChampionCard position="2nd" name="ShadowX" prize="₹15,000" glow="from-slate-400/20" />
-          <ChampionCard position="1st" name="NightFury" prize="₹30,000" glow="from-yellow-400/30" crown />
-          <ChampionCard position="3rd" name="VenomOP" prize="₹5,000" glow="from-orange-400/20" />
+                      <Progress value={progress} />
+                    </CardContent>
+                  </Card>
+                </Link>
+              </TiltCard>
+            );
+          })}
         </div>
-      </section>
+      )}
     </div>
   );
 }
