@@ -698,21 +698,6 @@ export default function TournamentsPageGod() {
    HOLO CARD WRAPPER (3D GLOW)
    ===================================================================================== */
 
-function HoloCard({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.div
-      whileHover={{
-        rotateX: 5,
-        rotateY: -5,
-        scale: 1.02,
-      }}
-      transition={{ type: "spring", stiffness: 200 }}
-      className="perspective-[1200px]"
-    >
-      {children}
-    </motion.div>
-  );
-}
 
 /* =====================================================================================
    COUNTDOWN HOOK
