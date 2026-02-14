@@ -276,13 +276,15 @@ export default function TournamentsPageGod() {
     queryKey: ["/api/games"],
   });
 
-  const liveTournaments = useMemo(
-  () => tournaments.filter((t) => t.status === "live"),
+// 🔥 HOT SECTION = UPCOMING
+const hotTournaments = useMemo(
+  () => tournaments.filter((t) => t.status === "upcoming"),
   [tournaments]
 );
 
-const upcomingTournaments = useMemo(
-  () => tournaments.filter((t) => t.status === "upcoming"),
+// ✨ LIVE SECTION
+const liveTournaments = useMemo(
+  () => tournaments.filter((t) => t.status === "live"),
   [tournaments]
 );
 
