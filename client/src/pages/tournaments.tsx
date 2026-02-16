@@ -4,11 +4,13 @@ import { Link, useSearch } from "wouter";
 import { motion, useMotionValue, useSpring } from "framer-motion";
 import {
   Activity,
+  ArrowUpDown,
   CalendarClock,
   Clock,
   Filter,
   Flame,
   Gamepad2,
+  RotateCcw,
   Search,
   Shield,
   Swords,
@@ -28,6 +30,7 @@ import { useAuth } from "@/lib/auth";
 import type { Game, Registration, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live" | "completed";
+type SortBy = "start_asc" | "start_desc" | "prize_desc" | "slots_desc";
 
 const SHOWCASE_THEME: Record<ShowcaseStatus, { edge: string; chip: string; glow: string; label: string }> = {
   hot: {
@@ -82,6 +85,24 @@ function formatDateTime(value: string | Date) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function sortTournaments(items: Tournament[], sortBy: SortBy) {
+  const list = [...items];
+  list.sort((a, b) => {
+    switch (sortBy) {
+      case "start_desc":
+        return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+      case "prize_desc":
+        return (b.prizePool || 0) - (a.prizePool || 0);
+      case "slots_desc":
+        return (b.filledSlots || 0) - (a.filledSlots || 0);
+      case "start_asc":
+      default:
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+    }
+  });
+  return list;
 }
 
 function useCountdown(target: string | Date) {
@@ -265,6 +286,7 @@ export default function TournamentsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [joinedOnly, setJoinedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortBy>("start_asc");
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -336,24 +358,40 @@ export default function TournamentsPage() {
   );
 
   const liveTournaments = useMemo(
-    () => filtered.filter((t) => t.status === "live").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [filtered]
+    () => sortTournaments(filtered.filter((t) => t.status === "live"), sortBy),
+    [filtered, sortBy]
   );
 
   const upcomingTournaments = useMemo(
-    () => filtered.filter((t) => t.status === "upcoming").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [filtered]
+    () => sortTournaments(filtered.filter((t) => t.status === "upcoming"), sortBy),
+    [filtered, sortBy]
   );
 
   const hotTournaments = useMemo(
-    () => filtered.filter((t) => t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [filtered]
+    () => sortTournaments(filtered.filter((t) => t.status === "hot"), sortBy),
+    [filtered, sortBy]
   );
 
   const completedTournaments = useMemo(
-    () => filtered.filter((t) => t.status === "completed").sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()),
-    [filtered]
+    () => sortTournaments(filtered.filter((t) => t.status === "completed"), sortBy),
+    [filtered, sortBy]
   );
+
+  const sectionCounts = {
+    live: liveTournaments.length,
+    hot: hotTournaments.length,
+    upcoming: upcomingTournaments.length,
+    completed: completedTournaments.length,
+  };
+
+  function clearFilters() {
+    setGameFilter("all");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setSearchQuery("");
+    setJoinedOnly(false);
+    setSortBy("start_asc");
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white">
@@ -419,6 +457,18 @@ export default function TournamentsPage() {
                     <SelectItem value="squad">Squad</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                  <SelectTrigger className="w-[160px]" data-testid="select-sort-filter">
+                    <ArrowUpDown className="w-3.5 h-3.5 mr-1.5" />
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="start_asc">Start: Soonest</SelectItem>
+                    <SelectItem value="start_desc">Start: Latest</SelectItem>
+                    <SelectItem value="prize_desc">Prize: High to Low</SelectItem>
+                    <SelectItem value="slots_desc">Players: High to Low</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   variant={joinedOnly ? "default" : "outline"}
@@ -431,10 +481,35 @@ export default function TournamentsPage() {
                   Joined Only
                   {token && <span className="text-[11px] opacity-80">({joinedTournamentIds.size})</span>}
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={clearFilters}
+                  data-testid="button-clear-tournament-filters"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Clear
+                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => document.getElementById("live-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            Live ({sectionCounts.live})
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => document.getElementById("hot-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            Hot ({sectionCounts.hot})
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => document.getElementById("upcoming-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            Upcoming ({sectionCounts.upcoming})
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => document.getElementById("completed-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            Completed ({sectionCounts.completed})
+          </Button>
+        </div>
 
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -450,7 +525,7 @@ export default function TournamentsPage() {
           </div>
         ) : (
           <>
-            <section className="space-y-2">
+            <section id="live-section" className="space-y-2 scroll-mt-24">
               <SectionHeader
                 icon={<Activity className="w-6 h-6 text-red-300" />}
                 title="Live Tournaments"
@@ -474,31 +549,7 @@ export default function TournamentsPage() {
               )}
             </section>
 
-            <section className="space-y-2">
-              <SectionHeader
-                icon={<CalendarClock className="w-6 h-6 text-indigo-300" />}
-                title="Upcoming Tournaments"
-                subtitle="Scheduled matches starting soon"
-              />
-              {upcomingTournaments.length > 0 ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {upcomingTournaments.map((t, idx) => (
-                    <TournamentMatchCard
-                      key={t.id}
-                      tournament={t}
-                      gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
-                      index={idx}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Card className="border-white/10 bg-black/35">
-                  <CardContent className="p-8 text-center text-white/65">No upcoming tournaments.</CardContent>
-                </Card>
-              )}
-            </section>
-
-            <section className="space-y-2">
+            <section id="hot-section" className="space-y-2 scroll-mt-24">
               <SectionHeader
                 icon={<Flame className="w-6 h-6 text-amber-300" />}
                 title="Hot Tournaments"
@@ -522,7 +573,31 @@ export default function TournamentsPage() {
               )}
             </section>
 
-            <section className="space-y-2">
+            <section id="upcoming-section" className="space-y-2 scroll-mt-24">
+              <SectionHeader
+                icon={<CalendarClock className="w-6 h-6 text-indigo-300" />}
+                title="Upcoming Tournaments"
+                subtitle="Scheduled matches starting soon"
+              />
+              {upcomingTournaments.length > 0 ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {upcomingTournaments.map((t, idx) => (
+                    <TournamentMatchCard
+                      key={t.id}
+                      tournament={t}
+                      gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                      index={idx}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card className="border-white/10 bg-black/35">
+                  <CardContent className="p-8 text-center text-white/65">No upcoming tournaments.</CardContent>
+                </Card>
+              )}
+            </section>
+
+            <section id="completed-section" className="space-y-2 scroll-mt-24">
               <SectionHeader
                 icon={<Trophy className="w-6 h-6 text-slate-300" />}
                 title="Completed Tournaments"
