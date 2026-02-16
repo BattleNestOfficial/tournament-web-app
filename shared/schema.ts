@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["user", "admin"]);
@@ -162,16 +161,55 @@ export const banners = pgTable("banners", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, walletBalance: true, role: true, banned: true });
+export const insertUserSchema = z.object({
+  username: z.string().min(3).max(30),
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 export const loginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 export const signupSchema = z.object({ username: z.string().min(3).max(30), email: z.string().email(), password: z.string().min(6) });
 
-export const insertGameSchema = createInsertSchema(games).omit({ id: true, createdAt: true });
-export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id: true, createdAt: true, filledSlots: true, status: true });
+export const insertGameSchema = z.object({
+  name: z.string().min(2).max(100),
+  slug: z.string().min(2).max(100),
+  imageUrl: z.string().url().optional().nullable(),
+  enabled: z.boolean().optional(),
+});
+export const insertTournamentSchema = z.object({
+  title: z.string().min(2).max(200),
+  gameId: z.number().int().positive(),
+  entryFee: z.number().int().nonnegative().optional(),
+  prizePool: z.number().int().nonnegative().optional(),
+  maxSlots: z.number().int().positive(),
+  matchType: z.enum(["solo", "duo", "squad"]),
+  startTime: z.union([z.string(), z.date()]),
+  roomId: z.string().optional().nullable(),
+  roomPassword: z.string().optional().nullable(),
+  rules: z.string().optional().nullable(),
+  mapName: z.string().optional().nullable(),
+  imageUrl: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  prizeDistribution: z
+    .array(z.object({ position: z.number().int().positive(), prize: z.number().int().nonnegative() }))
+    .optional()
+    .nullable(),
+});
 export const insertWithdrawalSchema = z.object({ amount: z.number().min(50), upiId: z.string().optional(), bankDetails: z.string().optional() });
-export const insertResultSchema = createInsertSchema(results).omit({ id: true, createdAt: true });
+export const insertResultSchema = z.object({
+  tournamentId: z.number().int().positive(),
+  userId: z.number().int().positive(),
+  position: z.number().int().positive(),
+  kills: z.number().int().nonnegative().optional(),
+  prize: z.number().int().nonnegative().optional(),
+});
 export const insertTeamSchema = z.object({ name: z.string().min(2).max(50) });
-export const insertBannerSchema = createInsertSchema(banners).omit({ id: true, createdAt: true });
+export const insertBannerSchema = z.object({
+  imageUrl: z.string().min(1),
+  title: z.string().optional().nullable(),
+  linkUrl: z.string().optional().nullable(),
+  sortOrder: z.number().int().nonnegative().optional(),
+  enabled: z.boolean().optional(),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

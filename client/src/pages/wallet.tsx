@@ -108,6 +108,8 @@ export default function WalletPage() {
   const razorpayAvailable = !!razorpayConfig?.keyId;
 
   async function handleRazorpayPayment() {
+    if (!user) return;
+    const currentUser = user;
     const amount = Number(addAmount);
     if (!amount || amount <= 0) return;
     setRazorpayLoading(true);
@@ -163,8 +165,8 @@ export default function WalletPage() {
           }
         },
         prefill: {
-          email: user.email,
-          name: user.username,
+          email: currentUser.email,
+          name: currentUser.username,
         },
         theme: {
           color: "#7c3aed",

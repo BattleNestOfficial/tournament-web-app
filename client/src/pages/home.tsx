@@ -65,7 +65,7 @@ function formatMoney(v: number) {
    COUNTDOWN ENGINE (LIVE SAFE)
    ===================================================================================== */
 
-function useCountdown(target: string) {
+function useCountdown(target: string | Date) {
   const [time, setTime] = useState("");
 
   useEffect(() => {
@@ -91,7 +91,7 @@ function useCountdown(target: string) {
 
   return time;
 }
-function CountdownText({ startTime }: { startTime: string }) {
+function CountdownText({ startTime }: { startTime: string | Date }) {
   const countdown = useCountdown(startTime);
 
   return (
@@ -197,6 +197,7 @@ function ParticleField() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const canvasEl = canvas;
 
     const ctx = canvas.getContext("2d")!;
     let frame: number;
@@ -210,17 +211,17 @@ function ParticleField() {
     }[] = [];
 
     function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvasEl.width = window.innerWidth;
+      canvasEl.height = window.innerHeight;
     }
 
     resize();
     window.addEventListener("resize", resize);
 
     for (let i = 0; i < 120; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
+        particles.push({
+        x: Math.random() * canvasEl.width,
+        y: Math.random() * canvasEl.height,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.4,
         size: Math.random() * 1.8 + 0.5,
@@ -228,14 +229,14 @@ function ParticleField() {
     }
 
     function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
       particles.forEach((p) => {
         p.x += p.vx;
         p.y += p.vy;
 
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        if (p.x < 0 || p.x > canvasEl.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvasEl.height) p.vy *= -1;
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
@@ -284,8 +285,8 @@ export default function TournamentsPageGod() {
 
 // HOT SECTION + ACTIVE SORTING
 const sortedActiveTournaments = useMemo(() => {
-  const toTimestamp = (value: string) => {
-    const ts = Date.parse(value);
+  const toTimestamp = (value: string | Date) => {
+    const ts = new Date(value).getTime();
     return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
   };
 
@@ -332,13 +333,14 @@ const fadeUp = {
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;
+    const railEl = rail;
 
     let frame: number;
 
     function animate() {
-      rail.scrollLeft += 0.6;
-      if (rail.scrollLeft >= rail.scrollWidth / 2) {
-        rail.scrollLeft = 0;
+      railEl.scrollLeft += 0.6;
+      if (railEl.scrollLeft >= railEl.scrollWidth / 2) {
+        railEl.scrollLeft = 0;
       }
       frame = requestAnimationFrame(animate);
     }

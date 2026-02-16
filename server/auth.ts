@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.SESSION_SECRET;
-if (!JWT_SECRET) {
+const JWT_SECRET_ENV = process.env.SESSION_SECRET;
+if (!JWT_SECRET_ENV) {
   throw new Error("SESSION_SECRET environment variable is required");
 }
+const JWT_SECRET: string = JWT_SECRET_ENV;
 
 export function generateToken(userId: number, role: string): string {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "7d" });
@@ -14,7 +15,7 @@ export function verifyToken(
   token: string
 ): { userId: number; role: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as {
+    return jwt.verify(token, JWT_SECRET) as unknown as {
       userId: number;
       role: string;
     };
