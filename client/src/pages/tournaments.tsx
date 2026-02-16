@@ -7,9 +7,11 @@ import {
   ArrowUpDown,
   CalendarClock,
   Clock,
+  Eye,
   Filter,
   Flame,
   Gamepad2,
+  LogIn,
   RotateCcw,
   Search,
   Shield,
@@ -164,10 +166,14 @@ function TournamentMatchCard({
   tournament,
   gameName,
   index,
+  joined,
+  token,
 }: {
   tournament: Tournament;
   gameName: string;
   index: number;
+  joined: boolean;
+  token: string | null;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const status = normalizeStatus(tournament.status);
@@ -175,6 +181,8 @@ function TournamentMatchCard({
   const theme = SHOWCASE_THEME[status];
   const progress = Math.min(100, (tournament.filledSlots / Math.max(tournament.maxSlots, 1)) * 100);
   const rightMeta = status === "completed" ? "Completed" : countdown;
+  const canJoin = status === "upcoming" || status === "hot";
+  const joinHref = token ? `/tournaments/${tournament.id}?action=join` : "/auth";
 
   return (
     <motion.div
@@ -184,8 +192,7 @@ function TournamentMatchCard({
       transition={{ delay: Math.min(index * 0.06, 0.35), duration: 0.45 }}
     >
       <HoloCard>
-        <Link href={`/tournaments/${tournament.id}`}>
-          <Card className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl cursor-pointer transition-all duration-300`}>
+        <Card className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl transition-all duration-300`}>
             <div className="relative h-44 overflow-hidden">
               {tournament.imageUrl && !imgFailed ? (
                 <img
@@ -252,9 +259,34 @@ function TournamentMatchCard({
                   </p>
                 </div>
               )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {joined ? (
+                  <Button size="sm" disabled className="w-full">
+                    Registered
+                  </Button>
+                ) : canJoin ? (
+                  <Button size="sm" className="w-full gap-1.5" asChild>
+                    <Link href={joinHref}>
+                      {token ? <Swords className="w-3.5 h-3.5" /> : <LogIn className="w-3.5 h-3.5" />}
+                      Join
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled variant="secondary" className="w-full">
+                    {status === "live" ? "Live" : "Closed"}
+                  </Button>
+                )}
+
+                <Button size="sm" variant="outline" className="w-full gap-1.5" asChild>
+                  <Link href={`/tournaments/${tournament.id}`}>
+                    <Eye className="w-3.5 h-3.5" />
+                    View Details
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
-        </Link>
       </HoloCard>
     </motion.div>
   );
@@ -539,6 +571,8 @@ export default function TournamentsPage() {
                       tournament={t}
                       gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
                       index={idx}
+                      joined={joinedTournamentIds.has(Number(t.id))}
+                      token={token}
                     />
                   ))}
                 </div>
@@ -563,6 +597,8 @@ export default function TournamentsPage() {
                       tournament={t}
                       gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
                       index={idx}
+                      joined={joinedTournamentIds.has(Number(t.id))}
+                      token={token}
                     />
                   ))}
                 </div>
@@ -587,6 +623,8 @@ export default function TournamentsPage() {
                       tournament={t}
                       gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
                       index={idx}
+                      joined={joinedTournamentIds.has(Number(t.id))}
+                      token={token}
                     />
                   ))}
                 </div>
@@ -611,6 +649,8 @@ export default function TournamentsPage() {
                       tournament={t}
                       gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
                       index={idx}
+                      joined={joinedTournamentIds.has(Number(t.id))}
+                      token={token}
                     />
                   ))}
                 </div>

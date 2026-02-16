@@ -4,9 +4,9 @@
    LINES: 650+
    ===================================================================================== */
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 
 /* -------------------------------- UI -------------------------------- */
 
@@ -119,6 +119,7 @@ export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const tournamentId = Number(id);
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
 
   /* ---------------- AUTH ---------------- */
 
@@ -268,6 +269,24 @@ export default function TournamentDetailPage() {
     if (isSquad) return teams.filter((t) => t.members?.length === 4);
     return [];
   }, [teams, isDuo, isSquad]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const shouldAutoOpenJoin = params.get("action") === "join";
+    if (!shouldAutoOpenJoin || joinOpen || joined || !tournament) return;
+    if (!["upcoming", "hot"].includes(String(tournament.status))) return;
+
+    if (!user) {
+      setLocation("/auth");
+      return;
+    }
+
+    if (isSolo && game?.slug) {
+      setIgn(getIGNForGame(game.slug, user));
+    }
+    setTeamId(null);
+    setJoinOpen(true);
+  }, [searchString, joinOpen, joined, tournament, user, setLocation, isSolo, game]);
 
   /* =====================================================================================
      LOADING & ERROR STATES
