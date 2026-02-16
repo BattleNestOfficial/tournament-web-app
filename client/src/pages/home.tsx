@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion, useMotionValue, useSpring } from "framer-motion";
 import {
   Activity,
@@ -64,27 +64,21 @@ const PLACEHOLDER_GRADIENT: Record<string, string> = {
 const PROMO_PLACEHOLDERS: PromoSlide[] = [
   {
     id: "promo-ph-1",
-    title: "Weekend BGMI Showdown",
-    subtitle: "Top squads clash for glory and bigger rewards in Battle Nest.",
+    title: "Battle Nest Featured Match",
+    subtitle: "Compete, stream, and win in premium esports tournaments.",
     tone: "from-indigo-700/55 via-blue-700/45 to-slate-900",
-    linkUrl: "/tournaments",
-    ctaLabel: "Join Battles",
   },
   {
     id: "promo-ph-2",
-    title: "Creator Cup Live Soon",
-    subtitle: "Watch hot creators lead teams into high-pressure elimination rounds.",
+    title: "Battle Nest Featured Match",
+    subtitle: "Compete, stream, and win in premium esports tournaments.",
     tone: "from-fuchsia-700/50 via-purple-700/45 to-slate-900",
-    linkUrl: "/tournaments",
-    ctaLabel: "View Hot Matches",
   },
   {
     id: "promo-ph-3",
-    title: "Squad Rush Cash Battles",
-    subtitle: "Enter upcoming matches and turn your squad chemistry into payouts.",
+    title: "Battle Nest Featured Match",
+    subtitle: "Compete, stream, and win in premium esports tournaments.",
     tone: "from-amber-700/50 via-orange-700/40 to-slate-900",
-    linkUrl: "/tournaments",
-    ctaLabel: "Browse Tournaments",
   },
 ];
 
@@ -295,6 +289,17 @@ function TournamentMatchCard({
 
               <Progress value={progress} className="h-2" />
               <p className="text-[11px] text-right text-white/60">{Math.round(progress)}% filled</p>
+
+              {status === "live" && tournament.roomId && tournament.roomPassword && (
+                <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs">
+                  <p className="text-red-200">
+                    Room ID: <span className="font-semibold font-mono text-white">{tournament.roomId}</span>
+                  </p>
+                  <p className="text-red-200 mt-1">
+                    Password: <span className="font-semibold font-mono text-white">{tournament.roomPassword}</span>
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </Link>
@@ -319,6 +324,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
 
 export default function HomePage() {
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [, setLocation] = useLocation();
 
   const {
     data: tournaments = [],
@@ -405,7 +411,10 @@ export default function HomePage() {
   }, [tournaments]);
 
   const hotTournaments = useMemo(
-    () => normalizedTournaments.filter((t) => t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    () =>
+      normalizedTournaments
+        .filter((t) => String(t.status).toLowerCase().trim() === "hot")
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [normalizedTournaments]
   );
 
@@ -430,34 +439,53 @@ export default function HomePage() {
   }, [normalizedTournaments]);
 
   const activeSlide = promoSlides[bannerIndex] ?? promoSlides[0];
-  const bannerHref = activeSlide?.linkUrl || "/tournaments";
-  const isExternalBannerLink = /^https?:\/\//i.test(bannerHref);
+
+  function handlePromoBannerClick() {
+    const raw = (activeSlide?.linkUrl || "").trim();
+    if (!raw) return;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+      window.open(raw, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const href = raw.startsWith("/") ? raw : `/${raw}`;
+    setLocation(href);
+  }
 
   return (
     <div className="relative min-h-screen bg-black text-white overflow-hidden">
       <ParticleField />
-      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#050916] via-[#120a2d] to-[#041723]" />
+      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#091336] via-[#28124f] to-[#0b2c4f]" />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-cyan-500/30 blur-3xl"
+        className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-cyan-500/50 blur-3xl"
         animate={{ x: [0, 45, -20, 0], y: [0, 35, 20, 0], scale: [1, 1.12, 0.95, 1] }}
         transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -right-32 top-20 -z-20 h-[30rem] w-[30rem] rounded-full bg-fuchsia-500/30 blur-3xl"
+        className="pointer-events-none absolute -right-32 top-20 -z-20 h-[30rem] w-[30rem] rounded-full bg-fuchsia-500/45 blur-3xl"
         animate={{ x: [0, -35, 25, 0], y: [0, 40, -15, 0], scale: [1, 0.9, 1.08, 1] }}
         transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute left-1/3 bottom-0 -z-20 h-[28rem] w-[28rem] rounded-full bg-indigo-500/30 blur-3xl"
+        className="pointer-events-none absolute left-1/3 bottom-0 -z-20 h-[28rem] w-[28rem] rounded-full bg-indigo-500/50 blur-3xl"
         animate={{ x: [0, -30, 18, 0], y: [0, -30, 12, 0], scale: [1, 1.05, 0.92, 1] }}
         transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
       />
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#3558ff55,transparent_55%)]" />
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#d946ef3f,transparent_62%)]" />
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(15,23,42,0.35),rgba(2,6,23,0.8))]" />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#3558ffaa,transparent_56%)]"
+        animate={{ opacity: [0.75, 1, 0.75] }}
+        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#d946ef7a,transparent_64%)]"
+        animate={{ opacity: [0.65, 0.95, 0.65] }}
+        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(15,23,42,0.18),rgba(2,6,23,0.5))]" />
 
       <section className="relative px-6 pt-24 pb-14 max-w-7xl mx-auto">
         <div className="grid gap-8 lg:grid-cols-[1.35fr_0.9fr] lg:items-start">
@@ -493,9 +521,12 @@ export default function HomePage() {
             initial={{ opacity: 0, x: 28 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.15, duration: 0.6 }}
-            className="lg:justify-self-end w-full max-w-md lg:max-w-sm"
+            className="lg:justify-self-end w-full max-w-lg lg:max-w-md"
           >
-            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 aspect-square">
+            <div
+              className={`relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 aspect-square ${activeSlide?.linkUrl ? "cursor-pointer" : ""}`}
+              onClick={handlePromoBannerClick}
+            >
               {activeSlide?.imageUrl ? (
                 <img src={activeSlide.imageUrl} alt={activeSlide.title} className="h-full w-full object-cover" />
               ) : (
@@ -506,15 +537,8 @@ export default function HomePage() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
               <div className="absolute left-4 right-4 bottom-4">
                 <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Promotion</p>
-                <p className="text-lg font-bold line-clamp-2">{activeSlide?.title || "Battle Nest Showcase"}</p>
-                <p className="text-xs text-white/80 mt-1 line-clamp-2">{activeSlide?.subtitle}</p>
-                <div className="mt-3">
-                  <Link href="/tournaments">
-                    <button className="px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition">
-                      Browse Tournaments
-                    </button>
-                  </Link>
-                </div>
+                <p className="text-lg font-bold line-clamp-2">Battle Nest Featured Match</p>
+                <p className="text-xs text-white/80 mt-1 line-clamp-2">Compete, stream, and win in premium esports tournaments.</p>
               </div>
             </div>
             <div className="mt-3 flex items-center justify-center lg:justify-end gap-1">

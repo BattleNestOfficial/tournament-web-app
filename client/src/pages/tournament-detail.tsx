@@ -360,7 +360,7 @@ export default function TournamentDetailPage() {
       </Card>
 
       {/* ROOM DETAILS */}
-      {tournament.status === "live" && joined && (
+      {tournament.status === "live" && tournament.roomId && tournament.roomPassword && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

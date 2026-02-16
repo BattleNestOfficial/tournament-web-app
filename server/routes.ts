@@ -254,7 +254,8 @@ app.get(
 
       const filteredTournaments = tournaments.filter((t) => {
         const titleValue = typeof t.title === "string" ? t.title : "";
-        const normalizedStatus = validStatuses.has(String(t.status)) ? String(t.status) : "upcoming";
+        const rawStatus = String(t.status ?? "").toLowerCase().trim();
+        const normalizedStatus = validStatuses.has(rawStatus) ? rawStatus : "upcoming";
         const statusMatches = statusFilter.length === 0 || statusFilter.includes(normalizedStatus);
         const searchMatches = !searchRaw || titleValue.toLowerCase().includes(searchRaw);
         return statusMatches && searchMatches;
@@ -264,7 +265,8 @@ app.get(
         .filter((t) => Number.isInteger(t.id) && t.id > 0)
         .map((t) => {
           const isJoined = joinedTournamentIds.has(t.id);
-          const normalizedStatus = validStatuses.has(String(t.status)) ? t.status : "upcoming";
+          const rawStatus = String(t.status ?? "").toLowerCase().trim();
+          const normalizedStatus = validStatuses.has(rawStatus) ? rawStatus : "upcoming";
           const canSeeRoom =
             userRole === "admin" ||
             (isJoined && normalizedStatus === "live");
@@ -317,9 +319,10 @@ app.get(
       }
 
       // ✅ FINAL ACCESS RULE
+      const rawStatus = String(t.status ?? "").toLowerCase().trim();
       const normalizedStatus =
-        ["hot", "upcoming", "live", "completed", "cancelled"].includes(String(t.status))
-          ? t.status
+        ["hot", "upcoming", "live", "completed", "cancelled"].includes(rawStatus)
+          ? rawStatus
           : "upcoming";
 
       const canSeeRoom =
