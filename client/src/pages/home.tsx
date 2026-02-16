@@ -267,25 +267,46 @@ function ParticleField() {
    ===================================================================================== */
 
 export default function TournamentsPageGod() {
-  const { data: tournaments = [], isLoading } =
-    useQuery<Tournament[]>({
-      queryKey: ["/api/tournaments"],
-    });
+  const {
+    data: tournaments = [],
+    isLoading,
+    isError,
+  } = useQuery<Tournament[]>({
+    queryKey: ["/api/tournaments"],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: 15000,
+  });
 
   const { data: games = [] } = useQuery<Game[]>({
     queryKey: ["/api/games"],
   });
 
-// 🔥 HOT SECTION = UPCOMING
+// HOT SECTION + ACTIVE SORTING
+const sortedActiveTournaments = useMemo(() => {
+  const toTimestamp = (value: string) => {
+    const ts = Date.parse(value);
+    return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
+  };
+
+  return tournaments
+    .filter((t) => t.status === "live" || t.status === "upcoming")
+    .sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === "live" ? -1 : 1;
+      }
+      return toTimestamp(a.startTime) - toTimestamp(b.startTime);
+    });
+}, [tournaments]);
+
 const hotTournaments = useMemo(
-  () => tournaments.filter((t) => t.status === "upcoming"),
-  [tournaments]
+  () => sortedActiveTournaments.filter((t) => t.status === "upcoming"),
+  [sortedActiveTournaments]
 );
 
-// ✨ LIVE SECTION
 const liveTournaments = useMemo(
-  () => tournaments.filter((t) => t.status === "live"),
-  [tournaments]
+  () => sortedActiveTournaments.filter((t) => t.status === "live"),
+  [sortedActiveTournaments]
 );
 
 
@@ -530,12 +551,12 @@ const fadeUp = {
         <div className="flex items-center justify-between mb-10">
           <h2 className="text-3xl font-bold flex items-center gap-2">
             <Sparkles className="text-fuchsia-400" />
-            Live Tournaments
+            Active Tournaments
           </h2>
 
           <MagneticButton>
             <div className="text-sm text-indigo-400 cursor-pointer">
-              Total: {tournaments.length}
+              Total: {sortedActiveTournaments.length}
             </div>
           </MagneticButton>
         </div>
@@ -558,10 +579,22 @@ const fadeUp = {
               </Card>
             ))}
           </div>
-        ) : liveTournaments.length > 0 ? (
+                ) : isError ? (
+          <Card className="border border-white/10 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-12 text-center">
+              <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">
+                Failed to load tournaments
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Please refresh the page.
+              </p>
+            </CardContent>
+          </Card>
+        ) : sortedActiveTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
-            {liveTournaments.map((t, index) => {
+            {sortedActiveTournaments.map((t, index) => {
               const progress =
                 (t.filledSlots / t.maxSlots) * 100;
 
@@ -749,4 +782,5 @@ const fadeUp = {
     </div>
   );
 }
+
 
