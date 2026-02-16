@@ -1,74 +1,50 @@
-/* =====================================================================================
-   BATTLE NEST – ULTIMATE TOURNAMENT DETAILS PAGE
-   VERSION: ENTERPRISE / ESPORTS PLATFORM LEVEL
-   LINES: 650+
-   ===================================================================================== */
-
-import { useEffect, useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation, useSearch } from "wouter";
-
-/* -------------------------------- UI -------------------------------- */
-
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useLocation, useParams, useSearch } from "wouter";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-
-/* -------------------------------- AUTH -------------------------------- */
-
-import { useAuth } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
-
-/* -------------------------------- ICONS -------------------------------- */
-
-import {
-  Trophy,
-  Users,
-  Wallet,
-  Clock,
-  MapPin,
-  Shield,
-  Swords,
   ArrowLeft,
+  Clock,
+  Copy,
   Crown,
   Gamepad2,
   Lock,
-  Unlock,
-  Star,
+  Shield,
+  Swords,
+  Trophy,
+  Users,
+  Wallet,
 } from "lucide-react";
 
-/* -------------------------------- TYPES -------------------------------- */
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 
-import type {
-  Tournament,
-  Game,
-  Registration,
-  Result,
-} from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { queryClient } from "@/lib/queryClient";
 
-/* =====================================================================================
-   HELPERS
-   ===================================================================================== */
+import type { Game, Registration, Result, Tournament } from "@shared/schema";
+
+type Participant = Registration & {
+  username?: string;
+  displayName?: string;
+};
+
+type PrizeRow = {
+  position: number;
+  prize: number;
+};
 
 function formatMoney(amount = 0) {
-  return `₹${(amount / 100).toFixed(2)}`;
+  return `INR ${(amount / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatDate(date: string | Date) {
@@ -79,6 +55,23 @@ function formatDate(date: string | Date) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function normalizeStatus(value: unknown): "hot" | "upcoming" | "live" | "completed" | "cancelled" {
+  const raw = String(value ?? "").toLowerCase().trim();
+  if (raw === "hot") return "hot";
+  if (raw === "upcoming") return "upcoming";
+  if (raw === "live") return "live";
+  if (raw === "completed") return "completed";
+  return "cancelled";
+}
+
+function getStatusBadgeClasses(status: ReturnType<typeof normalizeStatus>) {
+  if (status === "hot") return "bg-amber-500/15 text-amber-300 border-amber-400/60";
+  if (status === "upcoming") return "bg-indigo-500/15 text-indigo-300 border-indigo-400/60";
+  if (status === "live") return "bg-red-500/15 text-red-300 border-red-500/60";
+  if (status === "completed") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/60";
+  return "bg-slate-500/15 text-slate-300 border-slate-400/50";
 }
 
 function getTournamentImage(t: Tournament, g?: Game) {
@@ -101,50 +94,103 @@ function getIGNForGame(slug: string, user: any) {
   }
 }
 
+function parsePrizeDistribution(input: unknown): PrizeRow[] {
+  if (Array.isArray(input)) {
+    return input
+      .map((item: any) => ({
+        position: Number(item?.position),
+        prize: Number(item?.prize),
+      }))
+      .filter((item) => Number.isFinite(item.position) && item.position > 0 && Number.isFinite(item.prize) && item.prize >= 0)
+      .sort((a, b) => a.position - b.position);
+  }
+
+  if (typeof input === "string" && input.trim()) {
+    try {
+      const parsed = JSON.parse(input);
+      return parsePrizeDistribution(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function useCountdown(target: string | Date, status: ReturnType<typeof normalizeStatus>) {
+  const [value, setValue] = useState("");
+
+  useEffect(() => {
+    function tick() {
+      if (status === "completed") {
+        setValue("Completed");
+        return;
+      }
+      if (status === "live") {
+        setValue("LIVE");
+        return;
+      }
+
+      const ms = new Date(target).getTime() - Date.now();
+      if (ms <= 0) {
+        setValue("LIVE");
+        return;
+      }
+
+      const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((ms / (1000 * 60)) % 60);
+      const seconds = Math.floor((ms / 1000) % 60);
+      setValue(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+    }
+
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [target, status]);
+
+  return value;
+}
+
 async function fetchJsonOrThrow<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.message || "Request failed");
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
   }
-  return data as T;
+
+  if (!res.ok) {
+    throw new Error(data?.message || text || `Request failed (${res.status})`);
+  }
+
+  return (data ?? {}) as T;
 }
-/* =====================================================================================
-   MAIN COMPONENT
-   ===================================================================================== */
 
 export default function TournamentDetailPage() {
-  /* ---------------- ROUTING ---------------- */
-
   const { id } = useParams<{ id: string }>();
   const tournamentId = Number(id);
   const [, setLocation] = useLocation();
   const searchString = useSearch();
 
-  /* ---------------- AUTH ---------------- */
-
-  const { user, token } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const { toast } = useToast();
-
-  /* ---------------- STATE ---------------- */
 
   const [joinOpen, setJoinOpen] = useState(false);
   const [ign, setIgn] = useState("");
   const [teamId, setTeamId] = useState<number | null>(null);
   const [bannerImageFailed, setBannerImageFailed] = useState(false);
-
-  /* =====================================================================================
-     QUERIES (ALL SAFE – NO CONDITIONAL HOOKS)
-     ===================================================================================== */
+  const [copiedField, setCopiedField] = useState<"roomId" | "roomPassword" | null>(null);
 
   const tournamentQuery = useQuery<Tournament>({
     queryKey: ["/api/tournaments", tournamentId.toString()],
-    enabled: !!tournamentId,
-    queryFn: async () => {
-      return fetchJsonOrThrow<Tournament>(`/api/tournaments/${tournamentId}`, {
+    enabled: Number.isInteger(tournamentId) && tournamentId > 0,
+    queryFn: async () =>
+      fetchJsonOrThrow<Tournament>(`/api/tournaments/${tournamentId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-    },
+      }),
   });
 
   const gamesQuery = useQuery<Game[]>({
@@ -153,62 +199,132 @@ export default function TournamentDetailPage() {
 
   const registrationsQuery = useQuery<Registration[]>({
     queryKey: ["/api/registrations/my"],
-    enabled: !!user,
-    queryFn: async () => {
-      return fetchJsonOrThrow<Registration[]>("/api/registrations/my", {
+    enabled: !!user && !!token,
+    queryFn: async () =>
+      fetchJsonOrThrow<Registration[]>("/api/registrations/my", {
         headers: { Authorization: `Bearer ${token}` },
-      });
-    },
+      }),
   });
 
   const teamsQuery = useQuery<any[]>({
     queryKey: ["/api/teams/my"],
-    enabled: !!user,
-    queryFn: async () => {
-      return fetchJsonOrThrow<any[]>("/api/teams/my", {
+    enabled: !!user && !!token,
+    queryFn: async () =>
+      fetchJsonOrThrow<any[]>("/api/teams/my", {
         headers: { Authorization: `Bearer ${token}` },
-      });
-    },
+      }),
   });
 
-  const participantsQuery = useQuery<any[]>({
+  const participantsQuery = useQuery<Participant[]>({
     queryKey: ["/api/tournaments", tournamentId.toString(), "participants"],
-    enabled: !!tournamentId,
-    queryFn: async () => {
-      return fetchJsonOrThrow<any[]>(`/api/tournaments/${tournamentId}/participants`);
-    },
+    enabled: Number.isInteger(tournamentId) && tournamentId > 0,
+    queryFn: async () => fetchJsonOrThrow<Participant[]>(`/api/tournaments/${tournamentId}/participants`),
   });
 
   const resultsQuery = useQuery<Result[]>({
     queryKey: ["/api/tournaments", tournamentId.toString(), "results"],
-    enabled: !!tournamentId,
-    queryFn: async () => {
-      return fetchJsonOrThrow<Result[]>(`/api/tournaments/${tournamentId}/results`);
-    },
+    enabled: Number.isInteger(tournamentId) && tournamentId > 0,
+    queryFn: async () => fetchJsonOrThrow<Result[]>(`/api/tournaments/${tournamentId}/results`),
   });
 
-  /* =====================================================================================
-     MUTATION – JOIN
-     ===================================================================================== */
+  const tournament = tournamentQuery.data;
+  const games = gamesQuery.data || [];
+  const registrations = registrationsQuery.data || [];
+  const teams = teamsQuery.data || [];
+  const participants = participantsQuery.data || [];
+  const results = resultsQuery.data || [];
+
+  const game = useMemo(() => games.find((g) => g.id === tournament?.gameId), [games, tournament]);
+  const normalizedStatus = normalizeStatus(tournament?.status);
+  const countdown = useCountdown(tournament?.startTime || new Date(), normalizedStatus);
+  const joined = registrations.some((r) => r.tournamentId === tournament?.id);
+  const isSolo = tournament?.matchType === "solo";
+  const isDuo = tournament?.matchType === "duo";
+  const isSquad = tournament?.matchType === "squad";
+  const canJoinTournament = normalizedStatus === "upcoming" || normalizedStatus === "hot";
+  const walletInsufficient = !!user && !!tournament && tournament.entryFee > 0 && (user.walletBalance || 0) < tournament.entryFee;
+  const prizeDistribution = useMemo(() => parsePrizeDistribution(tournament?.prizeDistribution), [tournament?.prizeDistribution]);
+  const sortedResults = useMemo(() => [...results].sort((a, b) => a.position - b.position), [results]);
+
+  const eligibleTeams = useMemo(() => {
+    if (isDuo) return teams.filter((t) => t.members?.length === 2);
+    if (isSquad) return teams.filter((t) => t.members?.length === 4);
+    return [];
+  }, [teams, isDuo, isSquad]);
+
+  const slotsProgress = useMemo(() => {
+    if (!tournament) return 0;
+    return Math.min(100, (tournament.filledSlots / Math.max(tournament.maxSlots, 1)) * 100);
+  }, [tournament]);
+
+  async function copyToClipboard(value: string, field: "roomId" | "roomPassword") {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1200);
+      toast({ title: "Copied to clipboard" });
+    } catch {
+      toast({ title: "Copy failed", description: "Please copy manually.", variant: "destructive" });
+    }
+  }
+
+  function openJoinModal() {
+    if (!tournament) return;
+    if (!user) {
+      setLocation("/auth");
+      return;
+    }
+    if (joined) {
+      toast({ title: "Already registered" });
+      return;
+    }
+    if (!canJoinTournament) {
+      toast({ title: "Registration closed", description: "This match is no longer accepting entries.", variant: "destructive" });
+      return;
+    }
+    if (walletInsufficient) {
+      toast({
+        title: "Insufficient wallet balance",
+        description: `You need ${formatMoney(tournament.entryFee)} to join this tournament.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isSolo && game?.slug) {
+      setIgn(getIGNForGame(game.slug, user));
+    }
+    setTeamId(null);
+    setJoinOpen(true);
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    if (params.get("action") !== "join") return;
+    if (!tournament || joinOpen || joined) return;
+    openJoinModal();
+  }, [searchString, tournament, joinOpen, joined]);
 
   const joinMutation = useMutation({
     mutationFn: async () => {
-      if (!token) throw new Error("Not authenticated");
+      if (!token) throw new Error("Please login to join.");
       if (!tournament) throw new Error("Tournament not found");
+      if (!canJoinTournament) throw new Error("Registration is closed for this match.");
+      if (walletInsufficient) throw new Error("Insufficient wallet balance.");
+
       if (tournament.matchType === "solo" && !ign.trim()) {
-        throw new Error("Please enter your in-game name");
+        throw new Error("Please enter your in-game name.");
       }
 
-      if (tournament.matchType !== "solo" && !teamId) {
-        throw new Error("Please select a team");
+      if (tournament.matchType !== "solo") {
+        if (!teamId) throw new Error("Please select a team.");
+        if (!eligibleTeams.some((t: any) => Number(t.id) === Number(teamId))) {
+          throw new Error("Selected team is not eligible for this match type.");
+        }
       }
 
-      const payload =
-        tournament?.matchType === "solo"
-          ? { inGameName: ign.trim() }
-          : { teamId };
-
-      const res = await fetch(`/api/tournaments/${tournamentId}/join`, {
+      const payload = tournament.matchType === "solo" ? { inGameName: ign.trim() } : { teamId };
+      return fetchJsonOrThrow<any>(`/api/tournaments/${tournamentId}/join`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -216,12 +332,11 @@ export default function TournamentDetailPage() {
         },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Join failed");
-      return data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data?.user && typeof updateUser === "function") {
+        updateUser(data.user);
+      }
       toast({ title: "Successfully joined tournament" });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] }),
@@ -231,66 +346,14 @@ export default function TournamentDetailPage() {
       ]);
       setJoinOpen(false);
     },
-    onError: (e: any) => {
+    onError: (err: any) => {
       toast({
         title: "Join failed",
-        description: e.message,
+        description: err?.message || "Something went wrong while joining.",
         variant: "destructive",
       });
     },
   });
-
-  /* =====================================================================================
-     SAFE DERIVED DATA
-     ===================================================================================== */
-
-  const tournament = tournamentQuery.data;
-  const games = gamesQuery.data || [];
-  const registrations = registrationsQuery.data || [];
-  const teams = teamsQuery.data || [];
-  const participants = participantsQuery.data || [];
-  const results = resultsQuery.data || [];
-
-  const game = useMemo(
-    () => games.find((g) => g.id === tournament?.gameId),
-    [games, tournament]
-  );
-
-  const joined = registrations.some(
-    (r) => r.tournamentId === tournament?.id
-  );
-
-  const isSolo = tournament?.matchType === "solo";
-  const isDuo = tournament?.matchType === "duo";
-  const isSquad = tournament?.matchType === "squad";
-
-  const eligibleTeams = useMemo(() => {
-    if (isDuo) return teams.filter((t) => t.members?.length === 2);
-    if (isSquad) return teams.filter((t) => t.members?.length === 4);
-    return [];
-  }, [teams, isDuo, isSquad]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchString);
-    const shouldAutoOpenJoin = params.get("action") === "join";
-    if (!shouldAutoOpenJoin || joinOpen || joined || !tournament) return;
-    if (!["upcoming", "hot"].includes(String(tournament.status))) return;
-
-    if (!user) {
-      setLocation("/auth");
-      return;
-    }
-
-    if (isSolo && game?.slug) {
-      setIgn(getIGNForGame(game.slug, user));
-    }
-    setTeamId(null);
-    setJoinOpen(true);
-  }, [searchString, joinOpen, joined, tournament, user, setLocation, isSolo, game]);
-
-  /* =====================================================================================
-     LOADING & ERROR STATES
-     ===================================================================================== */
 
   if (tournamentQuery.isLoading) {
     return (
@@ -302,31 +365,35 @@ export default function TournamentDetailPage() {
     );
   }
 
-  if (!tournament) {
+  if (tournamentQuery.isError || !tournament) {
     return (
-      <div className="text-center py-12">
-        <Button onClick={() => setLocation("/tournaments")}>
-          Back to tournaments
-        </Button>
+      <div className="max-w-3xl mx-auto p-6">
+        <Card className="border-red-500/40 bg-black/40">
+          <CardHeader>
+            <CardTitle>Failed to load tournament</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {(tournamentQuery.error as any)?.message || "Tournament data is currently unavailable."}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => tournamentQuery.refetch()}>Retry</Button>
+              <Button onClick={() => setLocation("/tournaments")}>Back to tournaments</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  /* =====================================================================================
-     UI
-     ===================================================================================== */
-
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-6">
-
-      {/* BACK */}
       <Button variant="ghost" onClick={() => setLocation("/tournaments")}>
         <ArrowLeft className="w-4 h-4 mr-2" /> Back
       </Button>
 
-      {/* BANNER */}
       <Card className="overflow-hidden">
-        <div className="relative h-[300px]">
+        <div className="relative h-[320px]">
           {!bannerImageFailed ? (
             <img
               src={getTournamentImage(tournament, game)}
@@ -342,86 +409,94 @@ export default function TournamentDetailPage() {
               </div>
             </div>
           )}
-          <div className="absolute inset-0 bg-black/70" />
-          <div className="absolute bottom-6 left-6">
-            <Badge className="mb-2">
-              {tournament.matchType.toUpperCase()}
-            </Badge>
-            <h1 className="text-3xl font-bold text-white">
-              {tournament.title}
-            </h1>
-            <p className="text-sm text-gray-300 mt-1">
-              {game?.name}
-            </p>
+
+          <div className="absolute inset-0 bg-black/65" />
+          <div className="absolute bottom-6 left-6 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-black/55 border border-white/20">{tournament.matchType.toUpperCase()}</Badge>
+              <Badge variant="outline" className={getStatusBadgeClasses(normalizedStatus)}>
+                {normalizedStatus.toUpperCase()}
+              </Badge>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">{tournament.title}</h1>
+            <p className="text-sm text-gray-300">{game?.name || "Unknown Game"}</p>
           </div>
         </div>
       </Card>
 
-      {/* STATS */}
       <Card>
         <CardContent className="space-y-4 p-4">
-          <Progress
-            value={(tournament.filledSlots / tournament.maxSlots) * 100}
-          />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div><Users className="inline w-4 h-4" /> {tournament.filledSlots}/{tournament.maxSlots}</div>
-            <div><Wallet className="inline w-4 h-4" /> {formatMoney(tournament.entryFee)}</div>
-            <div><Trophy className="inline w-4 h-4" /> {formatMoney(tournament.prizePool)}</div>
-            <div><Clock className="inline w-4 h-4" /> {formatDate(tournament.startTime)}</div>
+          <Progress value={slotsProgress} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+            <div><Users className="inline w-4 h-4 mr-1" /> {tournament.filledSlots}/{tournament.maxSlots}</div>
+            <div><Wallet className="inline w-4 h-4 mr-1" /> {formatMoney(tournament.entryFee)}</div>
+            <div><Trophy className="inline w-4 h-4 mr-1" /> {formatMoney(tournament.prizePool)}</div>
+            <div><Clock className="inline w-4 h-4 mr-1" /> {formatDate(tournament.startTime)}</div>
+            <div><Swords className="inline w-4 h-4 mr-1" /> {countdown}</div>
           </div>
 
+          {walletInsufficient && canJoinTournament && (
+            <p className="text-sm text-red-300">
+              Wallet balance is low. Required: {formatMoney(tournament.entryFee)}.
+            </p>
+          )}
+
           <Button
-            disabled={joined}
-            onClick={() => {
-              if (!user) {
-                setLocation("/auth");
-                return;
-              }
-              if (isSolo && game?.slug) {
-                setIgn(getIGNForGame(game.slug, user));
-              }
-              setTeamId(null);
-              setJoinOpen(true);
-            }}
+            disabled={joined || !canJoinTournament || joinMutation.isPending}
+            onClick={openJoinModal}
           >
-            {joined ? "Registered" : "Join Tournament"}
+            {joined ? "Registered" : !canJoinTournament ? "Registration Closed" : "Join Tournament"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* ROOM DETAILS */}
-      {tournament.status === "live" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="w-5 h-5" /> Room Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {tournament.roomId && tournament.roomPassword ? (
-              <>
-                <p>Room ID: <b>{tournament.roomId}</b></p>
-                <p>Password: <b>{tournament.roomPassword}</b></p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Room credentials are available only for joined players and admins.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* RULES */}
       <Card>
-        <CardHeader><CardTitle>Rules</CardTitle></CardHeader>
-        <CardContent className="whitespace-pre-line">
-          {tournament.rules?.trim() || "Rules will be announced by admin soon."}
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="w-5 h-5" /> Room Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {normalizedStatus !== "live" && (
+            <div className="rounded-md border border-white/10 bg-black/35 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-white/80 mb-1">Locked before live</p>
+              Room ID and Password will unlock once the match is live.
+            </div>
+          )}
+
+          {normalizedStatus === "live" && tournament.roomId && tournament.roomPassword && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                <span className="text-sm text-red-200">Room ID</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-semibold text-white">{tournament.roomId}</span>
+                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomId!, "roomId")}>
+                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                    {copiedField === "roomId" ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                <span className="text-sm text-red-200">Password</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-semibold text-white">{tournament.roomPassword}</span>
+                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomPassword!, "roomPassword")}>
+                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                    {copiedField === "roomPassword" ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {normalizedStatus === "live" && (!tournament.roomId || !tournament.roomPassword) && (
+            <p className="text-sm text-muted-foreground">
+              Room credentials are protected. Join this tournament to unlock access.
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* DESCRIPTION */}
       <Card>
         <CardHeader><CardTitle>Description</CardTitle></CardHeader>
         <CardContent className="whitespace-pre-line">
@@ -429,103 +504,165 @@ export default function TournamentDetailPage() {
         </CardContent>
       </Card>
 
-      {/* PRIZE DISTRIBUTION */}
+      <Card>
+        <CardHeader><CardTitle>Rules</CardTitle></CardHeader>
+        <CardContent className="whitespace-pre-line">
+          {tournament.rules?.trim() || "Rules will be announced by admin soon."}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Participants ({participants.length}/{tournament.maxSlots})</CardTitle></CardHeader>
+        <CardContent className="max-h-[320px] overflow-y-auto space-y-2">
+          {participantsQuery.isLoading && (
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <Skeleton key={idx} className="h-9 w-full" />
+              ))}
+            </div>
+          )}
+
+          {participantsQuery.isError && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-300">Failed to load participants.</p>
+              <Button variant="outline" size="sm" onClick={() => participantsQuery.refetch()}>Retry</Button>
+            </div>
+          )}
+
+          {!participantsQuery.isLoading && !participantsQuery.isError && participants.length === 0 && (
+            <p className="text-sm text-muted-foreground">No participants yet.</p>
+          )}
+
+          {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p) => (
+            <div key={p.id} className="flex items-center justify-between text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
+              <span>{p.displayName || p.username || `Player #${p.userId}`}</span>
+              <Badge variant="outline">Joined</Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>Prize Distribution</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {Array.isArray(tournament.prizeDistribution) && tournament.prizeDistribution.length > 0 ? (
-            tournament.prizeDistribution.map((p: any) => (
-              <div key={p.position} className="flex justify-between">
-                <span>#{p.position}</span>
-                <span>{formatMoney(p.prize)}</span>
-              </div>
-            ))
-          ) : (
+          {prizeDistribution.length === 0 && (
             <p className="text-sm text-muted-foreground">Prize split will be updated before match starts.</p>
           )}
+          {prizeDistribution.map((p) => (
+            <div key={p.position} className="flex items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-2">
+              <span className="flex items-center gap-2">
+                {p.position === 1 && <Crown className="w-4 h-4 text-yellow-300" />}
+                {p.position === 2 && <Trophy className="w-4 h-4 text-slate-300" />}
+                {p.position === 3 && <Trophy className="w-4 h-4 text-amber-500" />}
+                #{p.position}
+              </span>
+              <span className="font-semibold">{formatMoney(p.prize)}</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
-      {/* PARTICIPANTS */}
-      <Card>
-        <CardHeader><CardTitle>Participants</CardTitle></CardHeader>
-        <CardContent className="max-h-[300px] overflow-y-auto space-y-2">
-          {participants.length > 0 ? (
-            participants.map((p: any) => (
-              <div key={p.id} className="flex justify-between text-sm">
-                <span>{p.username || p.displayName}</span>
-                <Badge variant="outline">Joined</Badge>
+      {normalizedStatus === "completed" && (
+        <Card>
+          <CardHeader><CardTitle>Winners</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {resultsQuery.isLoading && (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <Skeleton key={idx} className="h-10 w-full" />
+                ))}
               </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No participants yet.</p>
-          )}
-        </CardContent>
-      </Card>
+            )}
 
-      {/* RESULTS */}
-      <Card>
-        <CardHeader><CardTitle>Winners</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          {tournament.status !== "completed" ? (
-            <p className="text-sm text-muted-foreground">Winners will be visible after tournament completion.</p>
-          ) : results.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Results will be updated soon.</p>
-          ) : (
-            results.map((r) => (
-              <div key={r.id} className="flex justify-between">
-                <span>#{r.position}</span>
-                <span>{formatMoney(r.prize)}</span>
+            {resultsQuery.isError && (
+              <div className="space-y-2">
+                <p className="text-sm text-red-300">Failed to load results.</p>
+                <Button variant="outline" size="sm" onClick={() => resultsQuery.refetch()}>Retry</Button>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            )}
 
-      {/* JOIN MODAL */}
+            {!resultsQuery.isLoading && !resultsQuery.isError && sortedResults.length === 0 && (
+              <p className="text-sm text-muted-foreground">Results will be updated soon.</p>
+            )}
+
+            {!resultsQuery.isLoading && !resultsQuery.isError && sortedResults.map((r) => (
+              <div
+                key={r.id}
+                className={`flex items-center justify-between rounded-md border px-3 py-2 ${r.position === 1 ? "border-yellow-400/60 bg-yellow-500/10" : "border-white/10 bg-black/25"}`}
+              >
+                <span className="font-medium">Rank #{r.position}</span>
+                <div className="text-right">
+                  <p className="font-semibold">{formatMoney(r.prize)}</p>
+                  <p className="text-xs text-muted-foreground">Kills: {r.kills}</p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Join Tournament</DialogTitle>
+            <DialogTitle>Confirm Tournament Join</DialogTitle>
           </DialogHeader>
 
-          {isSolo && (
-            <>
-              <Label>In-Game Name</Label>
-              <Input value={ign} onChange={(e) => setIgn(e.target.value)} />
-            </>
-          )}
+          <div className="space-y-3 text-sm">
+            <div className="rounded-md border border-white/10 bg-black/25 p-3">
+              <p className="font-medium">{tournament.title}</p>
+              <p className="text-muted-foreground mt-1">Entry Fee: {formatMoney(tournament.entryFee)}</p>
+              <p className="text-muted-foreground">Prize Pool: {formatMoney(tournament.prizePool)}</p>
+            </div>
 
-          {(isDuo || isSquad) && (
-            <>
-              <Label>Select Team</Label>
-              <select
-                className="w-full border rounded px-3 py-2"
-                value={teamId ?? ""}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setTeamId(value ? Number(value) : null);
-                }}
-              >
-                <option value="">Select team</option>
-                {eligibleTeams.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </>
-          )}
+            {isSolo && (
+              <div className="space-y-1.5">
+                <Label>In-Game Name</Label>
+                <Input value={ign} onChange={(e) => setIgn(e.target.value)} placeholder="Enter IGN" />
+              </div>
+            )}
+
+            {(isDuo || isSquad) && (
+              <div className="space-y-1.5">
+                <Label>Select Team</Label>
+                <select
+                  className="w-full border rounded px-3 py-2 bg-background"
+                  value={teamId ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTeamId(value ? Number(value) : null);
+                  }}
+                >
+                  <option value="">Select team</option>
+                  {eligibleTeams.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                {eligibleTeams.length === 0 && (
+                  <p className="text-xs text-red-300">
+                    No eligible teams found for this match type. Create or update a team first.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setJoinOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => joinMutation.mutate()}>
+            <Button
+              onClick={() => joinMutation.mutate()}
+              disabled={
+                joinMutation.isPending ||
+                (isSolo && !ign.trim()) ||
+                ((isDuo || isSquad) && !teamId)
+              }
+            >
               {joinMutation.isPending ? "Joining..." : "Confirm Join"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
