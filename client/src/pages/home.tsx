@@ -9,7 +9,6 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  Fragment,
 } from "react";
 
 import { useQuery } from "@tanstack/react-query";
@@ -23,10 +22,15 @@ import {
   Clock,
   Flame,
   Sparkles,
-  Zap,
-  Crown,
   Shield,
   Swords,
+  Activity,
+  Radio,
+  BarChart3,
+  CalendarDays,
+  TrendingUp,
+  Target,
+  Award,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,18 +39,11 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 
-import type { Tournament, Game } from "@shared/schema";
+import type { Tournament, Game, Banner } from "@shared/schema";
 
 /* =====================================================================================
    GLOBAL CONSTANTS
    ===================================================================================== */
-
-const STATUS_COLOR: Record<string, string> = {
-  upcoming: "bg-indigo-500/15 text-indigo-400 border-indigo-500/40",
-  live: "bg-red-500/15 text-red-400 border-red-500/40",
-  completed: "bg-emerald-500/15 text-emerald-400 border-emerald-500/40",
-  cancelled: "bg-muted text-muted-foreground",
-};
 
 const MATCH_COLOR: Record<string, string> = {
   solo: "from-emerald-500/20 to-emerald-900/40",
@@ -60,6 +57,15 @@ const MATCH_COLOR: Record<string, string> = {
 
 function formatMoney(v: number) {
   return `₹${(v / 100).toLocaleString("en-IN")}`;
+}
+
+function formatDateTime(value: string | Date) {
+  return new Date(value).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /* =====================================================================================
@@ -305,6 +311,26 @@ export default function TournamentsPageGod() {
     queryKey: ["/api/games"],
   });
 
+  const { data: banners = [] } = useQuery<Banner[]>({
+    queryKey: ["/api/banners"],
+    retry: false,
+  });
+
+  const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const interval = setInterval(() => {
+      setBannerIndex((prev) => (prev + 1) % banners.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [banners.length]);
+
+  const gameById = useMemo(() => {
+    return new Map(games.map((g) => [g.id, g]));
+  }, [games]);
+
   const gameNameById = useMemo(() => {
     return new Map(games.map((g) => [g.id, g.name.toLowerCase()]));
   }, [games]);
@@ -371,6 +397,84 @@ const liveTournaments = useMemo(
   [sortedVisibleTournaments]
 );
 
+const upcomingTimeline = useMemo(
+  () =>
+    [...sortedVisibleTournaments]
+      .filter((t) => t.status === "upcoming")
+      .slice(0, 6),
+  [sortedVisibleTournaments]
+);
+
+const completedTournaments = useMemo(
+  () =>
+    [...sortedVisibleTournaments]
+      .filter((t) => t.status === "completed")
+      .slice(0, 3),
+  [sortedVisibleTournaments]
+);
+
+const featuredLiveTournament = useMemo(
+  () => liveTournaments[0] ?? null,
+  [liveTournaments]
+);
+
+const arenaStats = useMemo(() => {
+  const totalPrizePool = normalizedTournaments.reduce((sum, t) => sum + t.prizePool, 0);
+  const totalEntryPool = normalizedTournaments.reduce((sum, t) => sum + t.entryFee * t.filledSlots, 0);
+  const totalPlayers = normalizedTournaments.reduce((sum, t) => sum + t.filledSlots, 0);
+
+  return {
+    totalPrizePool,
+    totalEntryPool,
+    totalPlayers,
+    liveCount: normalizedTournaments.filter((t) => t.status === "live").length,
+    upcomingCount: normalizedTournaments.filter((t) => t.status === "upcoming").length,
+    completionRate:
+      normalizedTournaments.length === 0
+        ? 0
+        : Math.round(
+            (normalizedTournaments.filter((t) => t.status === "completed").length /
+              normalizedTournaments.length) *
+              100
+          ),
+  };
+}, [normalizedTournaments]);
+
+const gameHeatBoard = useMemo(() => {
+  const byGame = new Map<
+    number,
+    { gameId: number; gameName: string; count: number; liveCount: number; totalPrizePool: number }
+  >();
+
+  normalizedTournaments.forEach((t) => {
+    const game = gameById.get(t.gameId);
+    const gameName = game?.name ?? `Game #${t.gameId}`;
+    const current = byGame.get(t.gameId);
+    if (current) {
+      current.count += 1;
+      current.totalPrizePool += t.prizePool;
+      if (t.status === "live") current.liveCount += 1;
+      return;
+    }
+
+    byGame.set(t.gameId, {
+      gameId: t.gameId,
+      gameName,
+      count: 1,
+      liveCount: t.status === "live" ? 1 : 0,
+      totalPrizePool: t.prizePool,
+    });
+  });
+
+  return Array.from(byGame.values())
+    .sort((a, b) => {
+      if (b.liveCount !== a.liveCount) return b.liveCount - a.liveCount;
+      if (b.count !== a.count) return b.count - a.count;
+      return b.totalPrizePool - a.totalPrizePool;
+    })
+    .slice(0, 6);
+}, [normalizedTournaments, gameById]);
+
 
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
@@ -435,37 +539,110 @@ const fadeUp = {
          HERO SECTION
          ================================================================================= */}
 
-      <section className="relative px-6 pt-28 pb-24 max-w-7xl mx-auto text-center">
+      <section className="relative px-6 pt-28 pb-24 max-w-7xl mx-auto">
         <motion.div
           initial="hidden"
           animate="visible"
           variants={heroMotion}
           transition={{ duration: 0.8 }}
+          className="text-center"
         >
           <Badge className="mb-4 px-4 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-            ⚡ Competitive Arena
+            PRO LEAGUE CONTROL ROOM
           </Badge>
 
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
-            DOMINATE THE
+            BATTLE NEST
             <span className="block bg-gradient-to-r from-indigo-400 to-fuchsia-500 bg-clip-text text-transparent">
-              TOURNAMENT GRID
+              ESPORTS ARENA
             </span>
           </h1>
 
           <p className="mt-6 text-muted-foreground max-w-2xl mx-auto">
-  Browse high-stakes esports tournaments. Solo, Duo, Squad.
-  Massive prize pools. Real competition.
-</p>
+            Real-time brackets, live entries, and high-stakes tournaments.
+            Track the pulse of every lobby from one command center.
+          </p>
 
-<div className="mt-8">
-  <Link href="/tournaments">
-    <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
-      Browse Tournaments
-    </button>
-  </Link>
-</div>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/tournaments">
+              <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
+                Enter Tournament Hub
+              </button>
+            </Link>
+            <Link href="/wallet">
+              <button className="px-6 py-3 rounded-lg border border-white/20 bg-black/40 font-semibold hover:bg-black/60 transition">
+                Manage Wallet
+              </button>
+            </Link>
+          </div>
         </motion.div>
+
+        <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card className="border-indigo-500/30 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-indigo-300 text-xs mb-1">
+                <Trophy className="w-3.5 h-3.5" /> Prize Pool
+              </div>
+              <p className="text-xl font-bold">{formatMoney(arenaStats.totalPrizePool)}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-red-500/30 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-red-300 text-xs mb-1">
+                <Radio className="w-3.5 h-3.5" /> Live Now
+              </div>
+              <p className="text-xl font-bold">{arenaStats.liveCount}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-emerald-500/30 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-emerald-300 text-xs mb-1">
+                <Users className="w-3.5 h-3.5" /> Active Players
+              </div>
+              <p className="text-xl font-bold">{arenaStats.totalPlayers.toLocaleString("en-IN")}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-fuchsia-500/30 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-fuchsia-300 text-xs mb-1">
+                <TrendingUp className="w-3.5 h-3.5" /> Completion Rate
+              </div>
+              <p className="text-xl font-bold">{arenaStats.completionRate}%</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {banners.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25, duration: 0.6 }}
+            className="mt-10"
+          >
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+              <img
+                src={banners[bannerIndex]?.imageUrl}
+                className="h-44 md:h-56 w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
+              <div className="absolute left-4 bottom-4 md:left-6 md:bottom-6 text-left">
+                <p className="text-[11px] uppercase tracking-widest text-indigo-300">Official Broadcast Banner</p>
+                <p className="text-lg md:text-2xl font-bold">{banners[bannerIndex]?.title || "Battle Nest Event Spotlight"}</p>
+              </div>
+              <div className="absolute right-4 bottom-4 flex items-center gap-1">
+                {banners.map((b, idx) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    aria-label={`Switch to banner ${idx + 1}`}
+                    onClick={() => setBannerIndex(idx)}
+                    className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/50"}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </section>
 
       {/* =================================================================================
@@ -605,6 +782,157 @@ const fadeUp = {
           </div>
         </section>
       )}
+
+      <section className="px-6 pb-16 max-w-7xl mx-auto">
+        <div className="grid gap-6 lg:grid-cols-[1.35fr_1fr]">
+          <Card className="border-red-500/30 bg-gradient-to-br from-red-950/30 via-black/70 to-black/80 backdrop-blur-xl overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <p className="text-[11px] tracking-widest uppercase text-red-300">Live Command Center</p>
+                  <h3 className="text-2xl font-bold">Arena Pulse</h3>
+                </div>
+                <Badge className="border-red-500/40 bg-red-500/10 text-red-300">
+                  <Activity className="w-3 h-3 mr-1.5" />
+                  {arenaStats.liveCount} LIVE
+                </Badge>
+              </div>
+
+              {featuredLiveTournament ? (
+                <>
+                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          {gameById.get(featuredLiveTournament.gameId)?.name || "Unknown Game"}
+                        </p>
+                        <h4 className="text-xl font-bold">{featuredLiveTournament.title}</h4>
+                      </div>
+                      <Badge className="capitalize bg-red-500/15 text-red-300 border-red-500/40">
+                        <Radio className="w-3 h-3 mr-1.5" />
+                        {featuredLiveTournament.matchType}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
+                        <p className="text-muted-foreground">Start</p>
+                        <p className="font-semibold">{formatDateTime(featuredLiveTournament.startTime)}</p>
+                      </div>
+                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
+                        <p className="text-muted-foreground">Entry</p>
+                        <p className="font-semibold">{featuredLiveTournament.entryFee > 0 ? formatMoney(featuredLiveTournament.entryFee) : "FREE"}</p>
+                      </div>
+                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
+                        <p className="text-muted-foreground">Prize</p>
+                        <p className="font-semibold">{formatMoney(featuredLiveTournament.prizePool)}</p>
+                      </div>
+                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
+                        <p className="text-muted-foreground">Slots</p>
+                        <p className="font-semibold">{featuredLiveTournament.filledSlots}/{featuredLiveTournament.maxSlots}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <Progress value={(featuredLiveTournament.filledSlots / featuredLiveTournament.maxSlots) * 100} className="h-2" />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Total entry pool in ecosystem: <span className="text-emerald-300 font-semibold">{formatMoney(arenaStats.totalEntryPool)}</span>
+                    </p>
+                    <Link href={`/tournaments/${featuredLiveTournament.id}`}>
+                      <button className="px-4 py-2 text-xs rounded-md border border-red-400/50 text-red-200 hover:bg-red-500/20 transition">
+                        Spectate Tournament
+                      </button>
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-6 text-center">
+                  <p className="text-sm text-muted-foreground">No live tournament right now. Upcoming events are ready below.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6">
+            <Card className="border-indigo-500/30 bg-black/50 backdrop-blur-xl">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-bold flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-indigo-300" />
+                    Match Schedule
+                  </h4>
+                  <span className="text-xs text-indigo-300">{arenaStats.upcomingCount} upcoming</span>
+                </div>
+                <div className="space-y-3">
+                  {upcomingTimeline.length > 0 ? (
+                    upcomingTimeline.map((t) => (
+                      <Link key={t.id} href={`/tournaments/${t.id}`}>
+                        <div className="rounded-lg border border-white/10 bg-black/40 p-3 hover:border-indigo-400/40 transition cursor-pointer">
+                          <p className="text-sm font-semibold truncate">{t.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(t.startTime)}</p>
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No upcoming matches in current filter.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-fuchsia-500/30 bg-black/50 backdrop-blur-xl">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-bold flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-fuchsia-300" />
+                    Game Heatmap
+                  </h4>
+                  <Target className="w-4 h-4 text-fuchsia-300" />
+                </div>
+                <div className="space-y-3">
+                  {gameHeatBoard.length > 0 ? (
+                    gameHeatBoard.map((g) => {
+                      const ratio = normalizedTournaments.length > 0 ? (g.count / normalizedTournaments.length) * 100 : 0;
+                      return (
+                        <div key={g.gameId}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-semibold">{g.gameName}</span>
+                            <span className="text-muted-foreground">{g.count} matches</span>
+                          </div>
+                          <Progress value={ratio} className="h-1.5" />
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No game data yet.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {completedTournaments.length > 0 && (
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {completedTournaments.map((t) => (
+              <Link key={t.id} href={`/tournaments/${t.id}`}>
+                <Card className="border-emerald-500/30 bg-black/50 backdrop-blur-xl hover:border-emerald-400/60 transition cursor-pointer">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-emerald-300 mb-1 flex items-center gap-1.5">
+                      <Award className="w-3 h-3" /> Completed Final
+                    </p>
+                    <p className="font-semibold truncate">{t.title}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Prize: {formatMoney(t.prizePool)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* =================================================================================
          MAIN GRID SECTION HEADER
