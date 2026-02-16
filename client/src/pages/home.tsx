@@ -24,6 +24,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Banner, Game, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live";
+type PromoSlide = {
+  id: string | number;
+  title: string;
+  subtitle: string;
+  imageUrl?: string | null;
+  linkUrl?: string | null;
+  tone?: string;
+  ctaLabel?: string;
+};
 
 const SHOWCASE_THEME: Record<ShowcaseStatus, { edge: string; chip: string; glow: string; label: string }> = {
   hot: {
@@ -51,6 +60,33 @@ const PLACEHOLDER_GRADIENT: Record<string, string> = {
   upcoming: "from-indigo-700/60 via-violet-700/45 to-black",
   live: "from-red-700/60 via-rose-700/45 to-black",
 };
+
+const PROMO_PLACEHOLDERS: PromoSlide[] = [
+  {
+    id: "promo-ph-1",
+    title: "Weekend BGMI Showdown",
+    subtitle: "Top squads clash for glory and bigger rewards in Battle Nest.",
+    tone: "from-indigo-700/55 via-blue-700/45 to-slate-900",
+    linkUrl: "/tournaments",
+    ctaLabel: "Join Battles",
+  },
+  {
+    id: "promo-ph-2",
+    title: "Creator Cup Live Soon",
+    subtitle: "Watch hot creators lead teams into high-pressure elimination rounds.",
+    tone: "from-fuchsia-700/50 via-purple-700/45 to-slate-900",
+    linkUrl: "/tournaments",
+    ctaLabel: "View Hot Matches",
+  },
+  {
+    id: "promo-ph-3",
+    title: "Squad Rush Cash Battles",
+    subtitle: "Enter upcoming matches and turn your squad chemistry into payouts.",
+    tone: "from-amber-700/50 via-orange-700/40 to-slate-900",
+    linkUrl: "/tournaments",
+    ctaLabel: "Browse Tournaments",
+  },
+];
 
 function formatMoney(value: number) {
   return `INR ${(value / 100).toLocaleString("en-IN")}`;
@@ -320,13 +356,33 @@ export default function HomePage() {
     retry: false,
   });
 
+  const promoSlides = useMemo<PromoSlide[]>(
+    () =>
+      banners.length > 0
+        ? banners.map((banner) => ({
+            id: banner.id,
+            title: banner.title || "Battle Nest Featured Match",
+            subtitle: "Compete, stream, and win in premium esports tournaments.",
+            imageUrl: banner.imageUrl,
+            linkUrl: banner.linkUrl,
+            ctaLabel: "Open Promotion",
+          }))
+        : PROMO_PLACEHOLDERS,
+    [banners]
+  );
+
   useEffect(() => {
-    if (banners.length <= 1) return;
+    if (promoSlides.length <= 1) return;
     const timer = setInterval(() => {
-      setBannerIndex((prev) => (prev + 1) % banners.length);
+      setBannerIndex((prev) => (prev + 1) % promoSlides.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [promoSlides.length]);
+
+  useEffect(() => {
+    if (bannerIndex < promoSlides.length) return;
+    setBannerIndex(0);
+  }, [bannerIndex, promoSlides.length]);
 
   const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
 
@@ -372,6 +428,10 @@ export default function HomePage() {
       totalPayout: normalizedTournaments.reduce((sum, t) => sum + (t.status === "completed" ? t.prizePool : 0), 0),
     };
   }, [normalizedTournaments]);
+
+  const activeSlide = promoSlides[bannerIndex] ?? promoSlides[0];
+  const bannerHref = activeSlide?.linkUrl || "/tournaments";
+  const isExternalBannerLink = /^https?:\/\//i.test(bannerHref);
 
   return (
     <div className="relative min-h-screen bg-black text-white overflow-hidden">
@@ -441,33 +501,54 @@ export default function HomePage() {
           </Card>
         </div>
 
-        {banners.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="mt-8"
-          >
-            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40">
-              <img src={banners[bannerIndex]?.imageUrl} className="h-44 md:h-56 w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
-              <div className="absolute left-4 bottom-4 md:left-6 md:bottom-6">
-                <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Banner</p>
-                <p className="text-lg md:text-2xl font-bold">{banners[bannerIndex]?.title || "Battle Nest Showcase"}</p>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="mt-8"
+        >
+          <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40">
+            {activeSlide?.imageUrl ? (
+              <img src={activeSlide.imageUrl} alt={activeSlide.title} className="h-44 md:h-56 w-full object-cover" />
+            ) : (
+              <div className={`h-44 md:h-56 w-full bg-gradient-to-r ${activeSlide?.tone || "from-indigo-700/50 via-slate-800/60 to-black"} flex items-center justify-center`}>
+                <Shield className="w-10 h-10 text-white/70" />
               </div>
-              <div className="absolute right-4 bottom-4 flex items-center gap-1">
-                {banners.map((banner, idx) => (
-                  <button
-                    key={banner.id}
-                    onClick={() => setBannerIndex(idx)}
-                    className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/55"}`}
-                    aria-label={`Switch banner ${idx + 1}`}
-                  />
-                ))}
-              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
+            <div className="absolute left-4 bottom-4 md:left-6 md:bottom-6 max-w-xl">
+              <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Promotion</p>
+              <p className="text-lg md:text-2xl font-bold">{activeSlide?.title || "Battle Nest Showcase"}</p>
+              <p className="text-xs md:text-sm text-white/80 mt-1">{activeSlide?.subtitle}</p>
+              {isExternalBannerLink ? (
+                <a
+                  href={bannerHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex mt-3 px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition"
+                >
+                  {activeSlide?.ctaLabel || "Explore"}
+                </a>
+              ) : (
+                <Link href={bannerHref}>
+                  <button className="mt-3 px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition">
+                    {activeSlide?.ctaLabel || "Explore"}
+                  </button>
+                </Link>
+              )}
             </div>
-          </motion.div>
-        )}
+            <div className="absolute right-4 bottom-4 flex items-center gap-1">
+              {promoSlides.map((slide, idx) => (
+                <button
+                  key={slide.id}
+                  onClick={() => setBannerIndex(idx)}
+                  className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/55"}`}
+                  aria-label={`Switch banner ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">

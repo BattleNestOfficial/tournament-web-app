@@ -916,15 +916,17 @@ function BannerManager({ token }: { token: string | null }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h3 className="text-lg font-semibold">Home Banners</h3>
-          <p className="text-sm text-muted-foreground">{bannerCount}/5 banners uploaded. These display as a sliding carousel on the home page.</p>
+          <h3 className="text-lg font-semibold">Promotional Home Carousel</h3>
+          <p className="text-sm text-muted-foreground">
+            {bannerCount}/5 banners uploaded. Add promotional ads, sponsor creatives, or featured-match banners. Home rotates these automatically every 5 seconds.
+          </p>
         </div>
       </div>
 
       {canAdd && (
         <Card>
           <CardContent className="p-4 space-y-3">
-            <p className="text-sm font-medium">Add New Banner</p>
+            <p className="text-sm font-medium">Add New Promo Banner</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Title (optional)</Label>
@@ -948,7 +950,7 @@ function BannerManager({ token }: { token: string | null }) {
                 data-testid="input-upload-banner"
               />
               <Button type="button" variant="outline" className="gap-1.5 pointer-events-none" tabIndex={-1} disabled={uploading}>
-                <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Banner Image"}
+                <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Promo Image"}
               </Button>
             </label>
             <p className="text-[11px] text-muted-foreground">Recommended: 1200x400px or wider. JPG, PNG, GIF, WebP. Max 5MB.</p>
@@ -1001,7 +1003,7 @@ function BannerManager({ token }: { token: string | null }) {
         <Card>
           <CardContent className="p-8 text-center">
             <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground text-sm">No banners uploaded yet. Add up to 5 banners for the home page carousel.</p>
+            <p className="text-muted-foreground text-sm">No banners uploaded yet. Add up to 5 promo banners for the home page carousel.</p>
           </CardContent>
         </Card>
       )}
