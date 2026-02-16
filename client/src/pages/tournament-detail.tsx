@@ -136,7 +136,7 @@ export default function TournamentDetailPage() {
      ===================================================================================== */
 
   const tournamentQuery = useQuery<Tournament>({
-    queryKey: ["tournament", tournamentId],
+    queryKey: ["/api/tournaments", tournamentId.toString()],
     enabled: !!tournamentId,
     queryFn: async () => {
       return fetchJsonOrThrow<Tournament>(`/api/tournaments/${tournamentId}`, {
@@ -146,11 +146,11 @@ export default function TournamentDetailPage() {
   });
 
   const gamesQuery = useQuery<Game[]>({
-    queryKey: ["games"],
+    queryKey: ["/api/games"],
   });
 
   const registrationsQuery = useQuery<Registration[]>({
-    queryKey: ["my-registrations"],
+    queryKey: ["/api/registrations/my"],
     enabled: !!user,
     queryFn: async () => {
       return fetchJsonOrThrow<Registration[]>("/api/registrations/my", {
@@ -160,7 +160,7 @@ export default function TournamentDetailPage() {
   });
 
   const teamsQuery = useQuery<any[]>({
-    queryKey: ["my-teams"],
+    queryKey: ["/api/teams/my"],
     enabled: !!user,
     queryFn: async () => {
       return fetchJsonOrThrow<any[]>("/api/teams/my", {
@@ -170,7 +170,7 @@ export default function TournamentDetailPage() {
   });
 
   const participantsQuery = useQuery<any[]>({
-    queryKey: ["participants", tournamentId],
+    queryKey: ["/api/tournaments", tournamentId.toString(), "participants"],
     enabled: !!tournamentId,
     queryFn: async () => {
       return fetchJsonOrThrow<any[]>(`/api/tournaments/${tournamentId}/participants`);
@@ -178,7 +178,7 @@ export default function TournamentDetailPage() {
   });
 
   const resultsQuery = useQuery<Result[]>({
-    queryKey: ["results", tournamentId],
+    queryKey: ["/api/tournaments", tournamentId.toString(), "results"],
     enabled: !!tournamentId,
     queryFn: async () => {
       return fetchJsonOrThrow<Result[]>(`/api/tournaments/${tournamentId}/results`);
@@ -193,6 +193,9 @@ export default function TournamentDetailPage() {
     mutationFn: async () => {
       if (!token) throw new Error("Not authenticated");
       if (!tournament) throw new Error("Tournament not found");
+      if (tournament.matchType === "solo" && !ign.trim()) {
+        throw new Error("Please enter your in-game name");
+      }
 
       if (tournament.matchType !== "solo" && !teamId) {
         throw new Error("Please select a team");
@@ -200,7 +203,7 @@ export default function TournamentDetailPage() {
 
       const payload =
         tournament?.matchType === "solo"
-          ? { inGameName: ign }
+          ? { inGameName: ign.trim() }
           : { teamId };
 
       const res = await fetch(`/api/tournaments/${tournamentId}/join`, {
@@ -216,9 +219,14 @@ export default function TournamentDetailPage() {
       if (!res.ok) throw new Error(data.message || "Join failed");
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast({ title: "Successfully joined tournament" });
-      queryClient.invalidateQueries();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId.toString()] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/registrations/my"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId.toString(), "participants"] }),
+      ]);
       setJoinOpen(false);
     },
     onError: (e: any) => {
@@ -450,7 +458,10 @@ export default function TournamentDetailPage() {
               <select
                 className="w-full border rounded px-3 py-2"
                 value={teamId ?? ""}
-                onChange={(e) => setTeamId(Number(e.target.value))}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setTeamId(value ? Number(value) : null);
+                }}
               >
                 <option value="">Select team</option>
                 {eligibleTeams.map((t: any) => (

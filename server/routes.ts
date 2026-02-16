@@ -229,11 +229,24 @@ app.get(
     try {
       const userId = (req as any).userId ?? null;
       const userRole = (req as any).userRole ?? "user";
+      const statusFilterRaw = typeof req.query.status === "string" ? req.query.status : "";
+      const searchRaw = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
+      const validStatuses = new Set(["upcoming", "live", "completed", "cancelled"]);
+      const statusFilter = statusFilterRaw
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => validStatuses.has(s));
 
       const tournaments = await storage.getAllTournaments();
+      const filteredTournaments = tournaments.filter((t) => {
+        const normalizedStatus = validStatuses.has(String(t.status)) ? String(t.status) : "upcoming";
+        const statusMatches = statusFilter.length === 0 || statusFilter.includes(normalizedStatus);
+        const searchMatches = !searchRaw || t.title.toLowerCase().includes(searchRaw);
+        return statusMatches && searchMatches;
+      });
 
       const result = await Promise.all(
-        tournaments.map(async (t) => {
+        filteredTournaments.map(async (t) => {
           let isJoined = false;
 
           if (userId) {
@@ -241,12 +254,14 @@ app.get(
             isJoined = !!reg;
           }
 
+          const normalizedStatus = validStatuses.has(String(t.status)) ? t.status : "upcoming";
           const canSeeRoom =
             userRole === "admin" ||
-            (isJoined && t.status === "live");
+            (isJoined && normalizedStatus === "live");
 
           return {
             ...t,
+            status: normalizedStatus,
             roomId: canSeeRoom ? t.roomId : null,
             roomPassword: canSeeRoom ? t.roomPassword : null,
           };
@@ -284,12 +299,18 @@ app.get(
       }
 
       // ✅ FINAL ACCESS RULE
+      const normalizedStatus =
+        ["upcoming", "live", "completed", "cancelled"].includes(String(t.status))
+          ? t.status
+          : "upcoming";
+
       const canSeeRoom =
         userRole === "admin" ||
-        (isJoined && t.status === "live");
+        (isJoined && normalizedStatus === "live");
 
       res.json({
         ...t,
+        status: normalizedStatus,
         roomId: canSeeRoom ? t.roomId : null,
         roomPassword: canSeeRoom ? t.roomPassword : null,
       });
@@ -945,6 +966,28 @@ app.get("/api/stats/total-users", async (_req, res) => {
       return res.status(400).json({ message: "Invalid start time" });
     }
 
+    data.gameId = Number(data.gameId);
+    data.entryFee = Number(data.entryFee ?? 0);
+    data.prizePool = Number(data.prizePool ?? 0);
+    data.maxSlots = Number(data.maxSlots);
+    data.matchType = String(data.matchType);
+
+    if (!Number.isInteger(data.gameId) || data.gameId <= 0) {
+      return res.status(400).json({ message: "Invalid game" });
+    }
+    if (!["solo", "duo", "squad"].includes(data.matchType)) {
+      return res.status(400).json({ message: "Invalid match type" });
+    }
+    if (!Number.isInteger(data.maxSlots) || data.maxSlots <= 0) {
+      return res.status(400).json({ message: "Max slots must be a positive integer" });
+    }
+    if (!Number.isFinite(data.entryFee) || data.entryFee < 0) {
+      return res.status(400).json({ message: "Entry fee must be a non-negative number" });
+    }
+    if (!Number.isFinite(data.prizePool) || data.prizePool < 0) {
+      return res.status(400).json({ message: "Prize pool must be a non-negative number" });
+    }
+
     // Parse prizeDistribution if needed
     if (typeof data.prizeDistribution === "string") {
       try {
@@ -953,6 +996,10 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Invalid prize distribution JSON" });
       }
     }
+
+    // Enforce predictable defaults for newly created tournaments.
+    data.status = "upcoming";
+    data.filledSlots = 0;
 
     const t = await storage.createTournament(data);
     res.json(t);
@@ -966,11 +1013,42 @@ app.get("/api/stats/total-users", async (_req, res) => {
     try {
       const data = { ...req.body };
       if (data.startTime) {
-  data.startTime = new Date(data.startTime);
-  if (isNaN(data.startTime.getTime())) {
-    return res.status(400).json({ message: "Invalid start time" });
-  }
-}
+        data.startTime = new Date(data.startTime);
+        if (isNaN(data.startTime.getTime())) {
+          return res.status(400).json({ message: "Invalid start time" });
+        }
+      }
+
+      if (data.gameId !== undefined) {
+        data.gameId = Number(data.gameId);
+        if (!Number.isInteger(data.gameId) || data.gameId <= 0) {
+          return res.status(400).json({ message: "Invalid game" });
+        }
+      }
+      if (data.entryFee !== undefined) {
+        data.entryFee = Number(data.entryFee);
+        if (!Number.isFinite(data.entryFee) || data.entryFee < 0) {
+          return res.status(400).json({ message: "Entry fee must be a non-negative number" });
+        }
+      }
+      if (data.prizePool !== undefined) {
+        data.prizePool = Number(data.prizePool);
+        if (!Number.isFinite(data.prizePool) || data.prizePool < 0) {
+          return res.status(400).json({ message: "Prize pool must be a non-negative number" });
+        }
+      }
+      if (data.maxSlots !== undefined) {
+        data.maxSlots = Number(data.maxSlots);
+        if (!Number.isInteger(data.maxSlots) || data.maxSlots <= 0) {
+          return res.status(400).json({ message: "Max slots must be a positive integer" });
+        }
+      }
+      if (data.matchType !== undefined) {
+        data.matchType = String(data.matchType);
+        if (!["solo", "duo", "squad"].includes(data.matchType)) {
+          return res.status(400).json({ message: "Invalid match type" });
+        }
+      }
       if (data.prizeDistribution && typeof data.prizeDistribution === "string") {
         try {
           data.prizeDistribution = JSON.parse(data.prizeDistribution);
@@ -978,6 +1056,9 @@ app.get("/api/stats/total-users", async (_req, res) => {
           return res.status(400).json({ message: "Invalid prize distribution JSON" });
         }
       }
+      // Route-specific status endpoint controls status; protect against accidental overrides here.
+      delete (data as any).status;
+      delete (data as any).filledSlots;
       const t = await storage.updateTournament(Number(req.params.id), data);
       if (!t) return res.status(404).json({ message: "Tournament not found" });
       res.json(t);

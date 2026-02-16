@@ -33,6 +33,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 
 import type { Tournament, Game } from "@shared/schema";
 
@@ -268,6 +269,11 @@ function ParticleField() {
    ===================================================================================== */
 
 export default function TournamentsPageGod() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "upcoming" | "live" | "completed" | "cancelled"
+  >("all");
+
   const {
     data: tournaments = [],
     isLoading,
@@ -283,31 +289,70 @@ export default function TournamentsPageGod() {
     queryKey: ["/api/games"],
   });
 
-// HOT SECTION + ACTIVE SORTING
-const sortedActiveTournaments = useMemo(() => {
+  const gameNameById = useMemo(() => {
+    return new Map(games.map((g) => [g.id, g.name.toLowerCase()]));
+  }, [games]);
+
+  const normalizedTournaments = useMemo(() => {
+    const validStatuses = new Set(["upcoming", "live", "completed", "cancelled"]);
+    return tournaments.map((t) => {
+      const maxSlots = Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1;
+      const filledSlots = Number.isFinite(t.filledSlots) && t.filledSlots > 0 ? t.filledSlots : 0;
+
+      return {
+        ...t,
+        status: validStatuses.has(String(t.status)) ? t.status : "upcoming",
+        entryFee: Number.isFinite(t.entryFee) ? t.entryFee : 0,
+        prizePool: Number.isFinite(t.prizePool) ? t.prizePool : 0,
+        maxSlots,
+        filledSlots: Math.min(filledSlots, maxSlots),
+      };
+    });
+  }, [tournaments]);
+
+const sortedVisibleTournaments = useMemo(() => {
   const toTimestamp = (value: string | Date) => {
     const ts = new Date(value).getTime();
     return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
   };
 
-  return tournaments
-    .filter((t) => t.status === "live" || t.status === "upcoming")
+  const statusOrder: Record<string, number> = {
+    live: 0,
+    upcoming: 1,
+    completed: 2,
+    cancelled: 3,
+  };
+  const searchValue = searchQuery.trim().toLowerCase();
+
+  return normalizedTournaments
+    .filter((t) => {
+      if (statusFilter !== "all" && t.status !== statusFilter) return false;
+      if (!searchValue) return true;
+
+      const gameName = gameNameById.get(t.gameId) ?? "";
+      return (
+        t.title.toLowerCase().includes(searchValue) ||
+        gameName.includes(searchValue)
+      );
+    })
     .sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === "live" ? -1 : 1;
+      const orderA = statusOrder[a.status] ?? 99;
+      const orderB = statusOrder[b.status] ?? 99;
+      if (orderA !== orderB) {
+        return orderA - orderB;
       }
       return toTimestamp(a.startTime) - toTimestamp(b.startTime);
     });
-}, [tournaments]);
+}, [normalizedTournaments, searchQuery, statusFilter, gameNameById]);
 
 const hotTournaments = useMemo(
-  () => sortedActiveTournaments.filter((t) => t.status === "upcoming"),
-  [sortedActiveTournaments]
+  () => sortedVisibleTournaments.filter((t) => t.status === "upcoming"),
+  [sortedVisibleTournaments]
 );
 
 const liveTournaments = useMemo(
-  () => sortedActiveTournaments.filter((t) => t.status === "live"),
-  [sortedActiveTournaments]
+  () => sortedVisibleTournaments.filter((t) => t.status === "live"),
+  [sortedVisibleTournaments]
 );
 
 
@@ -553,14 +598,38 @@ const fadeUp = {
         <div className="flex items-center justify-between mb-10">
           <h2 className="text-3xl font-bold flex items-center gap-2">
             <Sparkles className="text-fuchsia-400" />
-            Active Tournaments
+            Tournament Feed
           </h2>
 
           <MagneticButton>
             <div className="text-sm text-indigo-400 cursor-pointer">
-              Total: {sortedActiveTournaments.length}
+              Total: {sortedVisibleTournaments.length} | Live: {liveTournaments.length}
             </div>
           </MagneticButton>
+        </div>
+        <div className="mb-8 grid gap-3 md:grid-cols-[1fr_auto]">
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by tournament or game..."
+            className="bg-black/30 border-white/10 text-white placeholder:text-muted-foreground"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            {(["all", "live", "upcoming", "completed", "cancelled"] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(status)}
+                className={`px-3 py-1.5 rounded-md text-xs border transition ${
+                  statusFilter === status
+                    ? "border-indigo-400 bg-indigo-500/20 text-indigo-200"
+                    : "border-white/10 bg-black/30 text-muted-foreground hover:text-white"
+                }`}
+              >
+                {status.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
              {/* =================================================================================
@@ -593,14 +662,37 @@ const fadeUp = {
               </p>
             </CardContent>
           </Card>
-        ) : sortedActiveTournaments.length > 0 ? (
+        ) : sortedVisibleTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
-            {sortedActiveTournaments.map((t, index) => {
+            {sortedVisibleTournaments.map((t, index) => {
               const progress =
                 (t.filledSlots / t.maxSlots) * 100;
 
               const isLive = t.status === "live";
+              const statusText = t.status.toUpperCase();
+              const statusClasses =
+                t.status === "live"
+                  ? "text-red-400"
+                  : t.status === "upcoming"
+                    ? "text-indigo-400"
+                    : t.status === "completed"
+                      ? "text-emerald-400"
+                      : "text-muted-foreground";
+              const pulseClasses =
+                t.status === "live"
+                  ? "bg-red-500 animate-ping absolute"
+                  : t.status === "upcoming"
+                    ? "bg-indigo-500 animate-pulse absolute"
+                    : "hidden";
+              const dotClasses =
+                t.status === "live"
+                  ? "bg-red-500"
+                  : t.status === "upcoming"
+                    ? "bg-indigo-500"
+                    : t.status === "completed"
+                      ? "bg-emerald-500"
+                      : "bg-muted";
 
               return (
                 <motion.div
@@ -616,34 +708,20 @@ const fadeUp = {
                         className={`group relative overflow-hidden border bg-gradient-to-br from-black/60 to-black/30 backdrop-blur-xl transition-all duration-300 cursor-pointer ${
                           isLive
                             ? "border-red-500/60 shadow-[0_0_25px_rgba(239,68,68,0.4)]"
-                            : "border-white/10 hover:border-indigo-500/60"
+                            : t.status === "completed"
+                              ? "border-emerald-500/40 hover:border-emerald-400/70"
+                              : t.status === "cancelled"
+                                ? "border-white/20 hover:border-white/30"
+                                : "border-white/10 hover:border-indigo-500/60"
                         }`}
                       >
 
                         {/* LIVE PULSE */}
-                      <div
-  className={`absolute top-3 right-3 flex items-center gap-1 text-xs font-bold ${
-    t.status === "live"
-      ? "text-red-400"
-      : "text-indigo-400"
-  }`}
->
-  <span
-    className={`w-2 h-2 rounded-full ${
-      t.status === "live"
-        ? "bg-red-500 animate-ping absolute"
-        : "bg-indigo-500 animate-pulse absolute"
-    }`}
-  />
-  <span
-    className={`w-2 h-2 rounded-full ${
-      t.status === "live"
-        ? "bg-red-500"
-        : "bg-indigo-500"
-    }`}
-  />
-  {t.status === "live" ? "LIVE" : "UPCOMING"}
-</div>
+                      <div className={`absolute top-3 right-3 flex items-center gap-1 text-xs font-bold ${statusClasses}`}>
+                        <span className={`w-2 h-2 rounded-full ${pulseClasses}`} />
+                        <span className={`w-2 h-2 rounded-full ${dotClasses}`} />
+                        {statusText}
+                      </div>
 
                         {/* IMAGE */}
                         <div className="relative h-40 overflow-hidden">
