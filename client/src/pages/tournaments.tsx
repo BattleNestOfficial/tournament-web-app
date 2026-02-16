@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpDown,
   CalendarClock,
+  Copy,
   Eye,
   Filter,
   Flame,
@@ -132,15 +133,7 @@ function useCountdown(target: string | Date) {
 }
 
 function HoloCard({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="transition-transform duration-200 will-change-transform"
-    >
-      {children}
-    </motion.div>
-  );
+  return <div>{children}</div>;
 }
 
 function TournamentMatchCard({
@@ -205,7 +198,7 @@ function TournamentMatchCard({
                   src={tournament.imageUrl}
                   alt={tournament.title}
                   onError={() => setImgFailed(true)}
-                  className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-700"
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <div className={`h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
@@ -325,6 +318,7 @@ export default function TournamentsPage() {
   const [sortBy, setSortBy] = useState<SortBy>("start_asc");
   const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
   const [winnersDialogTournament, setWinnersDialogTournament] = useState<Tournament | null>(null);
+  const [copiedRoomField, setCopiedRoomField] = useState<"roomId" | "roomPassword" | null>(null);
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -468,6 +462,16 @@ export default function TournamentsPage() {
     setSearchQuery("");
     setJoinedOnly(false);
     setSortBy("start_asc");
+  }
+
+  async function copyRoomCredential(value: string, field: "roomId" | "roomPassword") {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedRoomField(field);
+      window.setTimeout(() => setCopiedRoomField(null), 1200);
+    } catch {
+      setCopiedRoomField(null);
+    }
   }
 
   return (
@@ -752,12 +756,32 @@ export default function TournamentsPage() {
               <p className="text-sm text-white/70">{roomDialogTournament.title}</p>
               {roomDialogTournament.roomId && roomDialogTournament.roomPassword ? (
                 <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
-                  <p className="text-sm text-emerald-100">
-                    Room ID: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomId}</span>
-                  </p>
-                  <p className="text-sm text-emerald-100">
-                    Password: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomPassword}</span>
-                  </p>
+                  <div className="flex items-center justify-between rounded-md border border-emerald-400/30 bg-black/20 px-3 py-2">
+                    <p className="text-sm text-emerald-100">
+                      Room ID: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomId}</span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyRoomCredential(roomDialogTournament.roomId!, "roomId")}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedRoomField === "roomId" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-emerald-400/30 bg-black/20 px-3 py-2">
+                    <p className="text-sm text-emerald-100">
+                      Password: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomPassword}</span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyRoomCredential(roomDialogTournament.roomPassword!, "roomPassword")}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedRoomField === "roomPassword" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">

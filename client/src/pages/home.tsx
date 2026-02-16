@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { motion, useMotionValue, useSpring } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Activity,
   CalendarClock,
+  Eye,
   Flame,
   Gamepad2,
+  LogIn,
   Radio,
   Shield,
   Sparkles,
@@ -18,10 +20,12 @@ import {
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth";
 
-import type { Banner, Game, Tournament } from "@shared/schema";
+import type { Banner, Game, Registration, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live";
 type PromoSlide = {
@@ -180,34 +184,7 @@ function ParticleField() {
 }
 
 function HoloCard({ children }: { children: React.ReactNode }) {
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const rotateX = useSpring(y, { stiffness: 170, damping: 20 });
-  const rotateY = useSpring(x, { stiffness: 170, damping: 20 });
-
-  function onMove(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    x.set((px - rect.width / 2) / 18);
-    y.set(-(py - rect.height / 2) / 18);
-  }
-
-  function reset() {
-    x.set(0);
-    y.set(0);
-  }
-
-  return (
-    <motion.div
-      onMouseMove={onMove}
-      onMouseLeave={reset}
-      style={{ rotateX, rotateY, transformPerspective: 900 }}
-      className="transition-transform duration-300"
-    >
-      {children}
-    </motion.div>
-  );
+  return <div>{children}</div>;
 }
 
 function TournamentMatchCard({
@@ -215,16 +192,33 @@ function TournamentMatchCard({
   gameName,
   status,
   index,
+  token,
+  joined,
+  onOpenDetails,
 }: {
   tournament: Tournament;
   gameName: string;
   status: ShowcaseStatus;
   index: number;
+  token: string | null;
+  joined: boolean;
+  onOpenDetails: (tournamentId: number) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const countdown = useCountdown(tournament.startTime);
   const theme = SHOWCASE_THEME[status];
   const progress = Math.min(100, (tournament.filledSlots / Math.max(tournament.maxSlots, 1)) * 100);
+  const canJoin = status === "hot" || status === "upcoming";
+  const joinHref = token ? `/tournaments/${tournament.id}?action=join` : "/auth";
+  const interactiveSelector = "a,button,input,select,textarea,[role='button']";
+
+  function handleCardOpen(event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(interactiveSelector)) {
+      return;
+    }
+    onOpenDetails(Number(tournament.id));
+  }
 
   return (
     <motion.div
@@ -234,15 +228,24 @@ function TournamentMatchCard({
       transition={{ delay: Math.min(index * 0.06, 0.35), duration: 0.45 }}
     >
       <HoloCard>
-        <Link href={`/tournaments/${tournament.id}`}>
-          <Card className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl cursor-pointer transition-all duration-300`}>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={handleCardOpen}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleCardOpen(event);
+          }}
+          className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl cursor-pointer transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+        >
             <div className="relative h-44 overflow-hidden">
               {tournament.imageUrl && !imgFailed ? (
                 <img
                   src={tournament.imageUrl}
                   alt={tournament.title}
                   onError={() => setImgFailed(true)}
-                  className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <div className={`h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
@@ -290,19 +293,33 @@ function TournamentMatchCard({
               <Progress value={progress} className="h-2" />
               <p className="text-[11px] text-right text-white/60">{Math.round(progress)}% filled</p>
 
-              {status === "live" && tournament.roomId && tournament.roomPassword && (
-                <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs">
-                  <p className="text-red-200">
-                    Room ID: <span className="font-semibold font-mono text-white">{tournament.roomId}</span>
-                  </p>
-                  <p className="text-red-200 mt-1">
-                    Password: <span className="font-semibold font-mono text-white">{tournament.roomPassword}</span>
-                  </p>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {joined ? (
+                  <Button size="sm" disabled className="w-full">
+                    Registered
+                  </Button>
+                ) : canJoin ? (
+                  <Button size="sm" className="w-full gap-1.5" asChild>
+                    <Link href={joinHref}>
+                      {token ? <Swords className="w-3.5 h-3.5" /> : <LogIn className="w-3.5 h-3.5" />}
+                      Join
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled variant="secondary" className="w-full">
+                    {status === "live" ? "Live" : "Closed"}
+                  </Button>
+                )}
+
+                <Button size="sm" variant="outline" className="w-full gap-1.5" asChild>
+                  <Link href={`/tournaments/${tournament.id}`}>
+                    <Eye className="w-3.5 h-3.5" />
+                    View Details
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
-        </Link>
       </HoloCard>
     </motion.div>
   );
@@ -325,6 +342,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
 export default function HomePage() {
   const [bannerIndex, setBannerIndex] = useState(0);
   const [, setLocation] = useLocation();
+  const { token } = useAuth();
 
   const {
     data: tournaments = [],
@@ -362,6 +380,19 @@ export default function HomePage() {
     retry: false,
   });
 
+  const { data: myRegistrations = [] } = useQuery<Registration[]>({
+    queryKey: ["/api/registrations/my"],
+    enabled: !!token,
+    queryFn: async () => {
+      const res = await fetch("/api/registrations/my", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
   const promoSlides = useMemo<PromoSlide[]>(
     () =>
       banners.length > 0
@@ -391,6 +422,15 @@ export default function HomePage() {
   }, [bannerIndex, promoSlides.length]);
 
   const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
+  const joinedTournamentIds = useMemo(
+    () =>
+      new Set(
+        myRegistrations
+          .map((r) => Number(r.tournamentId))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      ),
+    [myRegistrations]
+  );
 
   const normalizedTournaments = useMemo(() => {
     const validStatuses = new Set(["hot", "upcoming", "live", "completed", "cancelled"]);
@@ -605,7 +645,16 @@ export default function HomePage() {
         ) : hotTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {hotTournaments.map((t, idx) => (
-              <TournamentMatchCard key={t.id} tournament={t} gameName={gameById.get(t.gameId)?.name || "Unknown Game"} status="hot" index={idx} />
+              <TournamentMatchCard
+                key={t.id}
+                tournament={t}
+                gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                status="hot"
+                index={idx}
+                token={token}
+                joined={joinedTournamentIds.has(Number(t.id))}
+                onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
+              />
             ))}
           </div>
         ) : (
@@ -618,7 +667,16 @@ export default function HomePage() {
         {upcomingTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingTournaments.map((t, idx) => (
-              <TournamentMatchCard key={t.id} tournament={t} gameName={gameById.get(t.gameId)?.name || "Unknown Game"} status="upcoming" index={idx} />
+              <TournamentMatchCard
+                key={t.id}
+                tournament={t}
+                gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                status="upcoming"
+                index={idx}
+                token={token}
+                joined={joinedTournamentIds.has(Number(t.id))}
+                onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
+              />
             ))}
           </div>
         ) : (
@@ -631,7 +689,16 @@ export default function HomePage() {
         {liveTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {liveTournaments.map((t, idx) => (
-              <TournamentMatchCard key={t.id} tournament={t} gameName={gameById.get(t.gameId)?.name || "Unknown Game"} status="live" index={idx} />
+              <TournamentMatchCard
+                key={t.id}
+                tournament={t}
+                gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                status="live"
+                index={idx}
+                token={token}
+                joined={joinedTournamentIds.has(Number(t.id))}
+                onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
+              />
             ))}
           </div>
         ) : (
