@@ -33,12 +33,8 @@ export interface IStorage {
   deleteTournament(id: number): Promise<void>;
   incrementSlots(id: number): Promise<void>;
 
-<<<<<<< HEAD
   createRegistration(userId: number, tournamentId: number, inGameName?: string, teamId?: number): Promise<Registration>;
   joinTournament(data: { userId: number; tournamentId: number; inGameName?: string; teamId?: number | null }): Promise<{ user: User; tournament: Tournament }>;
-=======
-  createRegistration(userId: number, tournamentId: number, inGameName?: string): Promise<Registration>;
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   getRegistrationsByUser(userId: number): Promise<Registration[]>;
   getRegistration(userId: number, tournamentId: number): Promise<Registration | undefined>;
   getRegistrationsByTournament(tournamentId: number): Promise<Registration[]>;
@@ -47,10 +43,7 @@ export interface IStorage {
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
 
   createWithdrawal(data: { userId: number; amount: number; upiId?: string; bankDetails?: string }): Promise<Withdrawal>;
-<<<<<<< HEAD
   getWithdrawalById(id: number): Promise<Withdrawal | undefined>;
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   getWithdrawalsByUser(userId: number): Promise<Withdrawal[]>;
   getAllWithdrawals(): Promise<(Withdrawal & { username?: string })[]>;
   updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal | undefined>;
@@ -70,10 +63,7 @@ export interface IStorage {
   createPayment(data: { userId: number; razorpayOrderId: string; amount: number; currency?: string }): Promise<Payment>;
   getPaymentByOrderId(orderId: string): Promise<Payment | undefined>;
   updatePayment(id: number, data: Partial<Payment>): Promise<Payment | undefined>;
-<<<<<<< HEAD
   markPaymentCapturedByOrderId(orderId: string, data: { razorpayPaymentId?: string; razorpaySignature?: string }): Promise<Payment | undefined>;
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   getPaymentsByUser(userId: number): Promise<Payment[]>;
 
   createAdminLog(data: { adminId: number; action: string; targetType?: string; targetId?: number; details?: string }): Promise<AdminLog>;
@@ -210,7 +200,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tournaments.id, id));
   }
 
-<<<<<<< HEAD
   async createRegistration(userId: number, tournamentId: number, inGameName?: string, teamId?: number): Promise<Registration> {
     const [reg] = await db.insert(registrations).values({
       userId,
@@ -344,13 +333,6 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-=======
-  async createRegistration(userId: number, tournamentId: number, inGameName?: string): Promise<Registration> {
-    const [reg] = await db.insert(registrations).values({ userId, tournamentId, inGameName: inGameName || null }).returning();
-    return reg;
-  }
-
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   async getRegistrationsByUser(userId: number): Promise<Registration[]> {
     return db.select().from(registrations).where(eq(registrations.userId, userId)).orderBy(desc(registrations.createdAt));
   }
@@ -390,14 +372,11 @@ export class DatabaseStorage implements IStorage {
     return wd;
   }
 
-<<<<<<< HEAD
   async getWithdrawalById(id: number): Promise<Withdrawal | undefined> {
     const [wd] = await db.select().from(withdrawals).where(eq(withdrawals.id, id));
     return wd;
   }
 
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   async getWithdrawalsByUser(userId: number): Promise<Withdrawal[]> {
     return db.select().from(withdrawals).where(eq(withdrawals.userId, userId)).orderBy(desc(withdrawals.createdAt));
   }
@@ -496,7 +475,6 @@ export class DatabaseStorage implements IStorage {
     return p;
   }
 
-<<<<<<< HEAD
   async markPaymentCapturedByOrderId(orderId: string, data: { razorpayPaymentId?: string; razorpaySignature?: string }): Promise<Payment | undefined> {
     const [payment] = await db
       .update(payments)
@@ -510,8 +488,6 @@ export class DatabaseStorage implements IStorage {
     return payment;
   }
 
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   async getPaymentsByUser(userId: number): Promise<Payment[]> {
     return db.select().from(payments).where(eq(payments.userId, userId)).orderBy(desc(payments.createdAt));
   }

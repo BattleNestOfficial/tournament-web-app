@@ -9,11 +9,7 @@ const httpServer = createServer(app);
 
 declare module "http" {
   interface IncomingMessage {
-<<<<<<< HEAD
     rawBody?: Buffer;
-=======
-    rawBody: unknown;
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
   }
 }
 
@@ -38,7 +34,6 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-<<<<<<< HEAD
 function redactSensitive(value: unknown): unknown {
   const sensitiveKeys = new Set([
     "password",
@@ -65,8 +60,6 @@ function redactSensitive(value: unknown): unknown {
   return value;
 }
 
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -83,11 +76,7 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-<<<<<<< HEAD
         logLine += ` :: ${JSON.stringify(redactSensitive(capturedJsonResponse))}`;
-=======
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       }
 
       log(logLine);

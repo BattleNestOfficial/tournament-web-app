@@ -322,12 +322,7 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
         return {
           ...r,
           username: user?.username,
-<<<<<<< HEAD
           displayName: r.inGameName || user?.username,
-=======
-          displayName:
-            r.inGameName || user?.inGameName || user?.username,
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         };
       })
     );
@@ -353,7 +348,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
     try {
       const userId = (req as any).userId;
       const tournamentId = Number(req.params.id);
-<<<<<<< HEAD
       if (!Number.isInteger(tournamentId) || tournamentId <= 0) {
         return res.status(400).json({ message: "Invalid tournament id" });
       }
@@ -401,55 +395,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (err?.code === "USER_NOT_FOUND") return res.status(404).json({ message: err.message });
       if (err?.code === "USER_BANNED") return res.status(403).json({ message: err.message });
       if (err?.code === "INSUFFICIENT_BALANCE") return res.status(400).json({ message: err.message });
-=======
-
-      const tournament = await storage.getTournamentById(tournamentId);
-      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
-      if (tournament.status !== "upcoming") return res.status(400).json({ message: "Tournament is not open for registration" });
-      if (tournament.filledSlots >= tournament.maxSlots) return res.status(400).json({ message: "Tournament is full" });
-
-      const existing = await storage.getRegistration(userId, tournamentId);
-      if (existing) return res.status(400).json({ message: "Already registered" });
-
-      const user = await storage.getUserById(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      if (user.banned) return res.status(403).json({ message: "Account is banned" });
-
-      if (tournament.entryFee > 0) {
-        if (user.walletBalance < tournament.entryFee) {
-          return res.status(400).json({ message: "Insufficient wallet balance" });
-        }
-        await storage.updateWalletBalance(userId, -tournament.entryFee);
-        await storage.createTransaction({
-          userId,
-          amount: tournament.entryFee,
-          type: "entry_fee",
-          description: `Entry fee for ${tournament.title}`,
-          tournamentId,
-        });
-      }
-
-      const { inGameName } = req.body || {};
-      await storage.createRegistration(userId, tournamentId, inGameName);
-      await storage.incrementSlots(tournamentId);
-
-      await storage.createNotification({
-        userId,
-        type: "tournament_joined",
-        title: "Tournament Joined",
-        message: `You have joined "${tournament.title}" successfully.`,
-      });
-
-      const updatedTournament = await storage.getTournamentById(tournamentId);
-      if (updatedTournament && updatedTournament.filledSlots >= updatedTournament.maxSlots) {
-        await storage.updateTournamentStatus(tournamentId, "live");
-      }
-
-      const updatedUser = await storage.getUserById(userId);
-      const { password, ...safeUser } = updatedUser!;
-      res.json({ message: "Joined successfully", user: safeUser });
-    } catch (err: any) {
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       res.status(500).json({ message: err.message });
     }
   });
@@ -503,13 +448,10 @@ app.get("/api/stats/total-users", async (_req, res) => {
   // Wallet
   app.post("/api/wallet/add", authMiddleware, async (req, res) => {
     try {
-<<<<<<< HEAD
       if (process.env.NODE_ENV === "production") {
         return res.status(403).json({ message: "Direct wallet top-up is disabled in production. Use payment gateway." });
       }
 
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       const userId = (req as any).userId;
       const { amount } = req.body;
       if (!amount || typeof amount !== "number" || amount <= 0 || amount > 10000000) {
@@ -600,7 +542,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const payment = await storage.getPaymentByOrderId(razorpay_order_id);
       if (!payment) return res.status(404).json({ message: "Payment order not found" });
       if (payment.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
-<<<<<<< HEAD
 
       const capturedPayment = await storage.markPaymentCapturedByOrderId(razorpay_order_id, {
         razorpayPaymentId: razorpay_payment_id,
@@ -612,20 +553,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       await storage.createTransaction({
         userId,
         amount: capturedPayment.amount,
-=======
-      if (payment.status === "captured") return res.status(400).json({ message: "Payment already processed" });
-
-      await storage.updatePayment(payment.id, {
-        razorpayPaymentId: razorpay_payment_id,
-        razorpaySignature: razorpay_signature,
-        status: "captured",
-      });
-
-      await storage.updateWalletBalance(userId, payment.amount);
-      await storage.createTransaction({
-        userId,
-        amount: payment.amount,
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         type: "razorpay",
         description: `Razorpay payment #${razorpay_payment_id}`,
       });
@@ -634,11 +561,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         userId,
         type: "wallet_credit",
         title: "Payment Successful",
-<<<<<<< HEAD
         message: `Rs.${(capturedPayment.amount / 100).toFixed(2)} has been added to your wallet.`,
-=======
-        message: `Rs.${(payment.amount / 100).toFixed(2)} has been added to your wallet.`,
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       });
 
       const user = await storage.getUserById(userId);
@@ -658,19 +581,12 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const signature = req.headers["x-razorpay-signature"] as string;
       if (!signature) return res.status(400).json({ message: "No signature" });
 
-<<<<<<< HEAD
       const rawBody = Buffer.isBuffer(req.rawBody)
         ? req.rawBody
         : Buffer.from(JSON.stringify(req.body));
       const expectedSignature = crypto
         .createHmac("sha256", webhookSecret)
         .update(rawBody)
-=======
-      const body = JSON.stringify(req.body);
-      const expectedSignature = crypto
-        .createHmac("sha256", webhookSecret)
-        .update(body)
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         .digest("hex");
 
       if (expectedSignature !== signature) {
@@ -682,19 +598,10 @@ app.get("/api/stats/total-users", async (_req, res) => {
         const orderId = event.payload?.payment?.entity?.order_id;
         const paymentId = event.payload?.payment?.entity?.id;
         if (orderId) {
-<<<<<<< HEAD
           const payment = await storage.markPaymentCapturedByOrderId(orderId, {
             razorpayPaymentId: paymentId,
           });
           if (payment) {
-=======
-          const payment = await storage.getPaymentByOrderId(orderId);
-          if (payment && payment.status !== "captured") {
-            await storage.updatePayment(payment.id, {
-              razorpayPaymentId: paymentId,
-              status: "captured",
-            });
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
             await storage.updateWalletBalance(payment.userId, payment.amount);
             await storage.createTransaction({
               userId: payment.userId,
@@ -1029,34 +936,22 @@ app.get("/api/stats/total-users", async (_req, res) => {
     const data = { ...req.body };
 
     // 🔴 CRITICAL FIX: normalize startTime
-<<<<<<< HEAD
     if (!data.startTime) {
       return res.status(400).json({ message: "Start time is required" });
     }
     data.startTime = new Date(data.startTime);
 
-=======
-    if (data.startTime) {
-      data.startTime = new Date(data.startTime);
-    }
-
-    // Safety check
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
     if (isNaN(data.startTime.getTime())) {
       return res.status(400).json({ message: "Invalid start time" });
     }
 
     // Parse prizeDistribution if needed
     if (typeof data.prizeDistribution === "string") {
-<<<<<<< HEAD
       try {
         data.prizeDistribution = JSON.parse(data.prizeDistribution);
       } catch {
         return res.status(400).json({ message: "Invalid prize distribution JSON" });
       }
-=======
-      data.prizeDistribution = JSON.parse(data.prizeDistribution);
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
     }
 
     const t = await storage.createTournament(data);
@@ -1077,15 +972,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
   }
 }
       if (data.prizeDistribution && typeof data.prizeDistribution === "string") {
-<<<<<<< HEAD
         try {
           data.prizeDistribution = JSON.parse(data.prizeDistribution);
         } catch {
           return res.status(400).json({ message: "Invalid prize distribution JSON" });
         }
-=======
-        data.prizeDistribution = JSON.parse(data.prizeDistribution);
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       }
       const t = await storage.updateTournament(Number(req.params.id), data);
       if (!t) return res.status(404).json({ message: "Tournament not found" });
@@ -1185,7 +1076,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const tournamentId = Number(req.params.id);
       const tournament = await storage.getTournamentById(tournamentId);
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
-<<<<<<< HEAD
       if (tournament.status === "completed") {
         return res.status(400).json({ message: "Results already declared for this tournament" });
       }
@@ -1194,33 +1084,22 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (existingResults.length > 0) {
         return res.status(400).json({ message: "Results already exist for this tournament" });
       }
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
 
       const { results: resultData } = req.body;
       if (!Array.isArray(resultData) || resultData.length === 0) {
         return res.status(400).json({ message: "Results array is required" });
       }
 
-<<<<<<< HEAD
       const createdResults = [];
       const seenUsers = new Set<number>();
-=======
-      await storage.deleteResultsByTournament(tournamentId);
-
-      const createdResults = [];
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       for (const r of resultData) {
         if (!r.userId || !r.position) {
           continue;
         }
-<<<<<<< HEAD
         if (seenUsers.has(r.userId)) {
           return res.status(400).json({ message: "Duplicate users in results payload" });
         }
         seenUsers.add(r.userId);
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         const result = await storage.createResult({
           tournamentId,
           userId: r.userId,
@@ -1286,7 +1165,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
     try {
       const { status, adminNote } = req.body;
       const wdId = Number(req.params.id);
-<<<<<<< HEAD
       if (!["approved", "rejected", "paid"].includes(status)) {
         return res.status(400).json({ message: "Invalid withdrawal status" });
       }
@@ -1297,8 +1175,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: `Withdrawal already processed as ${existing.status}` });
       }
 
-=======
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
       const wd = await storage.updateWithdrawal(wdId, { status: status as any, adminNote });
       if (!wd) return res.status(404).json({ message: "Withdrawal not found" });
 
@@ -1378,11 +1254,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         sortOrder: count,
       });
       await storage.createAdminLog({
-<<<<<<< HEAD
         adminId: (req as any).userId,
-=======
-        adminId: (req as any).user.id,
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         action: "create_banner",
         targetType: "banner",
         targetId: banner.id,
@@ -1409,11 +1281,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const id = Number(req.params.id);
       await storage.deleteBanner(id);
       await storage.createAdminLog({
-<<<<<<< HEAD
         adminId: (req as any).userId,
-=======
-        adminId: (req as any).user.id,
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
         action: "delete_banner",
         targetType: "banner",
         targetId: id,

@@ -42,11 +42,7 @@ export default function TournamentsPage() {
   const { data: tournaments, isLoading } = useQuery<Tournament[]>({
   queryKey: ["/api/tournaments"],
   queryFn: async () => {
-<<<<<<< HEAD
     const token = localStorage.getItem("bn_token");
-=======
-    const token = localStorage.getItem("token");
->>>>>>> d6ba416d3f53141b8989651729525050668978d8
 
     const res = await fetch("/api/tournaments", {
       headers: token
