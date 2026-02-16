@@ -36,29 +36,29 @@ type PromoSlide = {
 
 const SHOWCASE_THEME: Record<ShowcaseStatus, { edge: string; chip: string; glow: string; label: string }> = {
   hot: {
-    edge: "border-lime-400/70",
-    chip: "bg-lime-500/15 text-lime-300 border-lime-400/70",
-    glow: "shadow-[0_0_30px_rgba(132,255,60,0.28)]",
+    edge: "border-amber-400/60",
+    chip: "bg-amber-500/15 text-amber-300 border-amber-400/60",
+    glow: "shadow-[0_0_28px_rgba(251,191,36,0.25)]",
     label: "HOT",
   },
   upcoming: {
-    edge: "border-emerald-400/60",
-    chip: "bg-emerald-500/15 text-emerald-300 border-emerald-400/60",
-    glow: "shadow-[0_0_24px_rgba(52,211,153,0.24)]",
+    edge: "border-indigo-400/60",
+    chip: "bg-indigo-500/15 text-indigo-300 border-indigo-400/60",
+    glow: "shadow-[0_0_24px_rgba(99,102,241,0.25)]",
     label: "UPCOMING",
   },
   live: {
-    edge: "border-green-400/70",
-    chip: "bg-green-500/15 text-green-300 border-green-400/70",
-    glow: "shadow-[0_0_30px_rgba(34,197,94,0.3)]",
+    edge: "border-red-500/60",
+    chip: "bg-red-500/15 text-red-300 border-red-500/60",
+    glow: "shadow-[0_0_28px_rgba(239,68,68,0.3)]",
     label: "LIVE",
   },
 };
 
 const PLACEHOLDER_GRADIENT: Record<string, string> = {
-  hot: "from-lime-700/55 via-green-700/45 to-black",
-  upcoming: "from-emerald-700/55 via-green-800/45 to-black",
-  live: "from-green-700/55 via-teal-700/45 to-black",
+  hot: "from-amber-700/60 via-orange-700/45 to-black",
+  upcoming: "from-indigo-700/60 via-violet-700/45 to-black",
+  live: "from-red-700/60 via-rose-700/45 to-black",
 };
 
 const PROMO_PLACEHOLDERS: PromoSlide[] = [
@@ -595,7 +595,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">
-        <SectionHeader icon={<Flame className="w-6 h-6 text-lime-300" />} title="Hot Tournaments" subtitle="Admin-picked spotlight tournaments" />
+        <SectionHeader icon={<Flame className="w-6 h-6 text-amber-300" />} title="Hot Tournaments" subtitle="Admin-picked spotlight tournaments" />
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, idx) => (
@@ -614,7 +614,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">
-        <SectionHeader icon={<CalendarClock className="w-6 h-6 text-emerald-300" />} title="Upcoming Tournaments" subtitle="Only upcoming matches" />
+        <SectionHeader icon={<CalendarClock className="w-6 h-6 text-indigo-300" />} title="Upcoming Tournaments" subtitle="Only upcoming matches" />
         {upcomingTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingTournaments.map((t, idx) => (
@@ -627,7 +627,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-20 max-w-7xl mx-auto">
-        <SectionHeader icon={<Activity className="w-6 h-6 text-green-300" />} title="Live Tournaments" subtitle="Only live matches" />
+        <SectionHeader icon={<Activity className="w-6 h-6 text-red-300" />} title="Live Tournaments" subtitle="Only live matches" />
         {liveTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {liveTournaments.map((t, idx) => (
