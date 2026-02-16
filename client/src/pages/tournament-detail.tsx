@@ -621,8 +621,12 @@ export default function TournamentDetailPage() {
           <div className="space-y-3 text-sm">
             <div className="rounded-md border border-white/10 bg-black/25 p-3">
               <p className="font-medium">{tournament.title}</p>
-              <p className="text-muted-foreground mt-1">Entry Fee: {formatMoney(tournament.entryFee)}</p>
-              <p className="text-muted-foreground">Prize Pool: {formatMoney(tournament.prizePool)}</p>
+              <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+                <p className="text-muted-foreground">Game: <span className="text-foreground">{game?.name || "Unknown"}</span></p>
+                <p className="text-muted-foreground">Mode: <span className="text-foreground capitalize">{tournament.matchType}</span></p>
+                <p className="text-muted-foreground">Slots: <span className="text-foreground">{tournament.filledSlots}/{tournament.maxSlots}</span></p>
+                <p className="text-muted-foreground">Starts: <span className="text-foreground">{formatDate(tournament.startTime)}</span></p>
+              </div>
             </div>
 
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-1.5">

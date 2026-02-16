@@ -255,17 +255,6 @@ function TournamentMatchCard({
               <Progress value={progress} className="h-2" />
               <p className="text-[11px] text-right text-white/60">{Math.round(progress)}% filled</p>
 
-              {status === "live" && tournament.roomId && tournament.roomPassword && (
-                <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs">
-                  <p className="text-red-200">
-                    Room ID: <span className="font-semibold font-mono text-white">{tournament.roomId}</span>
-                  </p>
-                  <p className="text-red-200 mt-1">
-                    Password: <span className="font-semibold font-mono text-white">{tournament.roomPassword}</span>
-                  </p>
-                </div>
-              )}
-
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {status === "live" ? (
                   <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
