@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   Activity,
   CalendarClock,
+  Copy,
   Eye,
   Flame,
   Gamepad2,
@@ -21,6 +22,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
@@ -194,6 +196,7 @@ function TournamentMatchCard({
   index,
   token,
   joined,
+  onShowRoom,
   onOpenDetails,
 }: {
   tournament: Tournament;
@@ -202,6 +205,7 @@ function TournamentMatchCard({
   index: number;
   token: string | null;
   joined: boolean;
+  onShowRoom: (tournament: Tournament) => void;
   onOpenDetails: (tournamentId: number) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -294,7 +298,11 @@ function TournamentMatchCard({
               <p className="text-[11px] text-right text-white/60">{Math.round(progress)}% filled</p>
 
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {joined ? (
+                {status === "live" ? (
+                  <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
+                    Show ID/Password
+                  </Button>
+                ) : joined ? (
                   <Button size="sm" disabled className="w-full">
                     Registered
                   </Button>
@@ -343,6 +351,8 @@ export default function HomePage() {
   const [bannerIndex, setBannerIndex] = useState(0);
   const [, setLocation] = useLocation();
   const { token } = useAuth();
+  const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
+  const [copiedRoomField, setCopiedRoomField] = useState<"roomId" | "roomPassword" | null>(null);
 
   const {
     data: tournaments = [],
@@ -489,6 +499,16 @@ export default function HomePage() {
     }
     const href = raw.startsWith("/") ? raw : `/${raw}`;
     setLocation(href);
+  }
+
+  async function copyRoomCredential(value: string, field: "roomId" | "roomPassword") {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedRoomField(field);
+      window.setTimeout(() => setCopiedRoomField(null), 1200);
+    } catch {
+      setCopiedRoomField(null);
+    }
   }
 
   return (
@@ -653,6 +673,7 @@ export default function HomePage() {
                 index={idx}
                 token={token}
                 joined={joinedTournamentIds.has(Number(t.id))}
+                onShowRoom={setRoomDialogTournament}
                 onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
               />
             ))}
@@ -675,6 +696,7 @@ export default function HomePage() {
                 index={idx}
                 token={token}
                 joined={joinedTournamentIds.has(Number(t.id))}
+                onShowRoom={setRoomDialogTournament}
                 onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
               />
             ))}
@@ -697,6 +719,7 @@ export default function HomePage() {
                 index={idx}
                 token={token}
                 joined={joinedTournamentIds.has(Number(t.id))}
+                onShowRoom={setRoomDialogTournament}
                 onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
               />
             ))}
@@ -705,6 +728,58 @@ export default function HomePage() {
           <Card className="border-white/10 bg-black/35"><CardContent className="p-8 text-center text-white/65">No live tournaments.</CardContent></Card>
         )}
       </section>
+
+      <Dialog
+        open={!!roomDialogTournament}
+        onOpenChange={(open) => {
+          if (!open) setRoomDialogTournament(null);
+        }}
+      >
+        <DialogContent className="max-w-md border-white/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Room Credentials</DialogTitle>
+          </DialogHeader>
+          {roomDialogTournament && (
+            <div className="space-y-3">
+              <p className="text-sm text-white/70">{roomDialogTournament.title}</p>
+              {roomDialogTournament.roomId && roomDialogTournament.roomPassword ? (
+                <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
+                  <div className="flex items-center justify-between rounded-md border border-emerald-400/30 bg-black/20 px-3 py-2">
+                    <p className="text-sm text-emerald-100">
+                      Room ID: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomId}</span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyRoomCredential(roomDialogTournament.roomId!, "roomId")}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedRoomField === "roomId" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-emerald-400/30 bg-black/20 px-3 py-2">
+                    <p className="text-sm text-emerald-100">
+                      Password: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomPassword}</span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyRoomCredential(roomDialogTournament.roomPassword!, "roomPassword")}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedRoomField === "roomPassword" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
+                  Room credentials are visible only to registered players when the tournament is live.
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {isError && (
         <div className="px-6 pb-16 max-w-7xl mx-auto">

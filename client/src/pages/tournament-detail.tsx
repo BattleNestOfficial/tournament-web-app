@@ -428,7 +428,9 @@ export default function TournamentDetailPage() {
           <div className="absolute inset-0 bg-black/65" />
           <div className="absolute bottom-6 left-6 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="bg-black/55 border border-white/20">{tournament.matchType.toUpperCase()}</Badge>
+              <Badge className="bg-emerald-500/20 text-emerald-100 border border-emerald-400/60 font-semibold">
+                {tournament.matchType.toUpperCase()}
+              </Badge>
               <Badge variant="outline" className={getStatusBadgeClasses(normalizedStatus)}>
                 {normalizedStatus.toUpperCase()}
               </Badge>
@@ -450,8 +452,8 @@ export default function TournamentDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{game?.name || "Unknown Game"}</Badge>
-                <Badge variant="outline" className="capitalize">{tournament.matchType}</Badge>
+                <Badge variant="outline" className="border-cyan-400/50 bg-cyan-500/10 text-cyan-100">{game?.name || "Unknown Game"}</Badge>
+                <Badge variant="outline" className="capitalize border-indigo-400/60 bg-indigo-500/15 text-indigo-100">{tournament.matchType}</Badge>
                 <Badge variant="outline" className={getStatusBadgeClasses(normalizedStatus)}>
                   {normalizedStatus.toUpperCase()}
                 </Badge>
@@ -508,13 +510,6 @@ export default function TournamentDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {normalizedStatus !== "live" && (
-                <div className="rounded-md border border-white/10 bg-black/35 p-3 text-sm text-muted-foreground">
-                  <p className="font-medium text-white/80 mb-1">Locked before live</p>
-                  Room ID and Password will unlock once the match is live.
-                </div>
-              )}
-
               {normalizedStatus === "live" && tournament.roomId && tournament.roomPassword && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
@@ -597,10 +592,10 @@ export default function TournamentDetailPage() {
                 <p className="text-sm text-muted-foreground">No participants yet.</p>
               )}
 
-              {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
+              {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p, index) => (
+                <div key={p.id} className="flex items-center gap-3 text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
+                  <span className="w-6 text-xs text-white/60 font-medium">{index + 1}.</span>
                   <span>{p.displayName || p.username || `Player #${p.userId}`}</span>
-                  <Badge variant="outline">Joined</Badge>
                 </div>
               ))}
             </CardContent>

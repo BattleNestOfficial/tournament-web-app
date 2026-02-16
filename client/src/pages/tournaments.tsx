@@ -30,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
 
-import type { Game, Registration, Result, Tournament } from "@shared/schema";
+import type { Game, Registration, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live" | "completed";
 type SortBy = "start_asc" | "start_desc" | "prize_desc" | "slots_desc";
@@ -143,7 +143,6 @@ function TournamentMatchCard({
   joined,
   token,
   onShowRoom,
-  onShowWinners,
   onOpenDetails,
 }: {
   tournament: Tournament;
@@ -152,7 +151,6 @@ function TournamentMatchCard({
   joined: boolean;
   token: string | null;
   onShowRoom: (tournament: Tournament) => void;
-  onShowWinners: (tournament: Tournament) => void;
   onOpenDetails: (tournamentId: number) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -253,10 +251,6 @@ function TournamentMatchCard({
                   <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
                     Show ID/Password
                   </Button>
-                ) : status === "completed" ? (
-                  <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowWinners(tournament)}>
-                    Show Winners
-                  </Button>
                 ) : joined ? (
                   <Button size="sm" disabled className="w-full">
                     Registered
@@ -317,7 +311,6 @@ export default function TournamentsPage() {
   const [joinedOnly, setJoinedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("start_asc");
   const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
-  const [winnersDialogTournament, setWinnersDialogTournament] = useState<Tournament | null>(null);
   const [copiedRoomField, setCopiedRoomField] = useState<"roomId" | "roomPassword" | null>(null);
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
@@ -345,30 +338,6 @@ export default function TournamentsPage() {
       const res = await fetch("/api/registrations/my", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    },
-  });
-
-  const winnersTournamentId = winnersDialogTournament?.id ? Number(winnersDialogTournament.id) : 0;
-
-  const { data: winnerResults = [], isLoading: isWinnerResultsLoading, isError: isWinnerResultsError } = useQuery<Result[]>({
-    queryKey: ["/api/tournaments", winnersTournamentId.toString(), "results"],
-    enabled: winnersTournamentId > 0,
-    queryFn: async () => {
-      const res = await fetch(`/api/tournaments/${winnersTournamentId}/results`);
-      if (!res.ok) throw new Error("Failed to load winners");
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    },
-  });
-
-  const { data: winnerParticipants = [] } = useQuery<Array<{ userId: number; username?: string; displayName?: string }>>({
-    queryKey: ["/api/tournaments", winnersTournamentId.toString(), "participants"],
-    enabled: winnersTournamentId > 0,
-    queryFn: async () => {
-      const res = await fetch(`/api/tournaments/${winnersTournamentId}/participants`);
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
@@ -439,21 +408,6 @@ export default function TournamentsPage() {
     upcoming: upcomingTournaments.length,
     completed: completedTournaments.length,
   };
-
-  const winnerNameByUserId = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const participant of winnerParticipants) {
-      const userId = Number(participant.userId);
-      if (!Number.isFinite(userId)) continue;
-      map.set(userId, participant.displayName || participant.username || `Player #${userId}`);
-    }
-    return map;
-  }, [winnerParticipants]);
-
-  const sortedWinnerResults = useMemo(
-    () => [...winnerResults].sort((a, b) => a.position - b.position),
-    [winnerResults]
-  );
 
   function clearFilters() {
     setGameFilter("all");
@@ -623,7 +577,6 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -652,7 +605,6 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -681,7 +633,6 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -710,7 +661,6 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -793,50 +743,6 @@ export default function TournamentsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!winnersDialogTournament}
-        onOpenChange={(open) => {
-          if (!open) setWinnersDialogTournament(null);
-        }}
-      >
-        <DialogContent className="max-w-md border-white/20 bg-slate-950 text-white">
-          <DialogHeader>
-            <DialogTitle>Winners</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-white/70">{winnersDialogTournament?.title}</p>
-            {isWinnerResultsLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : isWinnerResultsError ? (
-              <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
-                Failed to load winners.
-              </div>
-            ) : sortedWinnerResults.length === 0 ? (
-              <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
-                Winners are not declared yet.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sortedWinnerResults.map((result) => (
-                  <div key={result.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3 text-sm">
-                    <div>
-                      <p className="font-semibold text-white">
-                        #{result.position} {winnerNameByUserId.get(result.userId) || `Player #${result.userId}`}
-                      </p>
-                      <p className="text-xs text-white/60">Kills: {result.kills}</p>
-                    </div>
-                    <p className="font-semibold text-amber-300">{formatMoney(result.prize)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
