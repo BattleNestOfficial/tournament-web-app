@@ -24,9 +24,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/tournaments", label: "Tournaments", icon: Trophy },
-    ...(!isAdmin ? [{ href: "/wallet", label: "Wallet", icon: Wallet }] : []),
     ...(!isAdmin ? [{ href: "/teams", label: "Teams", icon: Users }] : []),
-    ...(!isAdmin ? [{ href: "/profile", label: "Profile", icon: User }] : []),
+    ...(!isAdmin ? [{ href: "/wallet", label: "Wallet", icon: Wallet }] : []),
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
