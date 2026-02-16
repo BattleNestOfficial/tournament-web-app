@@ -36,29 +36,29 @@ type PromoSlide = {
 
 const SHOWCASE_THEME: Record<ShowcaseStatus, { edge: string; chip: string; glow: string; label: string }> = {
   hot: {
-    edge: "border-amber-400/60",
-    chip: "bg-amber-500/15 text-amber-300 border-amber-400/60",
-    glow: "shadow-[0_0_28px_rgba(251,191,36,0.25)]",
+    edge: "border-lime-400/70",
+    chip: "bg-lime-500/15 text-lime-300 border-lime-400/70",
+    glow: "shadow-[0_0_30px_rgba(132,255,60,0.28)]",
     label: "HOT",
   },
   upcoming: {
-    edge: "border-indigo-400/60",
-    chip: "bg-indigo-500/15 text-indigo-300 border-indigo-400/60",
-    glow: "shadow-[0_0_24px_rgba(99,102,241,0.25)]",
+    edge: "border-emerald-400/60",
+    chip: "bg-emerald-500/15 text-emerald-300 border-emerald-400/60",
+    glow: "shadow-[0_0_24px_rgba(52,211,153,0.24)]",
     label: "UPCOMING",
   },
   live: {
-    edge: "border-red-500/60",
-    chip: "bg-red-500/15 text-red-300 border-red-500/60",
-    glow: "shadow-[0_0_28px_rgba(239,68,68,0.3)]",
+    edge: "border-green-400/70",
+    chip: "bg-green-500/15 text-green-300 border-green-400/70",
+    glow: "shadow-[0_0_30px_rgba(34,197,94,0.3)]",
     label: "LIVE",
   },
 };
 
 const PLACEHOLDER_GRADIENT: Record<string, string> = {
-  hot: "from-amber-700/60 via-orange-700/45 to-black",
-  upcoming: "from-indigo-700/60 via-violet-700/45 to-black",
-  live: "from-red-700/60 via-rose-700/45 to-black",
+  hot: "from-lime-700/55 via-green-700/45 to-black",
+  upcoming: "from-emerald-700/55 via-green-800/45 to-black",
+  live: "from-green-700/55 via-teal-700/45 to-black",
 };
 
 const PROMO_PLACEHOLDERS: PromoSlide[] = [
@@ -66,19 +66,19 @@ const PROMO_PLACEHOLDERS: PromoSlide[] = [
     id: "promo-ph-1",
     title: "Battle Nest Featured Match",
     subtitle: "Compete, stream, and win in premium esports tournaments.",
-    tone: "from-indigo-700/55 via-blue-700/45 to-slate-900",
+    tone: "from-lime-700/50 via-green-700/40 to-slate-950",
   },
   {
     id: "promo-ph-2",
     title: "Battle Nest Featured Match",
     subtitle: "Compete, stream, and win in premium esports tournaments.",
-    tone: "from-fuchsia-700/50 via-purple-700/45 to-slate-900",
+    tone: "from-emerald-700/50 via-green-700/45 to-slate-950",
   },
   {
     id: "promo-ph-3",
     title: "Battle Nest Featured Match",
     subtitle: "Compete, stream, and win in premium esports tournaments.",
-    tone: "from-amber-700/50 via-orange-700/40 to-slate-900",
+    tone: "from-green-700/50 via-lime-700/40 to-slate-950",
   },
 ];
 
@@ -454,38 +454,38 @@ export default function HomePage() {
   return (
     <div className="relative min-h-screen bg-black text-white overflow-hidden">
       <ParticleField />
-      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#091336] via-[#28124f] to-[#0b2c4f]" />
+      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-cyan-500/50 blur-3xl"
+        className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-lime-500/35 blur-3xl"
         animate={{ x: [0, 45, -20, 0], y: [0, 35, 20, 0], scale: [1, 1.12, 0.95, 1] }}
         transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -right-32 top-20 -z-20 h-[30rem] w-[30rem] rounded-full bg-fuchsia-500/45 blur-3xl"
+        className="pointer-events-none absolute -right-32 top-20 -z-20 h-[30rem] w-[30rem] rounded-full bg-emerald-500/35 blur-3xl"
         animate={{ x: [0, -35, 25, 0], y: [0, 40, -15, 0], scale: [1, 0.9, 1.08, 1] }}
         transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute left-1/3 bottom-0 -z-20 h-[28rem] w-[28rem] rounded-full bg-indigo-500/50 blur-3xl"
+        className="pointer-events-none absolute left-1/3 bottom-0 -z-20 h-[28rem] w-[28rem] rounded-full bg-green-500/35 blur-3xl"
         animate={{ x: [0, -30, 18, 0], y: [0, -30, 12, 0], scale: [1, 1.05, 0.92, 1] }}
         transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#3558ffaa,transparent_56%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#39ff7a88,transparent_56%)]"
         animate={{ opacity: [0.75, 1, 0.75] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#d946ef7a,transparent_64%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#22c55e66,transparent_64%)]"
         animate={{ opacity: [0.65, 0.95, 0.65] }}
         transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
       />
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(15,23,42,0.18),rgba(2,6,23,0.5))]" />
+      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(3,8,3,0.12),rgba(0,0,0,0.55))]" />
 
       <section className="relative px-6 pt-24 pb-14 max-w-7xl mx-auto">
         <div className="grid gap-8 lg:grid-cols-[1.35fr_0.9fr] lg:items-start">
@@ -495,12 +495,12 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
             className="text-center lg:text-left"
           >
-            <Badge className="mb-4 px-4 py-1 bg-indigo-500/10 text-indigo-300 border border-indigo-400/40">
+            <Badge className="mb-4 px-4 py-1 bg-lime-500/10 text-lime-300 border border-lime-400/40">
               INDIA'S BATTLE ARENA
             </Badge>
             <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
               BATTLE NEST
-              <span className="block bg-gradient-to-r from-indigo-300 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">
+              <span className="block bg-gradient-to-r from-lime-300 via-emerald-300 to-green-400 bg-clip-text text-transparent">
                 Play. Rise. Win.
               </span>
             </h1>
@@ -510,7 +510,7 @@ export default function HomePage() {
 
             <div className="mt-8 flex items-center justify-center lg:justify-start">
               <Link href="/tournaments">
-                <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
+                <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-lime-400 to-green-500 text-black font-semibold hover:opacity-90 transition">
                   Browse Tournaments
                 </button>
               </Link>
@@ -536,7 +536,7 @@ export default function HomePage() {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
               <div className="absolute left-4 right-4 bottom-4">
-                <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Promotion</p>
+                <p className="text-[11px] uppercase tracking-widest text-lime-200">Featured Promotion</p>
                 <p className="text-lg font-bold line-clamp-2">Battle Nest Featured Match</p>
                 <p className="text-xs text-white/80 mt-1 line-clamp-2">Compete, stream, and win in premium esports tournaments.</p>
               </div>
@@ -564,27 +564,27 @@ export default function HomePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-red-500/30 bg-black/45 backdrop-blur-xl">
+          <Card className="border-lime-500/30 bg-black/45 backdrop-blur-xl">
             <CardContent className="p-4">
-              <div className="text-xs text-red-300 flex items-center gap-1.5 mb-1">
+              <div className="text-xs text-lime-300 flex items-center gap-1.5 mb-1">
                 <Radio className="w-3.5 h-3.5" /> Live Now
               </div>
               <p className="text-xl font-bold">{metrics.liveNow}</p>
             </CardContent>
           </Card>
 
-          <Card className="border-yellow-500/30 bg-black/45 backdrop-blur-xl">
+          <Card className="border-lime-500/30 bg-black/45 backdrop-blur-xl">
             <CardContent className="p-4">
-              <div className="text-xs text-yellow-300 flex items-center gap-1.5 mb-1">
+              <div className="text-xs text-lime-300 flex items-center gap-1.5 mb-1">
                 <Trophy className="w-3.5 h-3.5" /> Total Prize Pool
               </div>
               <p className="text-xl font-bold">{formatMoney(metrics.totalPrizePool)}</p>
             </CardContent>
           </Card>
 
-          <Card className="border-cyan-500/30 bg-black/45 backdrop-blur-xl">
+          <Card className="border-emerald-500/30 bg-black/45 backdrop-blur-xl">
             <CardContent className="p-4">
-              <div className="text-xs text-cyan-300 flex items-center gap-1.5 mb-1">
+              <div className="text-xs text-emerald-300 flex items-center gap-1.5 mb-1">
                 <Wallet className="w-3.5 h-3.5" /> Total Payout
               </div>
               <p className="text-xl font-bold">{formatMoney(metrics.totalPayout)}</p>
@@ -595,7 +595,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">
-        <SectionHeader icon={<Flame className="w-6 h-6 text-amber-300" />} title="Hot Tournaments" subtitle="Admin-picked spotlight tournaments" />
+        <SectionHeader icon={<Flame className="w-6 h-6 text-lime-300" />} title="Hot Tournaments" subtitle="Admin-picked spotlight tournaments" />
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, idx) => (
@@ -614,7 +614,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">
-        <SectionHeader icon={<CalendarClock className="w-6 h-6 text-indigo-300" />} title="Upcoming Tournaments" subtitle="Only upcoming matches" />
+        <SectionHeader icon={<CalendarClock className="w-6 h-6 text-emerald-300" />} title="Upcoming Tournaments" subtitle="Only upcoming matches" />
         {upcomingTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingTournaments.map((t, idx) => (
@@ -627,7 +627,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-6 pb-20 max-w-7xl mx-auto">
-        <SectionHeader icon={<Activity className="w-6 h-6 text-red-300" />} title="Live Tournaments" subtitle="Only live matches" />
+        <SectionHeader icon={<Activity className="w-6 h-6 text-green-300" />} title="Live Tournaments" subtitle="Only live matches" />
         {liveTournaments.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {liveTournaments.map((t, idx) => (
