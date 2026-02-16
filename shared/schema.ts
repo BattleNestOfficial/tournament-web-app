@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
+<<<<<<< HEAD
 import { pgTable, text, varchar, integer, boolean, timestamp, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+=======
+import { pgTable, text, varchar, integer, boolean, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -57,6 +61,7 @@ export const tournaments = pgTable("tournaments", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+<<<<<<< HEAD
 export const registrations = pgTable(
   "registrations",
   {
@@ -74,6 +79,15 @@ export const registrations = pgTable(
     ),
   }),
 );
+=======
+export const registrations = pgTable("registrations", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull(),
+  tournamentId: integer("tournament_id").notNull(),
+  inGameName: text("in_game_name"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
 
 export const transactions = pgTable("transactions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

@@ -91,16 +91,25 @@ function getIGNForGame(slug: string, user: any) {
   if (!user) return "";
   switch (slug) {
     case "bgmi":
+<<<<<<< HEAD
       return user.bgmiIgn || "";
     case "free-fire":
       return user.freeFireIgn || "";
     case "cod-mobile":
       return user.codIgn || "";
+=======
+      return user.bgmiId || "";
+    case "free-fire":
+      return user.freeFireId || "";
+    case "cod-mobile":
+      return user.codMobileId || "";
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     default:
       return "";
   }
 }
 
+<<<<<<< HEAD
 async function fetchJsonOrThrow<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const data = await res.json();
@@ -110,6 +119,8 @@ async function fetchJsonOrThrow<T>(url: string, init?: RequestInit): Promise<T> 
   return data as T;
 }
 
+=======
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
 /* =====================================================================================
    MAIN COMPONENT
    ===================================================================================== */
@@ -140,9 +151,16 @@ export default function TournamentDetailPage() {
     queryKey: ["tournament", tournamentId],
     enabled: !!tournamentId,
     queryFn: async () => {
+<<<<<<< HEAD
       return fetchJsonOrThrow<Tournament>(`/api/tournaments/${tournamentId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+=======
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      return res.json();
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     },
   });
 
@@ -154,9 +172,16 @@ export default function TournamentDetailPage() {
     queryKey: ["my-registrations"],
     enabled: !!user,
     queryFn: async () => {
+<<<<<<< HEAD
       return fetchJsonOrThrow<Registration[]>("/api/registrations/my", {
         headers: { Authorization: `Bearer ${token}` },
       });
+=======
+      const res = await fetch("/api/registrations/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.json();
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     },
   });
 
@@ -164,9 +189,16 @@ export default function TournamentDetailPage() {
     queryKey: ["my-teams"],
     enabled: !!user,
     queryFn: async () => {
+<<<<<<< HEAD
       return fetchJsonOrThrow<any[]>("/api/teams/my", {
         headers: { Authorization: `Bearer ${token}` },
       });
+=======
+      const res = await fetch("/api/teams/my", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.json();
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     },
   });
 
@@ -174,7 +206,12 @@ export default function TournamentDetailPage() {
     queryKey: ["participants", tournamentId],
     enabled: !!tournamentId,
     queryFn: async () => {
+<<<<<<< HEAD
       return fetchJsonOrThrow<any[]>(`/api/tournaments/${tournamentId}/participants`);
+=======
+      const res = await fetch(`/api/tournaments/${tournamentId}/participants`);
+      return res.json();
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     },
   });
 
@@ -182,7 +219,12 @@ export default function TournamentDetailPage() {
     queryKey: ["results", tournamentId],
     enabled: !!tournamentId,
     queryFn: async () => {
+<<<<<<< HEAD
       return fetchJsonOrThrow<Result[]>(`/api/tournaments/${tournamentId}/results`);
+=======
+      const res = await fetch(`/api/tournaments/${tournamentId}/results`);
+      return res.json();
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
     },
   });
 
@@ -193,11 +235,14 @@ export default function TournamentDetailPage() {
   const joinMutation = useMutation({
     mutationFn: async () => {
       if (!token) throw new Error("Not authenticated");
+<<<<<<< HEAD
       if (!tournament) throw new Error("Tournament not found");
 
       if (tournament.matchType !== "solo" && !teamId) {
         throw new Error("Please select a team");
       }
+=======
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
 
       const payload =
         tournament?.matchType === "solo"
@@ -333,6 +378,7 @@ export default function TournamentDetailPage() {
             <div><Clock className="inline w-4 h-4" /> {formatDate(tournament.startTime)}</div>
           </div>
 
+<<<<<<< HEAD
           <Button
             disabled={joined}
             onClick={() => {
@@ -347,6 +393,9 @@ export default function TournamentDetailPage() {
               setJoinOpen(true);
             }}
           >
+=======
+          <Button disabled={joined} onClick={() => setJoinOpen(true)}>
+>>>>>>> d6ba416d3f53141b8989651729525050668978d8
             {joined ? "Registered" : "Join Tournament"}
           </Button>
         </CardContent>
