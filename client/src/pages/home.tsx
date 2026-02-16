@@ -436,32 +436,99 @@ export default function HomePage() {
   return (
     <div className="relative min-h-screen bg-black text-white overflow-hidden">
       <ParticleField />
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#1f2a72,transparent_58%)]" />
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#4b1d57,transparent_62%)]" />
+      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#050916] via-[#120a2d] to-[#041723]" />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-cyan-500/30 blur-3xl"
+        animate={{ x: [0, 45, -20, 0], y: [0, 35, 20, 0], scale: [1, 1.12, 0.95, 1] }}
+        transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -right-32 top-20 -z-20 h-[30rem] w-[30rem] rounded-full bg-fuchsia-500/30 blur-3xl"
+        animate={{ x: [0, -35, 25, 0], y: [0, 40, -15, 0], scale: [1, 0.9, 1.08, 1] }}
+        transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute left-1/3 bottom-0 -z-20 h-[28rem] w-[28rem] rounded-full bg-indigo-500/30 blur-3xl"
+        animate={{ x: [0, -30, 18, 0], y: [0, -30, 12, 0], scale: [1, 1.05, 0.92, 1] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#3558ff55,transparent_55%)]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#d946ef3f,transparent_62%)]" />
+      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(15,23,42,0.35),rgba(2,6,23,0.8))]" />
 
       <section className="relative px-6 pt-24 pb-14 max-w-7xl mx-auto">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-center">
-          <Badge className="mb-4 px-4 py-1 bg-indigo-500/10 text-indigo-300 border border-indigo-400/40">
-            INDIA'S BATTLE ARENA
-          </Badge>
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
-            BATTLE NEST
-            <span className="block bg-gradient-to-r from-indigo-300 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">
-              Play. Rise. Win.
-            </span>
-          </h1>
-          <p className="mt-5 text-white/70 max-w-3xl mx-auto">
-            Join high-stakes BGMI, Free Fire, CODM and more. Build your squad, enter live tournaments, and climb from local grinders to Battle Nest champions.
-          </p>
+        <div className="grid gap-8 lg:grid-cols-[1.35fr_0.9fr] lg:items-start">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-center lg:text-left"
+          >
+            <Badge className="mb-4 px-4 py-1 bg-indigo-500/10 text-indigo-300 border border-indigo-400/40">
+              INDIA'S BATTLE ARENA
+            </Badge>
+            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
+              BATTLE NEST
+              <span className="block bg-gradient-to-r from-indigo-300 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">
+                Play. Rise. Win.
+              </span>
+            </h1>
+            <p className="mt-5 text-white/70 max-w-3xl lg:mx-0 mx-auto">
+              Join high-stakes BGMI, Free Fire, CODM and more. Build your squad, enter live tournaments, and climb from local grinders to Battle Nest champions.
+            </p>
 
-          <div className="mt-8 flex items-center justify-center">
-            <Link href="/tournaments">
-              <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
-                Browse Tournaments
-              </button>
-            </Link>
-          </div>
-        </motion.div>
+            <div className="mt-8 flex items-center justify-center lg:justify-start">
+              <Link href="/tournaments">
+                <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
+                  Browse Tournaments
+                </button>
+              </Link>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.15, duration: 0.6 }}
+            className="lg:justify-self-end w-full max-w-md lg:max-w-sm"
+          >
+            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 aspect-square">
+              {activeSlide?.imageUrl ? (
+                <img src={activeSlide.imageUrl} alt={activeSlide.title} className="h-full w-full object-cover" />
+              ) : (
+                <div className={`h-full w-full bg-gradient-to-r ${activeSlide?.tone || "from-indigo-700/50 via-slate-800/60 to-black"} flex items-center justify-center`}>
+                  <Shield className="w-12 h-12 text-white/70" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+              <div className="absolute left-4 right-4 bottom-4">
+                <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Promotion</p>
+                <p className="text-lg font-bold line-clamp-2">{activeSlide?.title || "Battle Nest Showcase"}</p>
+                <p className="text-xs text-white/80 mt-1 line-clamp-2">{activeSlide?.subtitle}</p>
+                <div className="mt-3">
+                  <Link href="/tournaments">
+                    <button className="px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition">
+                      Browse Tournaments
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-center lg:justify-end gap-1">
+              {promoSlides.map((slide, idx) => (
+                <button
+                  key={slide.id}
+                  onClick={() => setBannerIndex(idx)}
+                  className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/55"}`}
+                  aria-label={`Switch banner ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </motion.div>
+        </div>
 
         <div className="mt-9 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Card className="border-emerald-500/30 bg-black/45 backdrop-blur-xl">
@@ -501,54 +568,6 @@ export default function HomePage() {
           </Card>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="mt-8"
-        >
-          <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40">
-            {activeSlide?.imageUrl ? (
-              <img src={activeSlide.imageUrl} alt={activeSlide.title} className="h-44 md:h-56 w-full object-cover" />
-            ) : (
-              <div className={`h-44 md:h-56 w-full bg-gradient-to-r ${activeSlide?.tone || "from-indigo-700/50 via-slate-800/60 to-black"} flex items-center justify-center`}>
-                <Shield className="w-10 h-10 text-white/70" />
-              </div>
-            )}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
-            <div className="absolute left-4 bottom-4 md:left-6 md:bottom-6 max-w-xl">
-              <p className="text-[11px] uppercase tracking-widest text-indigo-200">Featured Promotion</p>
-              <p className="text-lg md:text-2xl font-bold">{activeSlide?.title || "Battle Nest Showcase"}</p>
-              <p className="text-xs md:text-sm text-white/80 mt-1">{activeSlide?.subtitle}</p>
-              {isExternalBannerLink ? (
-                <a
-                  href={bannerHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex mt-3 px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition"
-                >
-                  {activeSlide?.ctaLabel || "Explore"}
-                </a>
-              ) : (
-                <Link href={bannerHref}>
-                  <button className="mt-3 px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold border border-white/30 transition">
-                    {activeSlide?.ctaLabel || "Explore"}
-                  </button>
-                </Link>
-              )}
-            </div>
-            <div className="absolute right-4 bottom-4 flex items-center gap-1">
-              {promoSlides.map((slide, idx) => (
-                <button
-                  key={slide.id}
-                  onClick={() => setBannerIndex(idx)}
-                  className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/55"}`}
-                  aria-label={`Switch banner ${idx + 1}`}
-                />
-              ))}
-            </div>
-          </div>
-        </motion.div>
       </section>
 
       <section className="px-6 pb-12 max-w-7xl mx-auto">
