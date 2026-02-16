@@ -231,7 +231,7 @@ app.get(
       const userRole = (req as any).userRole ?? "user";
       const statusFilterRaw = typeof req.query.status === "string" ? req.query.status : "";
       const searchRaw = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
-      const validStatuses = new Set(["upcoming", "live", "completed", "cancelled"]);
+      const validStatuses = new Set(["hot", "upcoming", "live", "completed", "cancelled"]);
       const statusFilter = statusFilterRaw
         .split(",")
         .map((s) => s.trim().toLowerCase())
@@ -318,7 +318,7 @@ app.get(
 
       // ✅ FINAL ACCESS RULE
       const normalizedStatus =
-        ["upcoming", "live", "completed", "cancelled"].includes(String(t.status))
+        ["hot", "upcoming", "live", "completed", "cancelled"].includes(String(t.status))
           ? t.status
           : "upcoming";
 
@@ -1093,6 +1093,9 @@ app.get("/api/stats/total-users", async (_req, res) => {
   app.patch("/api/admin/tournaments/:id/status", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const { status } = req.body;
+      if (!["hot", "upcoming", "live", "completed", "cancelled"].includes(String(status))) {
+        return res.status(400).json({ message: "Invalid tournament status" });
+      }
       const tournamentId = Number(req.params.id);
       const t = await storage.updateTournamentStatus(tournamentId, status);
       if (!t) return res.status(404).json({ message: "Tournament not found" });

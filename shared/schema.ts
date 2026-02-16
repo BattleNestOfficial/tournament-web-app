@@ -3,7 +3,7 @@ import { pgTable, text, varchar, integer, boolean, timestamp, pgEnum, jsonb, uni
 import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["user", "admin"]);
-export const tournamentStatusEnum = pgEnum("tournament_status", ["upcoming", "live", "completed", "cancelled"]);
+export const tournamentStatusEnum = pgEnum("tournament_status", ["hot", "upcoming", "live", "completed", "cancelled"]);
 export const matchTypeEnum = pgEnum("match_type", ["solo", "duo", "squad"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["deposit", "withdrawal", "entry_fee", "winning", "admin_credit", "admin_debit", "razorpay"]);
 export const withdrawalStatusEnum = pgEnum("withdrawal_status", ["pending", "approved", "rejected", "paid"]);

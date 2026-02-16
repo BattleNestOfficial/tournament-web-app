@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, or } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
   payments, adminLogs, notifications, banners,
@@ -218,7 +218,7 @@ export class DatabaseStorage implements IStorage {
         err.code = "TOURNAMENT_NOT_FOUND";
         throw err;
       }
-      if (tournament.status !== "upcoming") {
+      if (tournament.status !== "upcoming" && tournament.status !== "hot") {
         const err = new Error("Tournament is not open for registration") as Error & { code?: string };
         err.code = "TOURNAMENT_CLOSED";
         throw err;
@@ -281,7 +281,7 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(tournaments.id, data.tournamentId),
-            eq(tournaments.status, "upcoming"),
+            or(eq(tournaments.status, "upcoming"), eq(tournaments.status, "hot")),
             sql`${tournaments.filledSlots} < ${tournaments.maxSlots}`,
           ),
         )
@@ -541,7 +541,10 @@ export class DatabaseStorage implements IStorage {
   async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {
     const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
     const [revenue] = await db.select({ sum: sql<number>`coalesce(sum(amount), 0)` }).from(transactions).where(eq(transactions.type, "deposit"));
-    const [active] = await db.select({ count: sql<number>`count(*)` }).from(tournaments).where(eq(tournaments.status, "upcoming"));
+    const [active] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(tournaments)
+      .where(or(eq(tournaments.status, "upcoming"), eq(tournaments.status, "hot")));
     const [payouts] = await db.select({ sum: sql<number>`coalesce(sum(amount), 0)` }).from(transactions).where(eq(transactions.type, "winning"));
 
     return {

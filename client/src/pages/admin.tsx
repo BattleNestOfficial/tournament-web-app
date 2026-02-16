@@ -287,7 +287,11 @@ function editTournament(t: Tournament) {
    
 
   const statusColors: Record<string, string> = {
-    upcoming: "text-chart-2", live: "text-destructive", completed: "text-muted-foreground", cancelled: "text-muted-foreground",
+    hot: "text-orange-500",
+    upcoming: "text-chart-2",
+    live: "text-destructive",
+    completed: "text-muted-foreground",
+    cancelled: "text-muted-foreground",
   };
 
   return (
@@ -508,6 +512,7 @@ function editTournament(t: Tournament) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="hot">Hot</SelectItem>
                       <SelectItem value="upcoming">Upcoming</SelectItem>
                       <SelectItem value="live">Live</SelectItem>
                       <SelectItem value="completed">Completed</SelectItem>

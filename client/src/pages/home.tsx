@@ -24,13 +24,9 @@ import {
   Sparkles,
   Shield,
   Swords,
-  Activity,
   Radio,
-  BarChart3,
   CalendarDays,
   TrendingUp,
-  Target,
-  Award,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,15 +53,6 @@ const MATCH_COLOR: Record<string, string> = {
 
 function formatMoney(v: number) {
   return `₹${(v / 100).toLocaleString("en-IN")}`;
-}
-
-function formatDateTime(value: string | Date) {
-  return new Date(value).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 /* =====================================================================================
@@ -277,7 +264,7 @@ function ParticleField() {
 export default function TournamentsPageGod() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "upcoming" | "live" | "completed" | "cancelled"
+    "all" | "hot" | "upcoming" | "live" | "completed" | "cancelled"
   >("all");
 
   const {
@@ -327,16 +314,12 @@ export default function TournamentsPageGod() {
     return () => clearInterval(interval);
   }, [banners.length]);
 
-  const gameById = useMemo(() => {
-    return new Map(games.map((g) => [g.id, g]));
-  }, [games]);
-
   const gameNameById = useMemo(() => {
     return new Map(games.map((g) => [g.id, g.name.toLowerCase()]));
   }, [games]);
 
   const normalizedTournaments = useMemo(() => {
-    const validStatuses = new Set(["upcoming", "live", "completed", "cancelled"]);
+    const validStatuses = new Set(["hot", "upcoming", "live", "completed", "cancelled"]);
     return tournaments.map((t) => {
       const maxSlots = Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1;
       const filledSlots = Number.isFinite(t.filledSlots) && t.filledSlots > 0 ? t.filledSlots : 0;
@@ -359,6 +342,7 @@ const sortedVisibleTournaments = useMemo(() => {
   };
 
   const statusOrder: Record<string, number> = {
+    hot: 0,
     live: 0,
     upcoming: 1,
     completed: 2,
@@ -388,44 +372,35 @@ const sortedVisibleTournaments = useMemo(() => {
 }, [normalizedTournaments, searchQuery, statusFilter, gameNameById]);
 
 const hotTournaments = useMemo(
-  () => sortedVisibleTournaments.filter((t) => t.status === "upcoming"),
-  [sortedVisibleTournaments]
+  () =>
+    [...normalizedTournaments]
+      .filter((t) => t.status === "hot")
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+  [normalizedTournaments]
 );
 
 const liveTournaments = useMemo(
-  () => sortedVisibleTournaments.filter((t) => t.status === "live"),
-  [sortedVisibleTournaments]
+  () =>
+    [...normalizedTournaments]
+      .filter((t) => t.status === "live")
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+  [normalizedTournaments]
 );
 
-const upcomingTimeline = useMemo(
+const upcomingTournaments = useMemo(
   () =>
-    [...sortedVisibleTournaments]
+    [...normalizedTournaments]
       .filter((t) => t.status === "upcoming")
-      .slice(0, 6),
-  [sortedVisibleTournaments]
-);
-
-const completedTournaments = useMemo(
-  () =>
-    [...sortedVisibleTournaments]
-      .filter((t) => t.status === "completed")
-      .slice(0, 3),
-  [sortedVisibleTournaments]
-);
-
-const featuredLiveTournament = useMemo(
-  () => liveTournaments[0] ?? null,
-  [liveTournaments]
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+  [normalizedTournaments]
 );
 
 const arenaStats = useMemo(() => {
   const totalPrizePool = normalizedTournaments.reduce((sum, t) => sum + t.prizePool, 0);
-  const totalEntryPool = normalizedTournaments.reduce((sum, t) => sum + t.entryFee * t.filledSlots, 0);
   const totalPlayers = normalizedTournaments.reduce((sum, t) => sum + t.filledSlots, 0);
 
   return {
     totalPrizePool,
-    totalEntryPool,
     totalPlayers,
     liveCount: normalizedTournaments.filter((t) => t.status === "live").length,
     upcomingCount: normalizedTournaments.filter((t) => t.status === "upcoming").length,
@@ -434,46 +409,11 @@ const arenaStats = useMemo(() => {
         ? 0
         : Math.round(
             (normalizedTournaments.filter((t) => t.status === "completed").length /
-              normalizedTournaments.length) *
+      normalizedTournaments.length) *
               100
           ),
   };
 }, [normalizedTournaments]);
-
-const gameHeatBoard = useMemo(() => {
-  const byGame = new Map<
-    number,
-    { gameId: number; gameName: string; count: number; liveCount: number; totalPrizePool: number }
-  >();
-
-  normalizedTournaments.forEach((t) => {
-    const game = gameById.get(t.gameId);
-    const gameName = game?.name ?? `Game #${t.gameId}`;
-    const current = byGame.get(t.gameId);
-    if (current) {
-      current.count += 1;
-      current.totalPrizePool += t.prizePool;
-      if (t.status === "live") current.liveCount += 1;
-      return;
-    }
-
-    byGame.set(t.gameId, {
-      gameId: t.gameId,
-      gameName,
-      count: 1,
-      liveCount: t.status === "live" ? 1 : 0,
-      totalPrizePool: t.prizePool,
-    });
-  });
-
-  return Array.from(byGame.values())
-    .sort((a, b) => {
-      if (b.liveCount !== a.liveCount) return b.liveCount - a.liveCount;
-      if (b.count !== a.count) return b.count - a.count;
-      return b.totalPrizePool - a.totalPrizePool;
-    })
-    .slice(0, 6);
-}, [normalizedTournaments, gameById]);
 
 
 const fadeUp = {
@@ -567,11 +507,6 @@ const fadeUp = {
             <Link href="/tournaments">
               <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
                 Enter Tournament Hub
-              </button>
-            </Link>
-            <Link href="/wallet">
-              <button className="px-6 py-3 rounded-lg border border-white/20 bg-black/40 font-semibold hover:bg-black/60 transition">
-                Manage Wallet
               </button>
             </Link>
           </div>
@@ -717,11 +652,11 @@ const fadeUp = {
 
     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
 
-    {/* UPCOMING INDICATOR (RIGHT SIDE LIKE LIVE) */}
+    {/* HOT INDICATOR */}
     <div className="absolute top-3 right-3 flex items-center gap-1 text-xs font-bold text-yellow-400">
       <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse absolute" />
       <span className="w-2 h-2 rounded-full bg-yellow-500" />
-      UPCOMING
+      HOT
     </div>
   </div>
 
@@ -783,154 +718,81 @@ const fadeUp = {
         </section>
       )}
 
-      <section className="px-6 pb-16 max-w-7xl mx-auto">
-        <div className="grid gap-6 lg:grid-cols-[1.35fr_1fr]">
-          <Card className="border-red-500/30 bg-gradient-to-br from-red-950/30 via-black/70 to-black/80 backdrop-blur-xl overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div>
-                  <p className="text-[11px] tracking-widest uppercase text-red-300">Live Command Center</p>
-                  <h3 className="text-2xl font-bold">Arena Pulse</h3>
-                </div>
-                <Badge className="border-red-500/40 bg-red-500/10 text-red-300">
-                  <Activity className="w-3 h-3 mr-1.5" />
-                  {arenaStats.liveCount} LIVE
-                </Badge>
-              </div>
-
-              {featuredLiveTournament ? (
-                <>
-                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          {gameById.get(featuredLiveTournament.gameId)?.name || "Unknown Game"}
-                        </p>
-                        <h4 className="text-xl font-bold">{featuredLiveTournament.title}</h4>
-                      </div>
-                      <Badge className="capitalize bg-red-500/15 text-red-300 border-red-500/40">
-                        <Radio className="w-3 h-3 mr-1.5" />
-                        {featuredLiveTournament.matchType}
+      <section className="px-6 pb-12 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+            <CalendarDays className="text-indigo-300 w-6 h-6" />
+            Upcoming Tournaments
+          </h2>
+          <span className="text-xs text-indigo-300">{upcomingTournaments.length} upcoming</span>
+        </div>
+        {upcomingTournaments.length > 0 ? (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {upcomingTournaments.slice(0, 6).map((t) => (
+              <Link key={t.id} href={`/tournaments/${t.id}`}>
+                <Card className="border-indigo-500/30 bg-black/50 backdrop-blur-xl hover:border-indigo-400/60 transition cursor-pointer">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold truncate">{t.title}</p>
+                      <Badge className="text-xs bg-indigo-500/15 text-indigo-300 border-indigo-500/40">
+                        UPCOMING
                       </Badge>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
-                        <p className="text-muted-foreground">Start</p>
-                        <p className="font-semibold">{formatDateTime(featuredLiveTournament.startTime)}</p>
-                      </div>
-                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
-                        <p className="text-muted-foreground">Entry</p>
-                        <p className="font-semibold">{featuredLiveTournament.entryFee > 0 ? formatMoney(featuredLiveTournament.entryFee) : "FREE"}</p>
-                      </div>
-                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
-                        <p className="text-muted-foreground">Prize</p>
-                        <p className="font-semibold">{formatMoney(featuredLiveTournament.prizePool)}</p>
-                      </div>
-                      <div className="rounded-md border border-white/10 bg-black/40 p-2">
-                        <p className="text-muted-foreground">Slots</p>
-                        <p className="font-semibold">{featuredLiveTournament.filledSlots}/{featuredLiveTournament.maxSlots}</p>
-                      </div>
+                    <CountdownText startTime={t.startTime} />
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="text-muted-foreground">Prize: <span className="text-white">{formatMoney(t.prizePool)}</span></div>
+                      <div className="text-muted-foreground">Entry: <span className="text-white">{t.entryFee > 0 ? formatMoney(t.entryFee) : "FREE"}</span></div>
+                      <div className="text-muted-foreground">Slots: <span className="text-white">{t.filledSlots}/{t.maxSlots}</span></div>
+                      <div className="text-muted-foreground capitalize">Type: <span className="text-white">{t.matchType}</span></div>
                     </div>
-                    <div className="mt-4">
-                      <Progress value={(featuredLiveTournament.filledSlots / featuredLiveTournament.maxSlots) * 100} className="h-2" />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      Total entry pool in ecosystem: <span className="text-emerald-300 font-semibold">{formatMoney(arenaStats.totalEntryPool)}</span>
-                    </p>
-                    <Link href={`/tournaments/${featuredLiveTournament.id}`}>
-                      <button className="px-4 py-2 text-xs rounded-md border border-red-400/50 text-red-200 hover:bg-red-500/20 transition">
-                        Spectate Tournament
-                      </button>
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-xl border border-white/10 bg-black/40 p-6 text-center">
-                  <p className="text-sm text-muted-foreground">No live tournament right now. Upcoming events are ready below.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-6">
-            <Card className="border-indigo-500/30 bg-black/50 backdrop-blur-xl">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-bold flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4 text-indigo-300" />
-                    Match Schedule
-                  </h4>
-                  <span className="text-xs text-indigo-300">{arenaStats.upcomingCount} upcoming</span>
-                </div>
-                <div className="space-y-3">
-                  {upcomingTimeline.length > 0 ? (
-                    upcomingTimeline.map((t) => (
-                      <Link key={t.id} href={`/tournaments/${t.id}`}>
-                        <div className="rounded-lg border border-white/10 bg-black/40 p-3 hover:border-indigo-400/40 transition cursor-pointer">
-                          <p className="text-sm font-semibold truncate">{t.title}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(t.startTime)}</p>
-                        </div>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No upcoming matches in current filter.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-fuchsia-500/30 bg-black/50 backdrop-blur-xl">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-bold flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-fuchsia-300" />
-                    Game Heatmap
-                  </h4>
-                  <Target className="w-4 h-4 text-fuchsia-300" />
-                </div>
-                <div className="space-y-3">
-                  {gameHeatBoard.length > 0 ? (
-                    gameHeatBoard.map((g) => {
-                      const ratio = normalizedTournaments.length > 0 ? (g.count / normalizedTournaments.length) * 100 : 0;
-                      return (
-                        <div key={g.gameId}>
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="font-semibold">{g.gameName}</span>
-                            <span className="text-muted-foreground">{g.count} matches</span>
-                          </div>
-                          <Progress value={ratio} className="h-1.5" />
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No game data yet.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {completedTournaments.length > 0 && (
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {completedTournaments.map((t) => (
-              <Link key={t.id} href={`/tournaments/${t.id}`}>
-                <Card className="border-emerald-500/30 bg-black/50 backdrop-blur-xl hover:border-emerald-400/60 transition cursor-pointer">
-                  <CardContent className="p-4">
-                    <p className="text-xs text-emerald-300 mb-1 flex items-center gap-1.5">
-                      <Award className="w-3 h-3" /> Completed Final
-                    </p>
-                    <p className="font-semibold truncate">{t.title}</p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Prize: {formatMoney(t.prizePool)}
-                    </p>
                   </CardContent>
                 </Card>
               </Link>
             ))}
           </div>
+        ) : (
+          <Card className="border border-white/10 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-8 text-center text-muted-foreground">No upcoming tournaments.</CardContent>
+          </Card>
+        )}
+      </section>
+
+      <section className="px-6 pb-16 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+            <Radio className="text-red-300 w-6 h-6" />
+            Live Tournaments
+          </h2>
+          <span className="text-xs text-red-300">{liveTournaments.length} live</span>
+        </div>
+        {liveTournaments.length > 0 ? (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {liveTournaments.map((t) => (
+              <Link key={t.id} href={`/tournaments/${t.id}`}>
+                <Card className="border-red-500/40 bg-black/50 backdrop-blur-xl hover:border-red-400/70 transition cursor-pointer">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold truncate">{t.title}</p>
+                      <Badge className="text-xs bg-red-500/15 text-red-300 border-red-500/40">
+                        LIVE
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="text-muted-foreground">Prize: <span className="text-white">{formatMoney(t.prizePool)}</span></div>
+                      <div className="text-muted-foreground">Entry: <span className="text-white">{t.entryFee > 0 ? formatMoney(t.entryFee) : "FREE"}</span></div>
+                      <div className="text-muted-foreground">Slots: <span className="text-white">{t.filledSlots}/{t.maxSlots}</span></div>
+                      <div className="text-muted-foreground capitalize">Type: <span className="text-white">{t.matchType}</span></div>
+                    </div>
+                    <Progress value={(t.filledSlots / t.maxSlots) * 100} className="h-2" />
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <Card className="border border-white/10 bg-black/40 backdrop-blur-xl">
+            <CardContent className="p-8 text-center text-muted-foreground">No live tournaments.</CardContent>
+          </Card>
         )}
       </section>
 
@@ -959,7 +821,7 @@ const fadeUp = {
             className="bg-black/30 border-white/10 text-white placeholder:text-muted-foreground"
           />
           <div className="flex flex-wrap items-center gap-2">
-            {(["all", "live", "upcoming", "completed", "cancelled"] as const).map((status) => (
+            {(["all", "hot", "live", "upcoming", "completed", "cancelled"] as const).map((status) => (
               <button
                 key={status}
                 type="button"
@@ -1192,13 +1054,6 @@ const fadeUp = {
             Every match is a battlefield. Every victory builds your legacy.
             Climb the leaderboard. Earn rewards. Become unstoppable.
           </p>
-                     <div className="mt-8">
-            <Link href="/tournaments">
-              <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
-                Browse Tournaments
-              </button>
-            </Link>
-          </div>
 
         </motion.div>
       </section>

@@ -74,6 +74,7 @@ export default function TournamentsPage() {
   }) || [];
 
   const statusColors: Record<string, string> = {
+    hot: "bg-orange-500/10 text-orange-400",
     upcoming: "bg-chart-2/10 text-chart-2",
     live: "bg-destructive/10 text-destructive",
     completed: "bg-muted text-muted-foreground",
@@ -120,6 +121,7 @@ export default function TournamentsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="hot">Hot</SelectItem>
                   <SelectItem value="upcoming">Upcoming</SelectItem>
                   <SelectItem value="live">Live</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
