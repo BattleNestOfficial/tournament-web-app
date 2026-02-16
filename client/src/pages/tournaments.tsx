@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
-import { motion, useMotionValue, useSpring } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Activity,
   ArrowUpDown,
   CalendarClock,
-  Clock,
   Eye,
   Filter,
   Flame,
@@ -23,13 +22,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
 
-import type { Game, Registration, Tournament } from "@shared/schema";
+import type { Game, Registration, Result, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live" | "completed";
 type SortBy = "start_asc" | "start_desc" | "prize_desc" | "slots_desc";
@@ -132,30 +132,11 @@ function useCountdown(target: string | Date) {
 }
 
 function HoloCard({ children }: { children: React.ReactNode }) {
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const rotateX = useSpring(y, { stiffness: 170, damping: 20 });
-  const rotateY = useSpring(x, { stiffness: 170, damping: 20 });
-
-  function onMove(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    x.set((px - rect.width / 2) / 18);
-    y.set(-(py - rect.height / 2) / 18);
-  }
-
-  function reset() {
-    x.set(0);
-    y.set(0);
-  }
-
   return (
     <motion.div
-      onMouseMove={onMove}
-      onMouseLeave={reset}
-      style={{ rotateX, rotateY, transformPerspective: 900 }}
-      className="transition-transform duration-300"
+      whileHover={{ y: -4, scale: 1.01 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="transition-transform duration-200 will-change-transform"
     >
       {children}
     </motion.div>
@@ -168,12 +149,16 @@ function TournamentMatchCard({
   index,
   joined,
   token,
+  onShowRoom,
+  onShowWinners,
 }: {
   tournament: Tournament;
   gameName: string;
   index: number;
   joined: boolean;
   token: string | null;
+  onShowRoom: (tournament: Tournament) => void;
+  onShowWinners: (tournament: Tournament) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const status = normalizeStatus(tournament.status);
@@ -261,7 +246,15 @@ function TournamentMatchCard({
               )}
 
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {joined ? (
+                {status === "live" ? (
+                  <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
+                    Show ID/Password
+                  </Button>
+                ) : status === "completed" ? (
+                  <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowWinners(tournament)}>
+                    Show Winners
+                  </Button>
+                ) : joined ? (
                   <Button size="sm" disabled className="w-full">
                     Registered
                   </Button>
@@ -274,7 +267,7 @@ function TournamentMatchCard({
                   </Button>
                 ) : (
                   <Button size="sm" disabled variant="secondary" className="w-full">
-                    {status === "live" ? "Live" : "Closed"}
+                    Closed
                   </Button>
                 )}
 
@@ -319,6 +312,8 @@ export default function TournamentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [joinedOnly, setJoinedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("start_asc");
+  const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
+  const [winnersDialogTournament, setWinnersDialogTournament] = useState<Tournament | null>(null);
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -345,6 +340,30 @@ export default function TournamentsPage() {
       const res = await fetch("/api/registrations/my", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const winnersTournamentId = winnersDialogTournament?.id ? Number(winnersDialogTournament.id) : 0;
+
+  const { data: winnerResults = [], isLoading: isWinnerResultsLoading, isError: isWinnerResultsError } = useQuery<Result[]>({
+    queryKey: ["/api/tournaments", winnersTournamentId.toString(), "results"],
+    enabled: winnersTournamentId > 0,
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${winnersTournamentId}/results`);
+      if (!res.ok) throw new Error("Failed to load winners");
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const { data: winnerParticipants = [] } = useQuery<Array<{ userId: number; username?: string; displayName?: string }>>({
+    queryKey: ["/api/tournaments", winnersTournamentId.toString(), "participants"],
+    enabled: winnersTournamentId > 0,
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${winnersTournamentId}/participants`);
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
@@ -415,6 +434,21 @@ export default function TournamentsPage() {
     upcoming: upcomingTournaments.length,
     completed: completedTournaments.length,
   };
+
+  const winnerNameByUserId = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const participant of winnerParticipants) {
+      const userId = Number(participant.userId);
+      if (!Number.isFinite(userId)) continue;
+      map.set(userId, participant.displayName || participant.username || `Player #${userId}`);
+    }
+    return map;
+  }, [winnerParticipants]);
+
+  const sortedWinnerResults = useMemo(
+    () => [...winnerResults].sort((a, b) => a.position - b.position),
+    [winnerResults]
+  );
 
   function clearFilters() {
     setGameFilter("all");
@@ -573,6 +607,8 @@ export default function TournamentsPage() {
                       index={idx}
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
+                      onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                     />
                   ))}
                 </div>
@@ -599,6 +635,8 @@ export default function TournamentsPage() {
                       index={idx}
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
+                      onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                     />
                   ))}
                 </div>
@@ -625,6 +663,8 @@ export default function TournamentsPage() {
                       index={idx}
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
+                      onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                     />
                   ))}
                 </div>
@@ -651,6 +691,8 @@ export default function TournamentsPage() {
                       index={idx}
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
+                      onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                     />
                   ))}
                 </div>
@@ -679,6 +721,83 @@ export default function TournamentsPage() {
           </Card>
         )}
       </div>
+
+      <Dialog
+        open={!!roomDialogTournament}
+        onOpenChange={(open) => {
+          if (!open) setRoomDialogTournament(null);
+        }}
+      >
+        <DialogContent className="max-w-md border-white/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Room Credentials</DialogTitle>
+          </DialogHeader>
+          {roomDialogTournament && (
+            <div className="space-y-3">
+              <p className="text-sm text-white/70">{roomDialogTournament.title}</p>
+              {roomDialogTournament.roomId && roomDialogTournament.roomPassword ? (
+                <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
+                  <p className="text-sm text-emerald-100">
+                    Room ID: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomId}</span>
+                  </p>
+                  <p className="text-sm text-emerald-100">
+                    Password: <span className="font-mono font-semibold text-white">{roomDialogTournament.roomPassword}</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
+                  Room credentials are visible only to registered players when the tournament is live.
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!winnersDialogTournament}
+        onOpenChange={(open) => {
+          if (!open) setWinnersDialogTournament(null);
+        }}
+      >
+        <DialogContent className="max-w-md border-white/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Winners</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-white/70">{winnersDialogTournament?.title}</p>
+            {isWinnerResultsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : isWinnerResultsError ? (
+              <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                Failed to load winners.
+              </div>
+            ) : sortedWinnerResults.length === 0 ? (
+              <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
+                Winners are not declared yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sortedWinnerResults.map((result) => (
+                  <div key={result.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3 text-sm">
+                    <div>
+                      <p className="font-semibold text-white">
+                        #{result.position} {winnerNameByUserId.get(result.userId) || `Player #${result.userId}`}
+                      </p>
+                      <p className="text-xs text-white/60">Kills: {result.kills}</p>
+                    </div>
+                    <p className="font-semibold text-amber-300">{formatMoney(result.prize)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
