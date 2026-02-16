@@ -238,22 +238,32 @@ app.get(
         .filter((s) => validStatuses.has(s));
 
       const tournaments = await storage.getAllTournaments();
+      let joinedTournamentIds = new Set<number>();
+      if (Number.isInteger(userId) && userId > 0) {
+        try {
+          const registrations = await storage.getRegistrationsByUser(userId);
+          joinedTournamentIds = new Set(
+            registrations
+              .map((r) => Number(r.tournamentId))
+              .filter((id) => Number.isInteger(id) && id > 0)
+          );
+        } catch (err) {
+          console.error("Failed to load user registrations for tournament list:", err);
+        }
+      }
+
       const filteredTournaments = tournaments.filter((t) => {
+        const titleValue = typeof t.title === "string" ? t.title : "";
         const normalizedStatus = validStatuses.has(String(t.status)) ? String(t.status) : "upcoming";
         const statusMatches = statusFilter.length === 0 || statusFilter.includes(normalizedStatus);
-        const searchMatches = !searchRaw || t.title.toLowerCase().includes(searchRaw);
+        const searchMatches = !searchRaw || titleValue.toLowerCase().includes(searchRaw);
         return statusMatches && searchMatches;
       });
 
-      const result = await Promise.all(
-        filteredTournaments.map(async (t) => {
-          let isJoined = false;
-
-          if (userId) {
-            const reg = await storage.getRegistration(userId, t.id);
-            isJoined = !!reg;
-          }
-
+      const result = filteredTournaments
+        .filter((t) => Number.isInteger(t.id) && t.id > 0)
+        .map((t) => {
+          const isJoined = joinedTournamentIds.has(t.id);
           const normalizedStatus = validStatuses.has(String(t.status)) ? t.status : "upcoming";
           const canSeeRoom =
             userRole === "admin" ||
@@ -261,12 +271,16 @@ app.get(
 
           return {
             ...t,
+            title: typeof t.title === "string" ? t.title : "Untitled Tournament",
+            entryFee: Number.isFinite(t.entryFee) ? t.entryFee : 0,
+            prizePool: Number.isFinite(t.prizePool) ? t.prizePool : 0,
+            maxSlots: Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1,
+            filledSlots: Number.isFinite(t.filledSlots) && t.filledSlots >= 0 ? t.filledSlots : 0,
             status: normalizedStatus,
             roomId: canSeeRoom ? t.roomId : null,
             roomPassword: canSeeRoom ? t.roomPassword : null,
           };
-        })
-      );
+        });
 
       res.json(result);
     } catch (err) {
@@ -293,9 +307,13 @@ app.get(
       }
 
       let isJoined = false;
-      if (userId) {
-        const reg = await storage.getRegistration(userId, tournamentId);
-        isJoined = !!reg;
+      if (Number.isInteger(userId) && userId > 0) {
+        try {
+          const reg = await storage.getRegistration(userId, tournamentId);
+          isJoined = !!reg;
+        } catch (err) {
+          console.error("Tournament registration lookup error:", err);
+        }
       }
 
       // ✅ FINAL ACCESS RULE
@@ -310,6 +328,11 @@ app.get(
 
       res.json({
         ...t,
+        title: typeof t.title === "string" ? t.title : "Untitled Tournament",
+        entryFee: Number.isFinite(t.entryFee) ? t.entryFee : 0,
+        prizePool: Number.isFinite(t.prizePool) ? t.prizePool : 0,
+        maxSlots: Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1,
+        filledSlots: Number.isFinite(t.filledSlots) && t.filledSlots >= 0 ? t.filledSlots : 0,
         status: normalizedStatus,
         roomId: canSeeRoom ? t.roomId : null,
         roomPassword: canSeeRoom ? t.roomPassword : null,

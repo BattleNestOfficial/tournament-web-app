@@ -280,9 +280,25 @@ export default function TournamentsPageGod() {
     isError,
   } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
+    queryFn: async () => {
+      const token = localStorage.getItem("bn_token");
+      const res = await fetch("/api/tournaments", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (res.status === 401) return [];
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to load tournaments");
+      }
+
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
     staleTime: 0,
     refetchOnMount: "always",
     refetchInterval: 15000,
+    retry: 2,
   });
 
   const { data: games = [] } = useQuery<Game[]>({
