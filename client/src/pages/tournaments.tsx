@@ -17,13 +17,15 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth";
 
-import type { Game, Tournament } from "@shared/schema";
+import type { Game, Registration, Tournament } from "@shared/schema";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live" | "completed";
 
@@ -252,6 +254,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
 }
 
 export default function TournamentsPage() {
+  const { token } = useAuth();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const initialGame = params.get("game") || "all";
@@ -261,6 +264,7 @@ export default function TournamentsPage() {
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [typeFilter, setTypeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [joinedOnly, setJoinedOnly] = useState(false);
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -279,6 +283,29 @@ export default function TournamentsPage() {
   const { data: games = [] } = useQuery<Game[]>({
     queryKey: ["/api/games"],
   });
+
+  const { data: myRegistrations = [] } = useQuery<Registration[]>({
+    queryKey: ["/api/registrations/my"],
+    enabled: !!token,
+    queryFn: async () => {
+      const res = await fetch("/api/registrations/my", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const joinedTournamentIds = useMemo(
+    () =>
+      new Set(
+        myRegistrations
+          .map((r) => Number(r.tournamentId))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      ),
+    [myRegistrations]
+  );
 
   const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
 
@@ -301,10 +328,11 @@ export default function TournamentsPage() {
         if (gameFilter !== "all" && t.gameId !== Number(gameFilter)) return false;
         if (statusFilter !== "all" && t.status !== statusFilter) return false;
         if (typeFilter !== "all" && t.matchType !== typeFilter) return false;
+        if (joinedOnly && !joinedTournamentIds.has(Number(t.id))) return false;
         if (searchQuery.trim() && !t.title.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
         return true;
       }),
-    [normalizedTournaments, gameFilter, statusFilter, typeFilter, searchQuery]
+    [normalizedTournaments, gameFilter, statusFilter, typeFilter, joinedOnly, joinedTournamentIds, searchQuery]
   );
 
   const liveTournaments = useMemo(
@@ -391,6 +419,18 @@ export default function TournamentsPage() {
                     <SelectItem value="squad">Squad</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  variant={joinedOnly ? "default" : "outline"}
+                  className="gap-1.5"
+                  disabled={!token}
+                  onClick={() => setJoinedOnly((prev) => !prev)}
+                  data-testid="button-joined-filter"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Joined Only
+                  {token && <span className="text-[11px] opacity-80">({joinedTournamentIds.size})</span>}
+                </Button>
               </div>
             </div>
           </CardContent>
