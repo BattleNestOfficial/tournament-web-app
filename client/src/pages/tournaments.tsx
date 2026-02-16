@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -134,7 +134,7 @@ function useCountdown(target: string | Date) {
 function HoloCard({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
-      whileHover={{ y: -4, scale: 1.01 }}
+      whileHover={{ y: -4 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="transition-transform duration-200 will-change-transform"
     >
@@ -151,6 +151,7 @@ function TournamentMatchCard({
   token,
   onShowRoom,
   onShowWinners,
+  onOpenDetails,
 }: {
   tournament: Tournament;
   gameName: string;
@@ -159,6 +160,7 @@ function TournamentMatchCard({
   token: string | null;
   onShowRoom: (tournament: Tournament) => void;
   onShowWinners: (tournament: Tournament) => void;
+  onOpenDetails: (tournamentId: number) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const status = normalizeStatus(tournament.status);
@@ -168,6 +170,15 @@ function TournamentMatchCard({
   const rightMeta = status === "completed" ? "Completed" : countdown;
   const canJoin = status === "upcoming" || status === "hot";
   const joinHref = token ? `/tournaments/${tournament.id}?action=join` : "/auth";
+  const interactiveSelector = "a,button,input,select,textarea,[role='button']";
+
+  function handleCardOpen(event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(interactiveSelector)) {
+      return;
+    }
+    onOpenDetails(Number(tournament.id));
+  }
 
   return (
     <motion.div
@@ -177,14 +188,24 @@ function TournamentMatchCard({
       transition={{ delay: Math.min(index * 0.06, 0.35), duration: 0.45 }}
     >
       <HoloCard>
-        <Card className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl transition-all duration-300`}>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={handleCardOpen}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleCardOpen(event);
+          }}
+          className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+        >
             <div className="relative h-44 overflow-hidden">
               {tournament.imageUrl && !imgFailed ? (
                 <img
                   src={tournament.imageUrl}
                   alt={tournament.title}
                   onError={() => setImgFailed(true)}
-                  className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                  className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
               ) : (
                 <div className={`h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
@@ -301,6 +322,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
 
 export default function TournamentsPage() {
   const { token } = useAuth();
+  const [, setLocation] = useLocation();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const initialGame = params.get("game") || "all";
@@ -609,6 +631,7 @@ export default function TournamentsPage() {
                       token={token}
                       onShowRoom={setRoomDialogTournament}
                       onShowWinners={setWinnersDialogTournament}
+                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
                 </div>
@@ -637,6 +660,7 @@ export default function TournamentsPage() {
                       token={token}
                       onShowRoom={setRoomDialogTournament}
                       onShowWinners={setWinnersDialogTournament}
+                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
                 </div>
@@ -665,6 +689,7 @@ export default function TournamentsPage() {
                       token={token}
                       onShowRoom={setRoomDialogTournament}
                       onShowWinners={setWinnersDialogTournament}
+                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
                 </div>
@@ -693,6 +718,7 @@ export default function TournamentsPage() {
                       token={token}
                       onShowRoom={setRoomDialogTournament}
                       onShowWinners={setWinnersDialogTournament}
+                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
                 </div>

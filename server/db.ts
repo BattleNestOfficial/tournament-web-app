@@ -49,4 +49,11 @@ export async function ensureTournamentStatusEnumHasHot() {
   `);
 }
 
+export async function ensureRegistrationsTeamColumn() {
+  await pool.query(`
+    ALTER TABLE registrations
+    ADD COLUMN IF NOT EXISTS team_id integer;
+  `);
+}
+
 export const db = drizzle(pool, { schema });

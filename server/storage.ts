@@ -201,12 +201,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createRegistration(userId: number, tournamentId: number, inGameName?: string, teamId?: number): Promise<Registration> {
-    const [reg] = await db.insert(registrations).values({
+    const payload: { userId: number; tournamentId: number; inGameName: string | null; teamId?: number | null } = {
       userId,
       tournamentId,
       inGameName: inGameName || null,
-      teamId: teamId ?? null,
-    }).returning();
+    };
+
+    if (teamId != null) {
+      payload.teamId = teamId;
+    }
+
+    const [reg] = await db.insert(registrations).values(payload).returning();
     return reg;
   }
 
@@ -260,12 +265,22 @@ export class DatabaseStorage implements IStorage {
       }
 
       try {
-        await tx.insert(registrations).values({
+        const payload: {
+          userId: number;
+          tournamentId: number;
+          inGameName: string | null;
+          teamId?: number | null;
+        } = {
           userId: data.userId,
           tournamentId: data.tournamentId,
           inGameName: data.inGameName || null,
-          teamId: data.teamId ?? null,
-        });
+        };
+
+        if (data.teamId != null) {
+          payload.teamId = data.teamId;
+        }
+
+        await tx.insert(registrations).values(payload);
       } catch (err: any) {
         if (err?.code === "23505") {
           const duplicate = new Error("Already registered") as Error & { code?: string };

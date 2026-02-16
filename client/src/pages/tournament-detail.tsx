@@ -84,11 +84,11 @@ function getIGNForGame(slug: string, user: any) {
   if (!user) return "";
   switch (slug) {
     case "bgmi":
-      return user.bgmiIgn || "";
+      return user.bgmiIgn || user.bgmiId || "";
     case "free-fire":
-      return user.freeFireIgn || "";
+      return user.freeFireIgn || user.freeFireId || "";
     case "cod-mobile":
-      return user.codIgn || "";
+      return user.codIgn || user.codMobileId || "";
     default:
       return "";
   }
@@ -243,6 +243,8 @@ export default function TournamentDetailPage() {
   const isSquad = tournament?.matchType === "squad";
   const canJoinTournament = normalizedStatus === "upcoming" || normalizedStatus === "hot";
   const walletInsufficient = !!user && !!tournament && tournament.entryFee > 0 && (user.walletBalance || 0) < tournament.entryFee;
+  const currentWalletBalance = user?.walletBalance || 0;
+  const walletAfterJoin = Math.max(0, currentWalletBalance - (tournament?.entryFee || 0));
   const prizeDistribution = useMemo(() => parsePrizeDistribution(tournament?.prizeDistribution), [tournament?.prizeDistribution]);
   const sortedResults = useMemo(() => [...results].sort((a, b) => a.position - b.position), [results]);
 
@@ -304,6 +306,15 @@ export default function TournamentDetailPage() {
     if (!tournament || joinOpen || joined) return;
     openJoinModal();
   }, [searchString, tournament, joinOpen, joined]);
+
+  useEffect(() => {
+    if (!joinOpen || !isSolo || !user || !game?.slug) return;
+    if (ign.trim()) return;
+    const profileIgn = getIGNForGame(game.slug, user);
+    if (profileIgn) {
+      setIgn(profileIgn);
+    }
+  }, [joinOpen, isSolo, user, game?.slug, ign]);
 
   const joinMutation = useMutation({
     mutationFn: async () => {
@@ -614,10 +625,27 @@ export default function TournamentDetailPage() {
               <p className="text-muted-foreground">Prize Pool: {formatMoney(tournament.prizePool)}</p>
             </div>
 
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground">Wallet Balance</p>
+                <p className="font-medium">{formatMoney(currentWalletBalance)}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground">Entry Fee Deduction</p>
+                <p className="font-medium">- {formatMoney(tournament.entryFee)}</p>
+              </div>
+              <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
+                <p className="text-muted-foreground">Balance After Join</p>
+                <p className={`font-semibold ${walletInsufficient ? "text-red-300" : "text-emerald-300"}`}>
+                  {walletInsufficient ? "Insufficient" : formatMoney(walletAfterJoin)}
+                </p>
+              </div>
+            </div>
+
             {isSolo && (
               <div className="space-y-1.5">
-                <Label>In-Game Name</Label>
-                <Input value={ign} onChange={(e) => setIgn(e.target.value)} placeholder="Enter IGN" />
+                <Label>In-Game Name / ID</Label>
+                <Input value={ign} onChange={(e) => setIgn(e.target.value)} placeholder="Auto-filled from profile (if available)" />
               </div>
             )}
 
@@ -654,11 +682,16 @@ export default function TournamentDetailPage() {
               onClick={() => joinMutation.mutate()}
               disabled={
                 joinMutation.isPending ||
+                walletInsufficient ||
                 (isSolo && !ign.trim()) ||
                 ((isDuo || isSquad) && !teamId)
               }
             >
-              {joinMutation.isPending ? "Joining..." : "Confirm Join"}
+              {joinMutation.isPending
+                ? "Joining..."
+                : tournament.entryFee > 0
+                  ? `Confirm Join • Pay ${formatMoney(tournament.entryFee)}`
+                  : "Confirm Join"}
             </Button>
           </DialogFooter>
         </DialogContent>
