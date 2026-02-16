@@ -313,7 +313,12 @@ export default function TournamentsPage() {
   );
 
   const upcomingTournaments = useMemo(
-    () => filtered.filter((t) => t.status === "upcoming" || t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    () => filtered.filter((t) => t.status === "upcoming").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [filtered]
+  );
+
+  const hotTournaments = useMemo(
+    () => filtered.filter((t) => t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [filtered]
   );
 
@@ -433,7 +438,7 @@ export default function TournamentsPage() {
               <SectionHeader
                 icon={<CalendarClock className="w-6 h-6 text-indigo-300" />}
                 title="Upcoming Tournaments"
-                subtitle="Includes upcoming and hot tournaments"
+                subtitle="Scheduled matches starting soon"
               />
               {upcomingTournaments.length > 0 ? (
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -456,6 +461,30 @@ export default function TournamentsPage() {
             <section className="space-y-2">
               <SectionHeader
                 icon={<Flame className="w-6 h-6 text-amber-300" />}
+                title="Hot Tournaments"
+                subtitle="Admin spotlight tournaments"
+              />
+              {hotTournaments.length > 0 ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {hotTournaments.map((t, idx) => (
+                    <TournamentMatchCard
+                      key={t.id}
+                      tournament={t}
+                      gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                      index={idx}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card className="border-white/10 bg-black/35">
+                  <CardContent className="p-8 text-center text-white/65">No hot tournaments.</CardContent>
+                </Card>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <SectionHeader
+                icon={<Trophy className="w-6 h-6 text-slate-300" />}
                 title="Completed Tournaments"
                 subtitle="Past matches and finished battles"
               />
