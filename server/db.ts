@@ -29,4 +29,24 @@ pool.on("error", (err) => {
   process.exit(1);
 });
 
+export async function ensureTournamentStatusEnumHasHot() {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'tournament_status'
+          AND e.enumlabel = 'hot'
+      ) THEN
+        ALTER TYPE tournament_status ADD VALUE 'hot';
+      END IF;
+    EXCEPTION
+      WHEN duplicate_object THEN
+        NULL;
+    END $$;
+  `);
+}
+
 export const db = drizzle(pool, { schema });

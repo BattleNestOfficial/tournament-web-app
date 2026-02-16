@@ -521,7 +521,7 @@ export default function HomePage() {
             initial={{ opacity: 0, x: 28 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.15, duration: 0.6 }}
-            className="lg:justify-self-end w-full max-w-lg lg:max-w-md"
+            className="lg:justify-self-end w-full max-w-xl lg:max-w-lg"
           >
             <div
               className={`relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 aspect-square ${activeSlide?.linkUrl ? "cursor-pointer" : ""}`}
