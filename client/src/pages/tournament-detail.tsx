@@ -3,11 +3,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import {
   ArrowLeft,
+  BarChart3,
   Clock,
   Copy,
   Crown,
+  FileText,
   Gamepad2,
   Lock,
+  Medal,
+  ScrollText,
   Shield,
   Swords,
   Trophy,
@@ -435,182 +439,247 @@ export default function TournamentDetailPage() {
         </div>
       </Card>
 
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <Progress value={slotsProgress} />
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-            <div><Users className="inline w-4 h-4 mr-1" /> {tournament.filledSlots}/{tournament.maxSlots}</div>
-            <div><Wallet className="inline w-4 h-4 mr-1" /> {formatMoney(tournament.entryFee)}</div>
-            <div><Trophy className="inline w-4 h-4 mr-1" /> {formatMoney(tournament.prizePool)}</div>
-            <div><Clock className="inline w-4 h-4 mr-1" /> {formatDate(tournament.startTime)}</div>
-            <div><Swords className="inline w-4 h-4 mr-1" /> {countdown}</div>
-          </div>
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="lg:col-span-8 space-y-6">
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-emerald-300" />
+                Tournament Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">{game?.name || "Unknown Game"}</Badge>
+                <Badge variant="outline" className="capitalize">{tournament.matchType}</Badge>
+                <Badge variant="outline" className={getStatusBadgeClasses(normalizedStatus)}>
+                  {normalizedStatus.toUpperCase()}
+                </Badge>
+              </div>
 
-          {walletInsufficient && canJoinTournament && (
-            <p className="text-sm text-red-300">
-              Wallet balance is low. Required: {formatMoney(tournament.entryFee)}.
-            </p>
-          )}
+              <Progress value={slotsProgress} />
 
-          <Button
-            disabled={joined || !canJoinTournament || joinMutation.isPending}
-            onClick={openJoinModal}
-          >
-            {joined ? "Registered" : !canJoinTournament ? "Registration Closed" : "Join Tournament"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="w-5 h-5" /> Room Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {normalizedStatus !== "live" && (
-            <div className="rounded-md border border-white/10 bg-black/35 p-3 text-sm text-muted-foreground">
-              <p className="font-medium text-white/80 mb-1">Locked before live</p>
-              Room ID and Password will unlock once the match is live.
-            </div>
-          )}
-
-          {normalizedStatus === "live" && tournament.roomId && tournament.roomPassword && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
-                <span className="text-sm text-red-200">Room ID</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-semibold text-white">{tournament.roomId}</span>
-                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomId!, "roomId")}>
-                    <Copy className="w-3.5 h-3.5 mr-1.5" />
-                    {copiedField === "roomId" ? "Copied" : "Copy"}
-                  </Button>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Slots Filled</p>
+                  <p className="font-semibold mt-1"><Users className="inline w-4 h-4 mr-1" />{tournament.filledSlots}/{tournament.maxSlots}</p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Entry Fee</p>
+                  <p className="font-semibold mt-1"><Wallet className="inline w-4 h-4 mr-1" />{formatMoney(tournament.entryFee)}</p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Prize Pool</p>
+                  <p className="font-semibold mt-1"><Trophy className="inline w-4 h-4 mr-1" />{formatMoney(tournament.prizePool)}</p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Start Time</p>
+                  <p className="font-semibold mt-1"><Clock className="inline w-4 h-4 mr-1" />{formatDate(tournament.startTime)}</p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Countdown</p>
+                  <p className="font-semibold mt-1"><Swords className="inline w-4 h-4 mr-1" />{countdown}</p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-muted-foreground">Registration</p>
+                  <p className="font-semibold mt-1">{canJoinTournament ? "Open" : "Closed"}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
-                <span className="text-sm text-red-200">Password</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-semibold text-white">{tournament.roomPassword}</span>
-                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomPassword!, "roomPassword")}>
-                    <Copy className="w-3.5 h-3.5 mr-1.5" />
-                    {copiedField === "roomPassword" ? "Copied" : "Copy"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {normalizedStatus === "live" && (!tournament.roomId || !tournament.roomPassword) && (
-            <p className="text-sm text-muted-foreground">
-              Room credentials are protected. Join this tournament to unlock access.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              {walletInsufficient && canJoinTournament && (
+                <p className="text-sm text-red-300">
+                  Wallet balance is low. Required: {formatMoney(tournament.entryFee)}.
+                </p>
+              )}
 
-      <Card>
-        <CardHeader><CardTitle>Description</CardTitle></CardHeader>
-        <CardContent className="whitespace-pre-line">
-          {tournament.description?.trim() || "No description added for this tournament yet."}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Rules</CardTitle></CardHeader>
-        <CardContent className="whitespace-pre-line">
-          {tournament.rules?.trim() || "Rules will be announced by admin soon."}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Participants ({participants.length}/{tournament.maxSlots})</CardTitle></CardHeader>
-        <CardContent className="max-h-[320px] overflow-y-auto space-y-2">
-          {participantsQuery.isLoading && (
-            <div className="space-y-2">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <Skeleton key={idx} className="h-9 w-full" />
-              ))}
-            </div>
-          )}
-
-          {participantsQuery.isError && (
-            <div className="space-y-2">
-              <p className="text-sm text-red-300">Failed to load participants.</p>
-              <Button variant="outline" size="sm" onClick={() => participantsQuery.refetch()}>Retry</Button>
-            </div>
-          )}
-
-          {!participantsQuery.isLoading && !participantsQuery.isError && participants.length === 0 && (
-            <p className="text-sm text-muted-foreground">No participants yet.</p>
-          )}
-
-          {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p) => (
-            <div key={p.id} className="flex items-center justify-between text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
-              <span>{p.displayName || p.username || `Player #${p.userId}`}</span>
-              <Badge variant="outline">Joined</Badge>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Prize Distribution</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          {prizeDistribution.length === 0 && (
-            <p className="text-sm text-muted-foreground">Prize split will be updated before match starts.</p>
-          )}
-          {prizeDistribution.map((p) => (
-            <div key={p.position} className="flex items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-2">
-              <span className="flex items-center gap-2">
-                {p.position === 1 && <Crown className="w-4 h-4 text-yellow-300" />}
-                {p.position === 2 && <Trophy className="w-4 h-4 text-slate-300" />}
-                {p.position === 3 && <Trophy className="w-4 h-4 text-amber-500" />}
-                #{p.position}
-              </span>
-              <span className="font-semibold">{formatMoney(p.prize)}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {normalizedStatus === "completed" && (
-        <Card>
-          <CardHeader><CardTitle>Winners</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {resultsQuery.isLoading && (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, idx) => (
-                  <Skeleton key={idx} className="h-10 w-full" />
-                ))}
-              </div>
-            )}
-
-            {resultsQuery.isError && (
-              <div className="space-y-2">
-                <p className="text-sm text-red-300">Failed to load results.</p>
-                <Button variant="outline" size="sm" onClick={() => resultsQuery.refetch()}>Retry</Button>
-              </div>
-            )}
-
-            {!resultsQuery.isLoading && !resultsQuery.isError && sortedResults.length === 0 && (
-              <p className="text-sm text-muted-foreground">Results will be updated soon.</p>
-            )}
-
-            {!resultsQuery.isLoading && !resultsQuery.isError && sortedResults.map((r) => (
-              <div
-                key={r.id}
-                className={`flex items-center justify-between rounded-md border px-3 py-2 ${r.position === 1 ? "border-yellow-400/60 bg-yellow-500/10" : "border-white/10 bg-black/25"}`}
+              <Button
+                disabled={joined || !canJoinTournament || joinMutation.isPending}
+                onClick={openJoinModal}
               >
-                <span className="font-medium">Rank #{r.position}</span>
-                <div className="text-right">
-                  <p className="font-semibold">{formatMoney(r.prize)}</p>
-                  <p className="text-xs text-muted-foreground">Kills: {r.kills}</p>
+                {joined ? "Registered" : !canJoinTournament ? "Registration Closed" : "Join Tournament"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="w-5 h-5 text-red-300" /> Room ID & Password
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {normalizedStatus !== "live" && (
+                <div className="rounded-md border border-white/10 bg-black/35 p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-white/80 mb-1">Locked before live</p>
+                  Room ID and Password will unlock once the match is live.
                 </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              )}
+
+              {normalizedStatus === "live" && tournament.roomId && tournament.roomPassword && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                    <span className="text-sm text-red-200">Room ID</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-white">{tournament.roomId}</span>
+                      <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomId!, "roomId")}>
+                        <Copy className="w-3.5 h-3.5 mr-1.5" />
+                        {copiedField === "roomId" ? "Copied" : "Copy"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-red-500/40 bg-red-500/10 p-3">
+                    <span className="text-sm text-red-200">Password</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-white">{tournament.roomPassword}</span>
+                      <Button size="sm" variant="outline" onClick={() => copyToClipboard(tournament.roomPassword!, "roomPassword")}>
+                        <Copy className="w-3.5 h-3.5 mr-1.5" />
+                        {copiedField === "roomPassword" ? "Copied" : "Copy"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {normalizedStatus === "live" && (!tournament.roomId || !tournament.roomPassword) && (
+                <p className="text-sm text-muted-foreground">
+                  Room credentials are protected. Join this tournament to unlock access.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-300" /> Description
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="whitespace-pre-line text-sm leading-6">
+              {tournament.description?.trim() || "No description added for this tournament yet."}
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ScrollText className="w-5 h-5 text-violet-300" /> Rules
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="whitespace-pre-line text-sm leading-6">
+              {tournament.rules?.trim() || "Rules will be announced by admin soon."}
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-300" />
+                Participants ({participants.length}/{tournament.maxSlots})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-[360px] overflow-y-auto space-y-2">
+              {participantsQuery.isLoading && (
+                <div className="space-y-2">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-9 w-full" />
+                  ))}
+                </div>
+              )}
+
+              {participantsQuery.isError && (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-300">Failed to load participants.</p>
+                  <Button variant="outline" size="sm" onClick={() => participantsQuery.refetch()}>Retry</Button>
+                </div>
+              )}
+
+              {!participantsQuery.isLoading && !participantsQuery.isError && participants.length === 0 && (
+                <p className="text-sm text-muted-foreground">No participants yet.</p>
+              )}
+
+              {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p) => (
+                <div key={p.id} className="flex items-center justify-between text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
+                  <span>{p.displayName || p.username || `Player #${p.userId}`}</span>
+                  <Badge variant="outline">Joined</Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-20 self-start">
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Medal className="w-5 h-5 text-amber-300" /> Prize Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {prizeDistribution.length === 0 && (
+                <p className="text-sm text-muted-foreground">Prize split will be updated before match starts.</p>
+              )}
+              {prizeDistribution.map((p) => (
+                <div key={p.position} className="flex items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-2">
+                  <span className="flex items-center gap-2">
+                    {p.position === 1 && <Crown className="w-4 h-4 text-yellow-300" />}
+                    {p.position === 2 && <Trophy className="w-4 h-4 text-slate-300" />}
+                    {p.position === 3 && <Trophy className="w-4 h-4 text-amber-500" />}
+                    #{p.position}
+                  </span>
+                  <span className="font-semibold">{formatMoney(p.prize)}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-black/35">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-yellow-300" /> Winners
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {normalizedStatus !== "completed" && (
+                <p className="text-sm text-muted-foreground">
+                  Winners will appear here once the tournament is completed.
+                </p>
+              )}
+
+              {normalizedStatus === "completed" && resultsQuery.isLoading && (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-10 w-full" />
+                  ))}
+                </div>
+              )}
+
+              {normalizedStatus === "completed" && resultsQuery.isError && (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-300">Failed to load results.</p>
+                  <Button variant="outline" size="sm" onClick={() => resultsQuery.refetch()}>Retry</Button>
+                </div>
+              )}
+
+              {normalizedStatus === "completed" && !resultsQuery.isLoading && !resultsQuery.isError && sortedResults.length === 0 && (
+                <p className="text-sm text-muted-foreground">Results will be updated soon.</p>
+              )}
+
+              {normalizedStatus === "completed" && !resultsQuery.isLoading && !resultsQuery.isError && sortedResults.map((r) => (
+                <div
+                  key={r.id}
+                  className={`flex items-center justify-between rounded-md border px-3 py-2 ${r.position === 1 ? "border-yellow-400/60 bg-yellow-500/10" : "border-white/10 bg-black/25"}`}
+                >
+                  <span className="font-medium">Rank #{r.position}</span>
+                  <div className="text-right">
+                    <p className="font-semibold">{formatMoney(r.prize)}</p>
+                    <p className="text-xs text-muted-foreground">Kills: {r.kills}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
         <DialogContent>
@@ -694,7 +763,7 @@ export default function TournamentDetailPage() {
               {joinMutation.isPending
                 ? "Joining..."
                 : tournament.entryFee > 0
-                  ? `Confirm Join • Pay ${formatMoney(tournament.entryFee)}`
+                  ? `Confirm Join - Pay ${formatMoney(tournament.entryFee)}`
                   : "Confirm Join"}
             </Button>
           </DialogFooter>
@@ -703,3 +772,4 @@ export default function TournamentDetailPage() {
     </div>
   );
 }
+
