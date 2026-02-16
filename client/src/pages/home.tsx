@@ -20,7 +20,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 
 import type { Banner, Game, Tournament } from "@shared/schema";
 
@@ -278,13 +277,11 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
         </h2>
         <p className="text-sm text-white/60 mt-1">{subtitle}</p>
       </div>
-      <Badge className="bg-white/5 border-white/20 text-white/80">Match Cards</Badge>
     </div>
   );
 }
 
 export default function HomePage() {
-  const [searchQuery, setSearchQuery] = useState("");
   const [bannerIndex, setBannerIndex] = useState(0);
 
   const {
@@ -351,29 +348,19 @@ export default function HomePage() {
     });
   }, [tournaments]);
 
-  const searchedTournaments = useMemo(() => {
-    const value = searchQuery.trim().toLowerCase();
-    if (!value) return normalizedTournaments;
-
-    return normalizedTournaments.filter((t) => {
-      const gameName = gameById.get(t.gameId)?.name.toLowerCase() ?? "";
-      return t.title.toLowerCase().includes(value) || gameName.includes(value);
-    });
-  }, [normalizedTournaments, searchQuery, gameById]);
-
   const hotTournaments = useMemo(
-    () => searchedTournaments.filter((t) => t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [searchedTournaments]
+    () => normalizedTournaments.filter((t) => t.status === "hot").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [normalizedTournaments]
   );
 
   const upcomingTournaments = useMemo(
-    () => searchedTournaments.filter((t) => t.status === "upcoming").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [searchedTournaments]
+    () => normalizedTournaments.filter((t) => t.status === "upcoming").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [normalizedTournaments]
   );
 
   const liveTournaments = useMemo(
-    () => searchedTournaments.filter((t) => t.status === "live").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [searchedTournaments]
+    () => normalizedTournaments.filter((t) => t.status === "live").sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [normalizedTournaments]
   );
 
   const metrics = useMemo(() => {
@@ -395,25 +382,24 @@ export default function HomePage() {
       <section className="relative px-6 pt-24 pb-14 max-w-7xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-center">
           <Badge className="mb-4 px-4 py-1 bg-indigo-500/10 text-indigo-300 border border-indigo-400/40">
-            ESPORTS TOURNAMENT HUB
+            INDIA'S BATTLE ARENA
           </Badge>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
             BATTLE NEST
             <span className="block bg-gradient-to-r from-indigo-300 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">
-              Tournament Home
+              Play. Rise. Win.
             </span>
           </h1>
           <p className="mt-5 text-white/70 max-w-3xl mx-auto">
-            Discover premium match cards for Hot, Upcoming, and Live tournaments with real-time stats and cinematic visuals.
+            Join high-stakes BGMI, Free Fire, CODM and more. Build your squad, enter live tournaments, and climb from local grinders to Battle Nest champions.
           </p>
 
-          <div className="mt-8 max-w-xl mx-auto">
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by tournament or game..."
-              className="bg-black/45 border-white/20 text-white placeholder:text-white/50"
-            />
+          <div className="mt-8 flex items-center justify-center">
+            <Link href="/tournaments">
+              <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 font-semibold hover:opacity-90 transition">
+                Browse Tournaments
+              </button>
+            </Link>
           </div>
         </motion.div>
 
