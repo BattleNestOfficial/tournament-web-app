@@ -130,6 +130,7 @@ export default function TournamentDetailPage() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [ign, setIgn] = useState("");
   const [teamId, setTeamId] = useState<number | null>(null);
+  const [bannerImageFailed, setBannerImageFailed] = useState(false);
 
   /* =====================================================================================
      QUERIES (ALL SAFE – NO CONDITIONAL HOOKS)
@@ -307,10 +308,21 @@ export default function TournamentDetailPage() {
       {/* BANNER */}
       <Card className="overflow-hidden">
         <div className="relative h-[300px]">
-          <img
-            src={getTournamentImage(tournament, game)}
-            className="w-full h-full object-cover"
-          />
+          {!bannerImageFailed ? (
+            <img
+              src={getTournamentImage(tournament, game)}
+              alt={tournament.title}
+              className="w-full h-full object-cover"
+              onError={() => setBannerImageFailed(true)}
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-emerald-700/40 via-green-900/40 to-black flex items-center justify-center">
+              <div className="text-center text-white/85">
+                <Gamepad2 className="w-10 h-10 mx-auto mb-2" />
+                <p className="text-sm">Tournament Image Placeholder</p>
+              </div>
+            </div>
+          )}
           <div className="absolute inset-0 bg-black/70" />
           <div className="absolute bottom-6 left-6">
             <Badge className="mb-2">
@@ -360,7 +372,7 @@ export default function TournamentDetailPage() {
       </Card>
 
       {/* ROOM DETAILS */}
-      {tournament.status === "live" && tournament.roomId && tournament.roomPassword && (
+      {tournament.status === "live" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -368,75 +380,88 @@ export default function TournamentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p>Room ID: <b>{tournament.roomId}</b></p>
-            <p>Password: <b>{tournament.roomPassword}</b></p>
+            {tournament.roomId && tournament.roomPassword ? (
+              <>
+                <p>Room ID: <b>{tournament.roomId}</b></p>
+                <p>Password: <b>{tournament.roomPassword}</b></p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Room credentials are available only for joined players and admins.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* RULES */}
-      {tournament.rules && (
-        <Card>
-          <CardHeader><CardTitle>Rules</CardTitle></CardHeader>
-          <CardContent className="whitespace-pre-line">
-            {tournament.rules}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader><CardTitle>Rules</CardTitle></CardHeader>
+        <CardContent className="whitespace-pre-line">
+          {tournament.rules?.trim() || "Rules will be announced by admin soon."}
+        </CardContent>
+      </Card>
 
       {/* DESCRIPTION */}
-      {tournament.description && (
-        <Card>
-          <CardHeader><CardTitle>Description</CardTitle></CardHeader>
-          <CardContent className="whitespace-pre-line">
-            {tournament.description}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader><CardTitle>Description</CardTitle></CardHeader>
+        <CardContent className="whitespace-pre-line">
+          {tournament.description?.trim() || "No description added for this tournament yet."}
+        </CardContent>
+      </Card>
 
       {/* PRIZE DISTRIBUTION */}
-      {Array.isArray(tournament.prizeDistribution) && (
-        <Card>
-          <CardHeader><CardTitle>Prize Distribution</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {tournament.prizeDistribution.map((p: any) => (
+      <Card>
+        <CardHeader><CardTitle>Prize Distribution</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {Array.isArray(tournament.prizeDistribution) && tournament.prizeDistribution.length > 0 ? (
+            tournament.prizeDistribution.map((p: any) => (
               <div key={p.position} className="flex justify-between">
                 <span>#{p.position}</span>
                 <span>{formatMoney(p.prize)}</span>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">Prize split will be updated before match starts.</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* PARTICIPANTS */}
       <Card>
         <CardHeader><CardTitle>Participants</CardTitle></CardHeader>
         <CardContent className="max-h-[300px] overflow-y-auto space-y-2">
-          {participants.map((p: any) => (
-            <div key={p.id} className="flex justify-between text-sm">
-              <span>{p.username || p.displayName}</span>
-              <Badge variant="outline">Joined</Badge>
-            </div>
-          ))}
+          {participants.length > 0 ? (
+            participants.map((p: any) => (
+              <div key={p.id} className="flex justify-between text-sm">
+                <span>{p.username || p.displayName}</span>
+                <Badge variant="outline">Joined</Badge>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">No participants yet.</p>
+          )}
         </CardContent>
       </Card>
 
       {/* RESULTS */}
-      {tournament.status === "completed" && (
-        <Card>
-          <CardHeader><CardTitle>Winners</CardTitle></CardHeader>
-          <CardContent>
-            {results.length === 0 && <p>Results will be updated soon</p>}
-            {results.map((r) => (
+      <Card>
+        <CardHeader><CardTitle>Winners</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {tournament.status !== "completed" ? (
+            <p className="text-sm text-muted-foreground">Winners will be visible after tournament completion.</p>
+          ) : results.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Results will be updated soon.</p>
+          ) : (
+            results.map((r) => (
               <div key={r.id} className="flex justify-between">
                 <span>#{r.position}</span>
                 <span>{formatMoney(r.prize)}</span>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       {/* JOIN MODAL */}
       <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
