@@ -1,0 +1,173 @@
+Build a PRODUCTION-GRADE backend API for an esports tournament platform
+supporting BGMI, Free Fire, Call of Duty Mobile, and other games.
+
+This backend will be consumed by an existing frontend (already built).
+
+========================
+TECH STACK (MANDATORY)
+========================
+- Node.js
+- Express.js
+- REST APIs
+- PostgreSQL
+- Drizzle ORM
+- JWT Authentication
+- Role-based access control (USER, ADMIN)
+
+IMPORTANT:
+- Use DATABASE_URL from environment variables
+- DO NOT use Replit DB, @replit/database, or any Replit-only APIs
+- Backend must be deployable on Render / Railway (free tier)
+
+========================
+CORE FEATURES
+========================
+
+1. AUTHENTICATION & AUTHORIZATION
+- User signup
+- User login
+- JWT access tokens
+- Password hashing (bcrypt)
+- Role-based access (USER / ADMIN)
+- Middleware for protected routes
+- Admin-only middleware
+
+2. USER MANAGEMENT
+- Get user profile
+- Update user profile
+- Store multiple game IDs (BGMI ID, FF ID, COD ID, etc.)
+- Wallet balance
+- Account status (active / banned)
+- Admin ability to ban/unban users
+
+3. GAME MANAGEMENT (ADMIN)
+- Add game
+- Edit game
+- Delete game
+- Enable / disable game
+- Games must be dynamic (not hardcoded)
+
+4. TOURNAMENT MANAGEMENT (ADMIN)
+- Create tournament
+- Update tournament
+- Delete tournament
+- Tournament fields:
+  - Game ID
+  - Title
+  - Description
+  - Entry fee
+  - Prize pool
+  - Total slots
+  - Match type (solo/duo/squad)
+  - Start time
+  - Rules
+  - Status (upcoming / live / completed)
+- Auto-close tournament when slots are full
+
+5. TOURNAMENT PARTICIPATION (USER)
+- View tournaments
+- Join tournament using wallet balance
+- Join tournament using Razorpay payment
+- Prevent duplicate joins
+- Store joined players
+
+6. MATCH & RESULT MANAGEMENT (ADMIN)
+- Add room ID & password
+- Update match results
+- Declare winners
+- Auto distribute prize money to winners’ wallets
+- Store match history
+
+7. WALLET SYSTEM
+- Wallet balance per user
+- Wallet transaction history
+- Credit / debit entries
+- Admin manual wallet adjustment
+- Wallet consistency checks
+
+8. WITHDRAWAL SYSTEM
+- User withdrawal request
+- Minimum withdrawal limit
+- Store bank / UPI details
+- Withdrawal status:
+  - pending
+  - approved
+  - rejected
+  - paid
+- Admin approve / reject withdrawals
+- Admin notes on withdrawal
+
+9. PAYMENT INTEGRATION (RAZORPAY)
+- Create Razorpay order
+- Verify Razorpay payment signature
+- Razorpay webhook endpoint
+- Credit wallet after successful payment
+- Handle failed payments safely
+- Store payment records
+
+10. NOTIFICATIONS (API LEVEL)
+- Tournament joined
+- Match started
+- Results declared
+- Withdrawal status updated
+(Return as API responses for frontend to display)
+
+========================
+DATABASE DESIGN (DRIZZLE)
+========================
+Create schemas for:
+- users
+- games
+- tournaments
+- tournament_participants
+- wallet_transactions
+- withdrawals
+- payments
+- admin_logs
+
+Use proper relations & indexes.
+
+========================
+SECURITY & QUALITY
+========================
+- Input validation
+- Centralized error handling
+- Rate limiting
+- Secure Razorpay webhook verification
+- Environment variables for secrets
+- No hardcoded credentials
+- Clean modular architecture
+
+========================
+PROJECT STRUCTURE
+========================
+/backend
+ ├─ src
+ │  ├─ routes
+ │  ├─ controllers
+ │  ├─ services
+ │  ├─ middleware
+ │  ├─ db
+ │  │   ├─ schema.ts
+ │  │   ├─ index.ts
+ │  ├─ utils
+ │  ├─ app.ts
+ │  └─ server.ts
+ ├─ drizzle.config.ts
+ ├─ package.json
+ ├─ .env.example
+ └─ README.md
+
+========================
+FINAL REQUIREMENTS
+========================
+- Backend must run with:
+  npm install
+  npm run dev
+- Provide sample API routes
+- Provide .env.example with all required variables
+- Ensure frontend can connect via REST APIs
+- Code must be production-ready and readable
+- Assume less than 100 users initially
+
+Build the COMPLETE backend.
