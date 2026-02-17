@@ -62,12 +62,18 @@ export async function ensureUserSecurityColumns() {
     ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS email_verification_token text,
     ADD COLUMN IF NOT EXISTS email_verification_expires timestamp,
+    ADD COLUMN IF NOT EXISTS email_verification_attempts integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS email_verification_lock_until timestamp,
     ADD COLUMN IF NOT EXISTS phone text,
     ADD COLUMN IF NOT EXISTS phone_verified boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS phone_verification_code text,
     ADD COLUMN IF NOT EXISTS phone_verification_expires timestamp,
+    ADD COLUMN IF NOT EXISTS phone_verification_attempts integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS phone_verification_lock_until timestamp,
     ADD COLUMN IF NOT EXISTS password_reset_token text,
     ADD COLUMN IF NOT EXISTS password_reset_expires timestamp,
+    ADD COLUMN IF NOT EXISTS password_reset_attempts integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS password_reset_lock_until timestamp,
     ADD COLUMN IF NOT EXISTS withdrawal_lock_until timestamp,
     ADD COLUMN IF NOT EXISTS email_changed_at timestamp,
     ADD COLUMN IF NOT EXISTS phone_changed_at timestamp;
@@ -93,6 +99,43 @@ export async function ensureCouponsTables() {
       created_at timestamp NOT NULL DEFAULT now(),
       CONSTRAINT coupon_redemptions_coupon_user_uq UNIQUE (coupon_id, user_id)
     );
+  `);
+}
+
+export async function ensureWalletEngineColumns() {
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS main_wallet_balance integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS bonus_wallet_balance integer NOT NULL DEFAULT 0;
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET
+      main_wallet_balance = COALESCE(main_wallet_balance, wallet_balance, 0),
+      bonus_wallet_balance = COALESCE(bonus_wallet_balance, 0)
+    WHERE
+      COALESCE(main_wallet_balance, 0) = 0
+      AND COALESCE(bonus_wallet_balance, 0) = 0
+      AND COALESCE(wallet_balance, 0) > 0;
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET wallet_balance = COALESCE(main_wallet_balance, 0) + COALESCE(bonus_wallet_balance, 0)
+    WHERE wallet_balance IS DISTINCT FROM (COALESCE(main_wallet_balance, 0) + COALESCE(bonus_wallet_balance, 0));
+  `);
+
+  await pool.query(`
+    ALTER TABLE transactions
+    ADD COLUMN IF NOT EXISTS wallet_type text NOT NULL DEFAULT 'main',
+    ADD COLUMN IF NOT EXISTS main_balance_before integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS main_balance_after integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS bonus_balance_before integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS bonus_balance_after integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS previous_hash text,
+    ADD COLUMN IF NOT EXISTS entry_hash text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS metadata jsonb;
   `);
 }
 

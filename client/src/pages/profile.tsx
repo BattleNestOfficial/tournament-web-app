@@ -181,7 +181,10 @@ export default function ProfilePage() {
   });
 
   const verifyEmailMutation = useMutation({
-    mutationFn: async () => authRequest("/api/auth/verify-email", { otp: emailOtp.trim() }),
+    mutationFn: async () => authRequest("/api/auth/verify-email", {
+      email: contact.email.trim(),
+      otp: emailOtp.trim(),
+    }),
     onSuccess: (data) => {
       if (data.user) updateUser(data.user);
       setEmailOtp("");

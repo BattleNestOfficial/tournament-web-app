@@ -65,7 +65,7 @@ export default function WalletPage() {
       if (!res.ok) throw new Error(data.message);
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       if (data.user) updateUser(data.user);
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
       toast({ title: "Money added!", description: `\u20B9${addAmount} added to wallet` });
@@ -88,7 +88,8 @@ export default function WalletPage() {
       if (!res.ok) throw new Error(data.message);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.user) updateUser(data.user);
       queryClient.invalidateQueries({ queryKey: ["/api/withdrawals/my"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
       toast({ title: "Request submitted", description: "Your withdrawal request is being reviewed" });
@@ -212,6 +213,9 @@ export default function WalletPage() {
   const totalDeposits = deposits.reduce((s, t) => s + t.amount, 0);
   const totalWinnings = transactions?.filter(t => t.type === "winning").reduce((s, t) => s + t.amount, 0) || 0;
   const totalSpent = expenses.reduce((s, t) => s + t.amount, 0);
+  const mainWalletBalance = user.mainWalletBalance || 0;
+  const bonusWalletBalance = user.bonusWalletBalance || 0;
+  const totalWalletBalance = user.walletBalance || mainWalletBalance + bonusWalletBalance;
 
   const txTypeIcons: Record<string, any> = {
     deposit: { icon: ArrowDownLeft, color: "text-chart-3", label: "Deposit" },
@@ -241,9 +245,14 @@ export default function WalletPage() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{tx.description || config.label}</p>
-            <p className="text-xs text-muted-foreground">
-              {new Date(tx.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-            </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{new Date(tx.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              {tx.walletType && (
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
+                  {tx.walletType}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
         <span className={`text-sm font-semibold shrink-0 ${isCredit ? "text-chart-3" : "text-destructive"}`}>
@@ -264,7 +273,10 @@ export default function WalletPage() {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
                 <p className="text-3xl font-bold" data-testid="text-wallet-balance-main">
-                  {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(2)}
+                  {"\u20B9"}{(totalWalletBalance / 100).toFixed(2)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Main: {"\u20B9"}{(mainWalletBalance / 100).toFixed(2)} | Bonus: {"\u20B9"}{(bonusWalletBalance / 100).toFixed(2)}
                 </p>
               </div>
               <div className="p-3 bg-primary/10 rounded-md">
@@ -359,9 +371,12 @@ export default function WalletPage() {
                         data-testid="input-upi-id"
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Withdrawals are processed from Main Wallet only. Daily limit applies.
+                    </p>
                     <Button
                       className="w-full"
-                      disabled={!withdrawAmount || Number(withdrawAmount) < 50 || !upiId || withdrawMutation.isPending}
+                      disabled={!withdrawAmount || Number(withdrawAmount) < 50 || !upiId || withdrawMutation.isPending || mainWalletBalance < Number(withdrawAmount) * 100}
                       onClick={() => withdrawMutation.mutate()}
                       data-testid="button-confirm-withdraw"
                     >

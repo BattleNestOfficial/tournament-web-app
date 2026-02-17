@@ -68,6 +68,11 @@ const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 const PHONE_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OTP_REQUEST_WINDOW_MS = 15 * 60 * 1000;
+const OTP_REQUEST_MAX = 5;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_LOCK_MS = 15 * 60 * 1000;
+const DAILY_WITHDRAWAL_LIMIT_PAISA = Number(process.env.DAILY_WITHDRAWAL_LIMIT_PAISA || 2000000);
 
 function createPhoneOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -79,6 +84,79 @@ function createEmailVerificationOtp() {
 
 function createPasswordResetOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+const otpRequestHistory = new Map<string, number[]>();
+
+function consumeOtpRequestQuota(key: string) {
+  const now = Date.now();
+  const windowStart = now - OTP_REQUEST_WINDOW_MS;
+  const existing = otpRequestHistory.get(key) || [];
+  const active = existing.filter((ts) => ts >= windowStart);
+  if (active.length >= OTP_REQUEST_MAX) {
+    const oldest = active[0];
+    const retryAfterSec = Math.max(1, Math.ceil((oldest + OTP_REQUEST_WINDOW_MS - now) / 1000));
+    otpRequestHistory.set(key, active);
+    return { allowed: false, retryAfterSec };
+  }
+  active.push(now);
+  otpRequestHistory.set(key, active);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function getOtpRetryAfterSec(lockUntil?: Date | null) {
+  if (!lockUntil) return 0;
+  return Math.max(1, Math.ceil((lockUntil.getTime() - Date.now()) / 1000));
+}
+
+function isOtpLocked(lockUntil?: Date | null) {
+  return Boolean(lockUntil && lockUntil.getTime() > Date.now());
+}
+
+function getOtpFields(kind: "email" | "phone" | "password") {
+  if (kind === "email") {
+    return {
+      attempt: "emailVerificationAttempts",
+      lock: "emailVerificationLockUntil",
+    } as const;
+  }
+  if (kind === "phone") {
+    return {
+      attempt: "phoneVerificationAttempts",
+      lock: "phoneVerificationLockUntil",
+    } as const;
+  }
+  return {
+    attempt: "passwordResetAttempts",
+    lock: "passwordResetLockUntil",
+  } as const;
+}
+
+async function registerOtpFailure(user: any, kind: "email" | "phone" | "password") {
+  const fields = getOtpFields(kind);
+  const currentAttempts = Number(user?.[fields.attempt] || 0) + 1;
+  const updates: any = { [fields.attempt]: currentAttempts };
+
+  if (currentAttempts >= OTP_MAX_ATTEMPTS) {
+    const lockUntil = new Date(Date.now() + OTP_LOCK_MS);
+    updates[fields.attempt] = 0;
+    updates[fields.lock] = lockUntil;
+    const updated = await storage.updateUserProfile(user.id, updates);
+    return {
+      locked: true,
+      lockUntil,
+      attemptsRemaining: 0,
+      user: updated || user,
+    };
+  }
+
+  const updated = await storage.updateUserProfile(user.id, updates);
+  return {
+    locked: false,
+    lockUntil: null as Date | null,
+    attemptsRemaining: Math.max(OTP_MAX_ATTEMPTS - currentAttempts, 0),
+    user: updated || user,
+  };
 }
 
 function normalizeEmail(value: unknown): string | null {
@@ -105,10 +183,16 @@ function sanitizeUser(user: any) {
     password,
     emailVerificationToken,
     emailVerificationExpires,
+    emailVerificationAttempts,
+    emailVerificationLockUntil,
     passwordResetToken,
     passwordResetExpires,
+    passwordResetAttempts,
+    passwordResetLockUntil,
     phoneVerificationCode,
     phoneVerificationExpires,
+    phoneVerificationAttempts,
+    phoneVerificationLockUntil,
     ...safeUser
   } = user;
   return safeUser;
@@ -199,6 +283,8 @@ export async function registerRoutes(
       emailVerificationToken: verificationOtp,
       emailVerificationExpires: verificationExpires,
       emailVerified: false,
+      emailVerificationAttempts: 0,
+      emailVerificationLockUntil: null,
     });
 
     try {
@@ -337,12 +423,26 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.emailVerified) return res.json({ message: "Email already verified" });
+      if (isOtpLocked(user.emailVerificationLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid email OTP attempts. Try again in ${getOtpRetryAfterSec(user.emailVerificationLockUntil)}s.`,
+        });
+      }
+
+      const requestQuota = consumeOtpRequestQuota(`email-verify:${user.email.toLowerCase()}`);
+      if (!requestQuota.allowed) {
+        return res.status(429).json({
+          message: `Too many OTP requests. Try again in ${requestQuota.retryAfterSec}s.`,
+        });
+      }
 
       const verificationOtp = createEmailVerificationOtp();
       const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
       await storage.updateUserProfile(userId, {
         emailVerificationToken: verificationOtp,
         emailVerificationExpires: verificationExpires,
+        emailVerificationAttempts: 0,
+        emailVerificationLockUntil: null,
       });
 
       if (isBrevoConfigured()) {
@@ -376,8 +476,27 @@ export async function registerRoutes(
           : "";
       if (!otpInput) return res.status(400).json({ message: "Email verification OTP is required" });
 
-      const user = await storage.getUserByEmailVerificationToken(otpInput);
+      const emailInput = normalizeEmail(req.body?.email);
+      const user = emailInput
+        ? await storage.getUserByEmail(emailInput)
+        : await storage.getUserByEmailVerificationToken(otpInput);
       if (!user) return res.status(400).json({ message: "Invalid email verification OTP" });
+      if (isOtpLocked(user.emailVerificationLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid email OTP attempts. Try again in ${getOtpRetryAfterSec(user.emailVerificationLockUntil)}s.`,
+        });
+      }
+      if (!user.emailVerificationToken || user.emailVerificationToken !== otpInput) {
+        const fail = await registerOtpFailure(user, "email");
+        if (fail.locked && fail.lockUntil) {
+          return res.status(429).json({
+            message: `Too many invalid email OTP attempts. Try again in ${getOtpRetryAfterSec(fail.lockUntil)}s.`,
+          });
+        }
+        return res.status(400).json({
+          message: `Invalid email verification OTP. ${fail.attemptsRemaining} attempt(s) left.`,
+        });
+      }
       if (!user.emailVerificationExpires || user.emailVerificationExpires.getTime() < Date.now()) {
         return res.status(400).json({ message: "Email verification OTP expired" });
       }
@@ -386,6 +505,8 @@ export async function registerRoutes(
         emailVerified: true,
         emailVerificationToken: null,
         emailVerificationExpires: null,
+        emailVerificationAttempts: 0,
+        emailVerificationLockUntil: null,
       });
 
       res.json({ message: "Email verified successfully", user: sanitizeUser(updated || user) });
@@ -399,14 +520,31 @@ export async function registerRoutes(
       const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
       if (!email) return res.status(400).json({ message: "Email is required" });
 
-      const user = await storage.getUserByEmail(email);
+      const normalizedEmail = normalizeEmail(email);
+      if (!normalizedEmail) return res.status(400).json({ message: "Enter a valid email" });
+      const quotaKey = `password-reset:${normalizedEmail || email.toLowerCase()}`;
+      const requestQuota = consumeOtpRequestQuota(quotaKey);
+      if (!requestQuota.allowed) {
+        return res.status(429).json({
+          message: `Too many OTP requests. Try again in ${requestQuota.retryAfterSec}s.`,
+        });
+      }
+
+      const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) return res.json({ message: "If this email exists, a reset OTP has been sent." });
+      if (isOtpLocked(user.passwordResetLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid reset OTP attempts. Try again in ${getOtpRetryAfterSec(user.passwordResetLockUntil)}s.`,
+        });
+      }
 
       const resetOtp = createPasswordResetOtp();
       const resetExpires = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
       await storage.updateUserProfile(user.id, {
         passwordResetToken: resetOtp,
         passwordResetExpires: resetExpires,
+        passwordResetAttempts: 0,
+        passwordResetLockUntil: null,
       });
 
       try {
@@ -438,19 +576,37 @@ export async function registerRoutes(
 
   app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
     try {
+      const emailInput = normalizeEmail(req.body?.email);
       const otpInput = typeof req.body?.otp === "string"
         ? req.body.otp.trim()
         : typeof req.body?.token === "string"
           ? req.body.token.trim()
           : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+      if (!emailInput) return res.status(400).json({ message: "Email is required" });
       if (!otpInput) return res.status(400).json({ message: "Reset OTP is required" });
       if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ message: "New password must be at least 6 characters" });
       }
 
-      const user = await storage.getUserByPasswordResetToken(otpInput);
+      const user = await storage.getUserByEmail(emailInput);
       if (!user) return res.status(400).json({ message: "Invalid reset OTP" });
+      if (isOtpLocked(user.passwordResetLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid reset OTP attempts. Try again in ${getOtpRetryAfterSec(user.passwordResetLockUntil)}s.`,
+        });
+      }
+      if (!user.passwordResetToken || user.passwordResetToken !== otpInput) {
+        const fail = await registerOtpFailure(user, "password");
+        if (fail.locked && fail.lockUntil) {
+          return res.status(429).json({
+            message: `Too many invalid reset OTP attempts. Try again in ${getOtpRetryAfterSec(fail.lockUntil)}s.`,
+          });
+        }
+        return res.status(400).json({
+          message: `Invalid reset OTP. ${fail.attemptsRemaining} attempt(s) left.`,
+        });
+      }
       if (!user.passwordResetExpires || user.passwordResetExpires.getTime() < Date.now()) {
         return res.status(400).json({ message: "Reset OTP expired" });
       }
@@ -460,6 +616,8 @@ export async function registerRoutes(
         password: hashedPassword,
         passwordResetToken: null,
         passwordResetExpires: null,
+        passwordResetAttempts: 0,
+        passwordResetLockUntil: null,
       });
 
       res.json({ message: "Password reset successful" });
@@ -475,12 +633,26 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       if (!user.phone) return res.status(400).json({ message: "Add phone number before verification" });
       if (user.phoneVerified) return res.json({ message: "Phone already verified" });
+      if (isOtpLocked(user.phoneVerificationLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid phone OTP attempts. Try again in ${getOtpRetryAfterSec(user.phoneVerificationLockUntil)}s.`,
+        });
+      }
+
+      const requestQuota = consumeOtpRequestQuota(`phone-verify:${user.phone}`);
+      if (!requestQuota.allowed) {
+        return res.status(429).json({
+          message: `Too many OTP requests. Try again in ${requestQuota.retryAfterSec}s.`,
+        });
+      }
 
       const otp = createPhoneOtp();
       const expires = new Date(Date.now() + PHONE_VERIFICATION_TTL_MS);
       await storage.updateUserProfile(userId, {
         phoneVerificationCode: otp,
         phoneVerificationExpires: expires,
+        phoneVerificationAttempts: 0,
+        phoneVerificationLockUntil: null,
       });
 
       // TODO: Integrate SMS provider to deliver OTP.
@@ -505,8 +677,21 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (!user.phone) return res.status(400).json({ message: "Phone number is missing" });
+      if (isOtpLocked(user.phoneVerificationLockUntil)) {
+        return res.status(429).json({
+          message: `Too many invalid phone OTP attempts. Try again in ${getOtpRetryAfterSec(user.phoneVerificationLockUntil)}s.`,
+        });
+      }
       if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
-        return res.status(400).json({ message: "Invalid verification code" });
+        const fail = await registerOtpFailure(user, "phone");
+        if (fail.locked && fail.lockUntil) {
+          return res.status(429).json({
+            message: `Too many invalid phone OTP attempts. Try again in ${getOtpRetryAfterSec(fail.lockUntil)}s.`,
+          });
+        }
+        return res.status(400).json({
+          message: `Invalid verification code. ${fail.attemptsRemaining} attempt(s) left.`,
+        });
       }
       if (!user.phoneVerificationExpires || user.phoneVerificationExpires.getTime() < Date.now()) {
         return res.status(400).json({ message: "Verification code expired" });
@@ -516,6 +701,8 @@ export async function registerRoutes(
         phoneVerified: true,
         phoneVerificationCode: null,
         phoneVerificationExpires: null,
+        phoneVerificationAttempts: 0,
+        phoneVerificationLockUntil: null,
       });
 
       res.json({ message: "Phone verified successfully", user: sanitizeUser(updated || user) });
@@ -556,6 +743,8 @@ export async function registerRoutes(
           updates.emailVerified = false;
           updates.emailVerificationToken = verificationOtp;
           updates.emailVerificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+          updates.emailVerificationAttempts = 0;
+          updates.emailVerificationLockUntil = null;
           updates.emailChangedAt = new Date();
           emailChanged = true;
         }
@@ -576,6 +765,8 @@ export async function registerRoutes(
           updates.phoneVerified = false;
           updates.phoneVerificationCode = null;
           updates.phoneVerificationExpires = null;
+          updates.phoneVerificationAttempts = 0;
+          updates.phoneVerificationLockUntil = null;
           updates.phoneChangedAt = new Date();
           phoneChanged = true;
         }
@@ -932,16 +1123,24 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Invalid amount. Must be a positive number." });
       }
 
-      await storage.updateWalletBalance(userId, amount);
+      const beforeUser = await storage.getUserById(userId);
+      if (!beforeUser) return res.status(404).json({ message: "User not found" });
+      const updatedUser = await storage.updateWalletBalance(userId, amount);
+      if (!updatedUser) return res.status(400).json({ message: "Wallet update failed" });
       await storage.createTransaction({
         userId,
         amount,
         type: "deposit",
+        walletType: "main",
+        mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+        bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+        metadata: { source: "manual_topup" },
         description: "Wallet deposit",
       });
 
-      const user = await storage.getUserById(userId);
-      res.json({ user: sanitizeUser(user), message: "Money added successfully" });
+      res.json({ user: sanitizeUser(updatedUser), message: "Money added successfully" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -961,7 +1160,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         user: sanitizeUser(redeemed.user),
         coupon: redeemed.coupon,
         amount: redeemed.amount,
-        message: `Coupon redeemed. Rs.${(redeemed.amount / 100).toFixed(2)} credited to wallet.`,
+        message: `Coupon redeemed. Rs.${(redeemed.amount / 100).toFixed(2)} credited to bonus wallet.`,
       });
     } catch (err: any) {
       if (err?.code === "INVALID_COUPON") return res.status(400).json({ message: err.message });
@@ -1046,11 +1245,24 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
       if (!capturedPayment) return res.status(400).json({ message: "Payment already processed" });
 
-      await storage.updateWalletBalance(userId, capturedPayment.amount);
+      const beforeUser = await storage.getUserById(userId);
+      if (!beforeUser) return res.status(404).json({ message: "User not found" });
+      const updatedUser = await storage.updateWalletBalance(userId, capturedPayment.amount);
+      if (!updatedUser) return res.status(400).json({ message: "Wallet update failed" });
       await storage.createTransaction({
         userId,
         amount: capturedPayment.amount,
         type: "razorpay",
+        walletType: "main",
+        mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+        bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+        metadata: {
+          source: "razorpay_verify",
+          orderId: razorpay_order_id,
+          paymentId: razorpay_payment_id,
+        },
         description: `Razorpay payment #${razorpay_payment_id}`,
       });
 
@@ -1061,8 +1273,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         message: `Rs.${(capturedPayment.amount / 100).toFixed(2)} has been added to your wallet.`,
       });
 
-      const user = await storage.getUserById(userId);
-      res.json({ message: "Payment verified successfully", user: sanitizeUser(user) });
+      res.json({ message: "Payment verified successfully", user: sanitizeUser(updatedUser) });
     } catch (err: any) {
       console.error("Payment verify error:", err);
       res.status(500).json({ message: "Payment verification failed" });
@@ -1098,13 +1309,24 @@ app.get("/api/stats/total-users", async (_req, res) => {
             razorpayPaymentId: paymentId,
           });
           if (payment) {
-            await storage.updateWalletBalance(payment.userId, payment.amount);
-            await storage.createTransaction({
-              userId: payment.userId,
-              amount: payment.amount,
-              type: "razorpay",
-              description: `Razorpay webhook payment #${paymentId}`,
-            });
+            const beforeUser = await storage.getUserById(payment.userId);
+            if (beforeUser) {
+              const updatedUser = await storage.updateWalletBalance(payment.userId, payment.amount);
+              if (updatedUser) {
+                await storage.createTransaction({
+                  userId: payment.userId,
+                  amount: payment.amount,
+                  type: "razorpay",
+                  walletType: "main",
+                  mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+                  mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+                  bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+                  bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+                  metadata: { source: "razorpay_webhook", orderId, paymentId },
+                  description: `Razorpay webhook payment #${paymentId}`,
+                });
+              }
+            }
           }
         }
       }
@@ -1143,18 +1365,44 @@ app.get("/api/stats/total-users", async (_req, res) => {
 
       const user = await requireWithdrawalEligibility(userId, res);
       if (!user) return;
-      if (user.walletBalance < amount) return res.status(400).json({ message: "Insufficient balance" });
+      if ((user.mainWalletBalance || 0) < amount) {
+        return res.status(400).json({ message: "Insufficient withdrawable balance" });
+      }
 
-      await storage.updateWalletBalance(userId, -amount);
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const withdrawnToday = await storage.getUserWithdrawalTotalForDay(userId, dayStart, dayEnd);
+      if (withdrawnToday + amount > DAILY_WITHDRAWAL_LIMIT_PAISA) {
+        return res.status(400).json({
+          message: `Daily withdrawal limit exceeded. Limit: \u20B9${(DAILY_WITHDRAWAL_LIMIT_PAISA / 100).toFixed(0)}`,
+        });
+      }
+
+      const updatedUser = await storage.updateWalletBalance(userId, -amount);
+      if (!updatedUser) return res.status(400).json({ message: "Insufficient withdrawable balance" });
       await storage.createTransaction({
         userId,
         amount,
         type: "withdrawal",
+        walletType: "main",
+        mainBalanceBefore: user.mainWalletBalance || 0,
+        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+        bonusBalanceBefore: user.bonusWalletBalance || 0,
+        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+        metadata: { source: "withdrawal_request", dailyWithdrawnBefore: withdrawnToday },
         description: "Withdrawal request",
       });
 
       const wd = await storage.createWithdrawal({ userId, amount, upiId, bankDetails });
-      res.json(wd);
+      res.json({
+        ...wd,
+        user: sanitizeUser(updatedUser),
+        dailyLimit: DAILY_WITHDRAWAL_LIMIT_PAISA,
+        dailyUsed: withdrawnToday + amount,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1337,16 +1585,25 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const user = await storage.getUserById(targetId);
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      if (type === "admin_debit" && user.walletBalance < amount) {
-        return res.status(400).json({ message: "User has insufficient balance for debit" });
+      if (type === "admin_debit" && (user.mainWalletBalance || 0) < amount) {
+        return res.status(400).json({ message: "User has insufficient withdrawable balance for debit" });
       }
 
       const walletChange = type === "admin_credit" ? amount : -amount;
-      await storage.updateWalletBalance(targetId, walletChange);
+      const updatedUser = await storage.updateWalletBalance(targetId, walletChange);
+      if (!updatedUser) {
+        return res.status(400).json({ message: "Wallet update failed" });
+      }
       await storage.createTransaction({
         userId: targetId,
         amount,
         type,
+        walletType: "main",
+        mainBalanceBefore: user.mainWalletBalance || 0,
+        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+        bonusBalanceBefore: user.bonusWalletBalance || 0,
+        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+        metadata: { source: "admin_adjustment" },
         description: description || (type === "admin_credit" ? "Admin credit" : "Admin debit"),
       });
 
@@ -1365,8 +1622,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `Amount: ${amount}, Reason: ${description || "N/A"}`,
       });
 
-      const updated = await storage.getUserById(targetId);
-      res.json(sanitizeUser(updated));
+      res.json(sanitizeUser(updatedUser));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1667,11 +1923,21 @@ app.get("/api/stats/total-users", async (_req, res) => {
         createdResults.push(result);
 
         if (r.prize > 0) {
-          await storage.updateWalletBalance(r.userId, r.prize);
+          const winnerBefore = await storage.getUserById(r.userId);
+          const winnerAfter = await storage.updateWalletBalance(r.userId, r.prize);
+          if (!winnerBefore || !winnerAfter) {
+            return res.status(404).json({ message: "Winner account not found" });
+          }
           await storage.createTransaction({
             userId: r.userId,
             amount: r.prize,
             type: "winning",
+            walletType: "main",
+            mainBalanceBefore: winnerBefore.mainWalletBalance || 0,
+            mainBalanceAfter: winnerAfter.mainWalletBalance || 0,
+            bonusBalanceBefore: winnerBefore.bonusWalletBalance || 0,
+            bonusBalanceAfter: winnerAfter.bonusWalletBalance || 0,
+            metadata: { source: "result_payout", position: r.position },
             description: `Prize for position #${r.position} in "${tournament.title}"`,
             tournamentId,
           });
@@ -1736,11 +2002,21 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (!wd) return res.status(404).json({ message: "Withdrawal not found" });
 
       if (status === "rejected") {
-        await storage.updateWalletBalance(wd.userId, wd.amount);
+        const beforeUser = await storage.getUserById(wd.userId);
+        const refundedUser = await storage.updateWalletBalance(wd.userId, wd.amount);
+        if (!beforeUser || !refundedUser) {
+          return res.status(404).json({ message: "User not found for withdrawal refund" });
+        }
         await storage.createTransaction({
           userId: wd.userId,
           amount: wd.amount,
           type: "admin_credit",
+          walletType: "main",
+          mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+          mainBalanceAfter: refundedUser.mainWalletBalance || 0,
+          bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+          bonusBalanceAfter: refundedUser.bonusWalletBalance || 0,
+          metadata: { source: "withdrawal_rejected_refund", withdrawalId: wd.id },
           description: "Withdrawal rejected - refund",
         });
       }

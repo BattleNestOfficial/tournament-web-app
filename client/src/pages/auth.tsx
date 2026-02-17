@@ -270,7 +270,11 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otp: resetOtp.trim(), newPassword: resetPassword }),
+        body: JSON.stringify({
+          email: resetEmail.trim(),
+          otp: resetOtp.trim(),
+          newPassword: resetPassword,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Reset failed");

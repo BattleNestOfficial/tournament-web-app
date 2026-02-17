@@ -8,6 +8,7 @@ import {
   type Payment, type AdminLog, type Notification, type Banner, type Coupon,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 export interface IStorage {
   createUser(data: { username: string; email: string; password: string }): Promise<User>;
@@ -41,10 +42,23 @@ export interface IStorage {
   getRegistration(userId: number, tournamentId: number): Promise<Registration | undefined>;
   getRegistrationsByTournament(tournamentId: number): Promise<Registration[]>;
 
-  createTransaction(data: { userId: number; amount: number; type: string; description?: string; tournamentId?: number }): Promise<Transaction>;
+  createTransaction(data: {
+    userId: number;
+    amount: number;
+    type: string;
+    description?: string;
+    tournamentId?: number;
+    walletType?: "main" | "bonus" | "mixed";
+    mainBalanceBefore?: number;
+    mainBalanceAfter?: number;
+    bonusBalanceBefore?: number;
+    bonusBalanceAfter?: number;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<Transaction>;
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
 
   createWithdrawal(data: { userId: number; amount: number; upiId?: string; bankDetails?: string }): Promise<Withdrawal>;
+  getUserWithdrawalTotalForDay(userId: number, dayStart: Date, dayEnd: Date): Promise<number>;
   getWithdrawalById(id: number): Promise<Withdrawal | undefined>;
   getWithdrawalsByUser(userId: number): Promise<Withdrawal[]>;
   getAllWithdrawals(): Promise<(Withdrawal & { username?: string })[]>;
@@ -95,6 +109,89 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private getSafeBalance(value: number | null | undefined): number {
+    return Number(value || 0);
+  }
+
+  private buildLedgerHash(data: {
+    userId: number;
+    amount: number;
+    type: string;
+    walletType: string;
+    mainBalanceBefore: number;
+    mainBalanceAfter: number;
+    bonusBalanceBefore: number;
+    bonusBalanceAfter: number;
+    previousHash: string;
+    description?: string | null;
+    tournamentId?: number | null;
+    metadata?: Record<string, unknown> | null;
+  }): string {
+    const payload = JSON.stringify(data);
+    return crypto.createHash("sha256").update(payload).digest("hex");
+  }
+
+  private async createTransactionInTx(
+    tx: any,
+    data: {
+      userId: number;
+      amount: number;
+      type: string;
+      description?: string;
+      tournamentId?: number;
+      walletType?: "main" | "bonus" | "mixed";
+      mainBalanceBefore: number;
+      mainBalanceAfter: number;
+      bonusBalanceBefore: number;
+      bonusBalanceAfter: number;
+      metadata?: Record<string, unknown> | null;
+    },
+  ): Promise<Transaction> {
+    const [lastTx] = await tx
+      .select({ hash: transactions.entryHash })
+      .from(transactions)
+      .where(eq(transactions.userId, data.userId))
+      .orderBy(desc(transactions.id))
+      .limit(1);
+
+    const previousHash = lastTx?.hash || "";
+    const entryHash = this.buildLedgerHash({
+      userId: data.userId,
+      amount: data.amount,
+      type: data.type,
+      walletType: data.walletType || "main",
+      mainBalanceBefore: data.mainBalanceBefore,
+      mainBalanceAfter: data.mainBalanceAfter,
+      bonusBalanceBefore: data.bonusBalanceBefore,
+      bonusBalanceAfter: data.bonusBalanceAfter,
+      previousHash,
+      description: data.description || null,
+      tournamentId: data.tournamentId || null,
+      metadata: data.metadata || null,
+    });
+
+    const [created] = await tx
+      .insert(transactions)
+      .values({
+        userId: data.userId,
+        amount: data.amount,
+        type: data.type as any,
+        walletType: data.walletType || "main",
+        mainBalanceBefore: data.mainBalanceBefore,
+        mainBalanceAfter: data.mainBalanceAfter,
+        bonusBalanceBefore: data.bonusBalanceBefore,
+        bonusBalanceAfter: data.bonusBalanceAfter,
+        previousHash: previousHash || null,
+        entryHash,
+        metadata: data.metadata || null,
+        description: data.description || null,
+        tournamentId: data.tournamentId || null,
+      })
+      .returning();
+
+    return created;
+  }
+
   async createUser(data: { username: string; email: string; password: string }): Promise<User> {
     const hashedPassword = await bcrypt.hash(data.password, 10);
     const [user] = await db.insert(users).values({
@@ -148,11 +245,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateWalletBalance(id: number, amount: number): Promise<User | undefined> {
-    const [user] = await db.update(users)
-      .set({ walletBalance: sql`${users.walletBalance} + ${amount}` })
-      .where(eq(users.id, id))
-      .returning();
-    return user;
+    if (!Number.isFinite(amount) || amount === 0) {
+      return this.getUserById(id);
+    }
+
+    return db.transaction(async (tx) => {
+      const whereClause =
+        amount < 0
+          ? and(eq(users.id, id), sql`${users.mainWalletBalance} >= ${Math.abs(amount)}`)
+          : eq(users.id, id);
+
+      const [updatedUser] = await tx
+        .update(users)
+        .set({
+          mainWalletBalance: sql`${users.mainWalletBalance} + ${amount}`,
+          walletBalance: sql`${users.mainWalletBalance} + ${users.bonusWalletBalance} + ${amount}`,
+        })
+        .where(whereClause)
+        .returning();
+
+      return updatedUser;
+    });
   }
 
   async getAllUsers(): Promise<User[]> {
@@ -257,6 +370,7 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
 
+      await tx.execute(sql`SELECT id FROM users WHERE id = ${data.userId} FOR UPDATE`);
       const [user] = await tx.select().from(users).where(eq(users.id, data.userId));
       if (!user) {
         const err = new Error("User not found") as Error & { code?: string };
@@ -269,17 +383,53 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
 
+      let walletBefore = {
+        main: this.getSafeBalance(user.mainWalletBalance),
+        bonus: this.getSafeBalance(user.bonusWalletBalance),
+      };
+      let walletAfter = walletBefore;
+      let walletTypeUsed: "main" | "bonus" | "mixed" = "main";
+
       if (tournament.entryFee > 0) {
+        const totalAvailable = walletBefore.main + walletBefore.bonus;
+        if (totalAvailable < tournament.entryFee) {
+          const err = new Error("Insufficient wallet balance") as Error & { code?: string };
+          err.code = "INSUFFICIENT_BALANCE";
+          throw err;
+        }
+
+        const bonusDeduction = Math.min(walletBefore.bonus, tournament.entryFee);
+        const mainDeduction = tournament.entryFee - bonusDeduction;
+
+        walletTypeUsed = bonusDeduction > 0 && mainDeduction > 0 ? "mixed" : bonusDeduction > 0 ? "bonus" : "main";
+
         const [walletDebited] = await tx
           .update(users)
-          .set({ walletBalance: sql`${users.walletBalance} - ${tournament.entryFee}` })
-          .where(and(eq(users.id, data.userId), sql`${users.walletBalance} >= ${tournament.entryFee}`))
+          .set({
+            mainWalletBalance: sql`${users.mainWalletBalance} - ${mainDeduction}`,
+            bonusWalletBalance: sql`${users.bonusWalletBalance} - ${bonusDeduction}`,
+            walletBalance: sql`${users.walletBalance} - ${tournament.entryFee}`,
+          })
+          .where(
+            and(
+              eq(users.id, data.userId),
+              sql`${users.mainWalletBalance} >= ${mainDeduction}`,
+              sql`${users.bonusWalletBalance} >= ${bonusDeduction}`,
+              sql`${users.walletBalance} >= ${tournament.entryFee}`,
+            ),
+          )
           .returning();
+
         if (!walletDebited) {
           const err = new Error("Insufficient wallet balance") as Error & { code?: string };
           err.code = "INSUFFICIENT_BALANCE";
           throw err;
         }
+
+        walletAfter = {
+          main: this.getSafeBalance(walletDebited.mainWalletBalance),
+          bonus: this.getSafeBalance(walletDebited.bonusWalletBalance),
+        };
       }
 
       try {
@@ -327,12 +477,21 @@ export class DatabaseStorage implements IStorage {
       }
 
       if (tournament.entryFee > 0) {
-        await tx.insert(transactions).values({
+        await this.createTransactionInTx(tx, {
           userId: data.userId,
           amount: tournament.entryFee,
           type: "entry_fee",
           description: `Entry fee for ${tournament.title}`,
           tournamentId: data.tournamentId,
+          walletType: walletTypeUsed,
+          mainBalanceBefore: walletBefore.main,
+          mainBalanceAfter: walletAfter.main,
+          bonusBalanceBefore: walletBefore.bonus,
+          bonusBalanceAfter: walletAfter.bonus,
+          metadata: {
+            source: "tournament_join",
+            matchType: tournament.matchType,
+          },
         });
       }
 
@@ -380,15 +539,53 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(registrations).where(eq(registrations.tournamentId, tournamentId));
   }
 
-  async createTransaction(data: { userId: number; amount: number; type: string; description?: string; tournamentId?: number }): Promise<Transaction> {
-    const [tx] = await db.insert(transactions).values({
-      userId: data.userId,
-      amount: data.amount,
-      type: data.type as any,
-      description: data.description || null,
-      tournamentId: data.tournamentId || null,
-    }).returning();
-    return tx;
+  async createTransaction(data: {
+    userId: number;
+    amount: number;
+    type: string;
+    description?: string;
+    tournamentId?: number;
+    walletType?: "main" | "bonus" | "mixed";
+    mainBalanceBefore?: number;
+    mainBalanceAfter?: number;
+    bonusBalanceBefore?: number;
+    bonusBalanceAfter?: number;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<Transaction> {
+    return db.transaction(async (tx) => {
+      const [currentUser] = await tx.select().from(users).where(eq(users.id, data.userId));
+      if (!currentUser) {
+        const err = new Error("User not found") as Error & { code?: string };
+        err.code = "USER_NOT_FOUND";
+        throw err;
+      }
+
+      const mainNow = this.getSafeBalance(currentUser.mainWalletBalance);
+      const bonusNow = this.getSafeBalance(currentUser.bonusWalletBalance);
+
+      const mainBalanceBefore =
+        data.mainBalanceBefore !== undefined ? this.getSafeBalance(data.mainBalanceBefore) : mainNow;
+      const mainBalanceAfter =
+        data.mainBalanceAfter !== undefined ? this.getSafeBalance(data.mainBalanceAfter) : mainNow;
+      const bonusBalanceBefore =
+        data.bonusBalanceBefore !== undefined ? this.getSafeBalance(data.bonusBalanceBefore) : bonusNow;
+      const bonusBalanceAfter =
+        data.bonusBalanceAfter !== undefined ? this.getSafeBalance(data.bonusBalanceAfter) : bonusNow;
+
+      return this.createTransactionInTx(tx, {
+        userId: data.userId,
+        amount: data.amount,
+        type: data.type,
+        description: data.description,
+        tournamentId: data.tournamentId,
+        walletType: data.walletType || "main",
+        mainBalanceBefore,
+        mainBalanceAfter,
+        bonusBalanceBefore,
+        bonusBalanceAfter,
+        metadata: data.metadata || null,
+      });
+    });
   }
 
   async getTransactionsByUser(userId: number): Promise<Transaction[]> {
@@ -403,6 +600,22 @@ export class DatabaseStorage implements IStorage {
       bankDetails: data.bankDetails || null,
     }).returning();
     return wd;
+  }
+
+  async getUserWithdrawalTotalForDay(userId: number, dayStart: Date, dayEnd: Date): Promise<number> {
+    const [total] = await db
+      .select({ sum: sql<number>`coalesce(sum(${withdrawals.amount}), 0)` })
+      .from(withdrawals)
+      .where(
+        and(
+          eq(withdrawals.userId, userId),
+          sql`${withdrawals.createdAt} >= ${dayStart}`,
+          sql`${withdrawals.createdAt} < ${dayEnd}`,
+          sql`${withdrawals.status} <> 'rejected'`,
+        ),
+      );
+
+    return Number(total?.sum || 0);
   }
 
   async getWithdrawalById(id: number): Promise<Withdrawal | undefined> {
@@ -609,6 +822,8 @@ export class DatabaseStorage implements IStorage {
       email: "battlenestofficial@gmail.com",
       password: hashedAdminPw,
       role: "admin",
+      mainWalletBalance: 100000,
+      bonusWalletBalance: 0,
       walletBalance: 100000,
     }).returning();
 
@@ -771,9 +986,20 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
 
+      await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
+      const [userBefore] = await tx.select().from(users).where(eq(users.id, userId));
+      if (!userBefore) {
+        const err = new Error("User not found") as Error & { code?: string };
+        err.code = "USER_NOT_FOUND";
+        throw err;
+      }
+
       const [updatedUser] = await tx
         .update(users)
-        .set({ walletBalance: sql`${users.walletBalance} + ${coupon.amount}` })
+        .set({
+          bonusWalletBalance: sql`${users.bonusWalletBalance} + ${coupon.amount}`,
+          walletBalance: sql`${users.walletBalance} + ${coupon.amount}`,
+        })
         .where(eq(users.id, userId))
         .returning();
       if (!updatedUser) {
@@ -787,11 +1013,17 @@ export class DatabaseStorage implements IStorage {
         userId,
       });
 
-      await tx.insert(transactions).values({
+      await this.createTransactionInTx(tx, {
         userId,
         amount: coupon.amount,
         type: "deposit",
+        walletType: "bonus",
+        mainBalanceBefore: this.getSafeBalance(userBefore.mainWalletBalance),
+        mainBalanceAfter: this.getSafeBalance(updatedUser.mainWalletBalance),
+        bonusBalanceBefore: this.getSafeBalance(userBefore.bonusWalletBalance),
+        bonusBalanceAfter: this.getSafeBalance(updatedUser.bonusWalletBalance),
         description: `Coupon redeemed (${coupon.code})`,
+        metadata: { source: "coupon", code: coupon.code },
       });
 
       await tx.insert(notifications).values({
