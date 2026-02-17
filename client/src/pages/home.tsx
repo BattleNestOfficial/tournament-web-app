@@ -241,7 +241,7 @@ function TournamentMatchCard({
             event.preventDefault();
             handleCardOpen(event);
           }}
-          className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl cursor-pointer transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+          className={`esports-card-surface group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl cursor-pointer transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
         >
             <div className="relative h-44 overflow-hidden">
               {tournament.imageUrl && !imgFailed ? (
@@ -252,14 +252,14 @@ function TournamentMatchCard({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className={`h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
+                <div className={`esports-card-placeholder h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
                   <div className="text-center">
                     <Shield className="w-9 h-9 mx-auto opacity-60" />
                     <p className="text-xs mt-2 text-white/85">{gameName}</p>
                   </div>
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+              <div className="esports-card-image-overlay absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
               <div className="absolute top-3 right-3">
                 <Badge className={`text-[10px] tracking-wide uppercase ${theme.chip}`}>{theme.label}</Badge>
               </div>
@@ -525,9 +525,9 @@ export default function HomePage() {
   }
 
   return (
-    <div className="esports-theme relative min-h-screen bg-black text-white overflow-hidden">
+    <div className="esports-theme esports-page relative min-h-screen bg-black text-white overflow-hidden">
       <ParticleField />
-      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
+      <div className="esports-page-backdrop absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
       <motion.div
         aria-hidden
         className="pointer-events-none absolute -left-40 -top-36 -z-20 h-[34rem] w-[34rem] rounded-full bg-lime-500/35 blur-3xl"
@@ -548,17 +548,17 @@ export default function HomePage() {
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#39ff7a88,transparent_56%)]"
+        className="esports-page-glow-top pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#39ff7a88,transparent_56%)]"
         animate={{ opacity: [0.75, 1, 0.75] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#22c55e66,transparent_64%)]"
+        className="esports-page-glow-bottom pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,#22c55e66,transparent_64%)]"
         animate={{ opacity: [0.65, 0.95, 0.65] }}
         transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
       />
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(3,8,3,0.12),rgba(0,0,0,0.55))]" />
+      <div className="esports-page-vignette absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(3,8,3,0.12),rgba(0,0,0,0.55))]" />
 
       <section className="relative px-6 pt-24 pb-14 max-w-7xl mx-auto">
         <div className="grid gap-8 lg:grid-cols-[1.35fr_0.9fr] lg:items-start">
@@ -603,11 +603,11 @@ export default function HomePage() {
               {activeSlide?.imageUrl ? (
                 <img src={activeSlide.imageUrl} alt={activeSlide.title} className="h-full w-full object-cover" />
               ) : (
-                <div className={`h-full w-full bg-gradient-to-r ${activeSlide?.tone || "from-indigo-700/50 via-slate-800/60 to-black"} flex items-center justify-center`}>
+                <div className={`esports-card-placeholder h-full w-full bg-gradient-to-r ${activeSlide?.tone || "from-indigo-700/50 via-slate-800/60 to-black"} flex items-center justify-center`}>
                   <Shield className="w-12 h-12 text-white/70" />
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+              <div className="esports-card-image-overlay absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
               <div className="absolute left-4 right-4 bottom-4">
                 <p className="text-[11px] uppercase tracking-widest text-lime-200">Featured Promotion</p>
                 <p className="text-lg font-bold line-clamp-2">Battle Nest Featured Match</p>
@@ -619,7 +619,7 @@ export default function HomePage() {
                 <button
                   key={slide.id}
                   onClick={() => setBannerIndex(idx)}
-                  className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "w-8 bg-white" : "w-3 bg-white/55"}`}
+                  className={`h-1.5 rounded-full transition-all ${idx === bannerIndex ? "esports-banner-dot-active w-8 bg-white" : "esports-banner-dot w-3 bg-white/55"}`}
                   aria-label={`Switch banner ${idx + 1}`}
                 />
               ))}

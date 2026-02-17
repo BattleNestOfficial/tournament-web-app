@@ -200,7 +200,7 @@ function TournamentMatchCard({
             event.preventDefault();
             handleCardOpen(event);
           }}
-          className={`group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+          className={`esports-card-surface group overflow-hidden border ${theme.edge} ${theme.glow} bg-gradient-to-br from-black/80 to-slate-950/80 backdrop-blur-xl transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
         >
             <div className="relative h-44 overflow-hidden">
               {tournament.imageUrl && !imgFailed ? (
@@ -211,14 +211,14 @@ function TournamentMatchCard({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className={`h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
+                <div className={`esports-card-placeholder h-full w-full bg-gradient-to-br ${PLACEHOLDER_GRADIENT[status]} flex items-center justify-center`}>
                   <div className="text-center">
                     <Shield className="w-9 h-9 mx-auto opacity-60" />
                     <p className="text-xs mt-2 text-white/85">{gameName}</p>
                   </div>
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+              <div className="esports-card-image-overlay absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
               <div className="absolute top-3 right-3">
                 <Badge className={`text-[10px] tracking-wide uppercase ${theme.chip}`}>{theme.label}</Badge>
               </div>
@@ -492,11 +492,11 @@ export default function TournamentsPage() {
   }
 
   return (
-    <div className="esports-theme relative min-h-screen overflow-hidden text-white">
-      <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
-      <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,#39ff7a33,transparent_58%)]" />
-      <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,#22c55e26,transparent_64%)]" />
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(3,8,3,0.12),rgba(0,0,0,0.55))]" />
+    <div className="esports-theme esports-page relative min-h-screen overflow-hidden text-white">
+      <div className="esports-page-backdrop absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
+      <div className="esports-page-glow-top absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,#39ff7a33,transparent_58%)]" />
+      <div className="esports-page-glow-bottom absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,#22c55e26,transparent_64%)]" />
+      <div className="esports-page-vignette absolute inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(3,8,3,0.12),rgba(0,0,0,0.55))]" />
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         <div>
