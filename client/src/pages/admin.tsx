@@ -732,25 +732,6 @@ function UserManager({ token }: { token: string | null }) {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const removeHostMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`/api/admin/users/${id}/remove-host`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to remove host access");
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/host-applications"] });
-      toast({ title: "Host access removed" });
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-  const hostUsers = (users || []).filter((u) => u.role === "host");
-
   return (
     <div className="space-y-4">
       <h2 className="font-semibold">Manage Users</h2>
@@ -796,44 +777,6 @@ function UserManager({ token }: { token: string | null }) {
           )}
         </div>
       )}
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <UserCheck className="w-4 h-4" /> Hosts / Youtubers
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-2">
-          {hostUsers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No approved hosts yet.</p>
-          ) : (
-            hostUsers.map((u) => (
-              <div key={u.id} className="rounded-md border p-3 flex items-center justify-between gap-3" data-testid={`admin-host-user-${u.id}`}>
-                <div>
-                  <p className="font-medium text-sm">{u.username}</p>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
-                </div>
-                <div className="text-right space-y-2">
-                  <Badge variant="outline" className="text-[10px]">Host</Badge>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Wallet: {"\u20B9"}{((u.walletBalance || 0) / 100).toFixed(0)}
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive"
-                    disabled={removeHostMutation.isPending}
-                    onClick={() => removeHostMutation.mutate(u.id)}
-                    data-testid={`button-remove-host-user-${u.id}`}
-                  >
-                    Remove Host
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
