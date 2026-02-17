@@ -2804,34 +2804,59 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (targetUser.role === "admin") {
         return res.status(400).json({ message: "Cannot remove admin role using this action" });
       }
-      if (targetUser.role !== "host") {
-        return res.status(400).json({ message: "User is not a host" });
+      const wasHost = targetUser.role === "host";
+      let finalUser = targetUser;
+
+      if (wasHost) {
+        const updated = await storage.updateUserProfile(targetId, { role: "user" as any });
+        if (!updated) return res.status(404).json({ message: "User not found" });
+        finalUser = updated;
+
+        await storage.createNotification({
+          userId: targetId,
+          type: "general",
+          title: "Host Access Removed",
+          message: "Your host panel access has been removed by admin.",
+        });
+
+        await storage.createAdminLog({
+          adminId: (req as any).userId,
+          action: "remove_host_access",
+          targetType: "user",
+          targetId,
+        });
+
+        broadcastAdminUpdate({
+          entity: "user",
+          action: "remove_host",
+          targetId,
+        });
       }
 
-      const updated = await storage.updateUserProfile(targetId, { role: "user" as any });
-      if (!updated) return res.status(404).json({ message: "User not found" });
+      const removedApplications = await storage.deleteHostApplicationsByUser(targetId);
+      if (removedApplications > 0) {
+        await storage.createAdminLog({
+          adminId: (req as any).userId,
+          action: "delete_host_applications",
+          targetType: "host_application",
+          targetId,
+          details: `removed=${removedApplications}`,
+        });
+      }
 
-      await storage.createNotification({
-        userId: targetId,
-        type: "general",
-        title: "Host Access Removed",
-        message: "Your host panel access has been removed by admin.",
+      if (removedApplications > 0 || wasHost) {
+        broadcastAdminUpdate({
+          entity: "host_application",
+          action: "removed_for_user",
+          metadata: { userId: targetId, removedApplications },
+        });
+      }
+
+      res.json({
+        user: sanitizeUser(finalUser),
+        hostRemoved: wasHost,
+        removedApplications,
       });
-
-      await storage.createAdminLog({
-        adminId: (req as any).userId,
-        action: "remove_host_access",
-        targetType: "user",
-        targetId,
-      });
-
-      broadcastAdminUpdate({
-        entity: "user",
-        action: "remove_host",
-        targetId,
-      });
-
-      res.json(sanitizeUser(updated));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

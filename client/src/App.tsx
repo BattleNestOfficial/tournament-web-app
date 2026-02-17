@@ -18,6 +18,8 @@ import TeamsPage from "@/pages/teams";
 import LeaderboardPage from "@/pages/leaderboard";
 import SupportPage from "@/pages/support";
 import BecomeHostPage from "@/pages/become-host";
+import TermsPage from "@/pages/terms";
+import PrivacyPage from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 
 function AppRoutes() {
@@ -36,6 +38,8 @@ function AppRoutes() {
         <Route path="/wallet" component={WalletPage} />
         <Route path="/profile" component={ProfilePage} />
         <Route path="/support" component={SupportPage} />
+        <Route path="/terms" component={TermsPage} />
+        <Route path="/privacy" component={PrivacyPage} />
         <Route path="/become-host" component={BecomeHostPage} />
         <Route path="/teams" component={TeamsPage} />
         <Route path="/leaderboard" component={LeaderboardPage} />

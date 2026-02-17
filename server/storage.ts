@@ -138,6 +138,7 @@ export interface IStorage {
   getLatestHostApplicationByUser(userId: number): Promise<HostApplication | undefined>;
   getHostApplications(): Promise<(HostApplication & { username?: string; reviewerUsername?: string })[]>;
   updateHostApplication(id: number, data: Partial<HostApplication>): Promise<HostApplication | undefined>;
+  deleteHostApplicationsByUser(userId: number): Promise<number>;
 
   getResultsByTournament(tournamentId: number): Promise<Result[]>;
   createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result>;
@@ -1335,6 +1336,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(hostApplications.id, id))
       .returning();
     return updated;
+  }
+
+  async deleteHostApplicationsByUser(userId: number): Promise<number> {
+    const deleted = await db
+      .delete(hostApplications)
+      .where(eq(hostApplications.userId, userId))
+      .returning({ id: hostApplications.id });
+    return deleted.length;
   }
 
   async getResultsByTournament(tournamentId: number): Promise<Result[]> {

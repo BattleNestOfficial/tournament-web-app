@@ -362,9 +362,15 @@ export default function Layout({ children }: { children: ReactNode }) {
             <span>BATTLE NEST - Esports Tournament Platform</span>
           </div>
           <div className="flex items-center gap-4">
-            <span>Terms</span>
-            <span>Privacy</span>
-            <span>Support</span>
+            <Link href="/terms" data-testid="link-footer-terms" className="hover:text-foreground transition-colors">
+              Terms
+            </Link>
+            <Link href="/privacy" data-testid="link-footer-privacy" className="hover:text-foreground transition-colors">
+              Privacy
+            </Link>
+            <Link href="/support" data-testid="link-footer-support" className="hover:text-foreground transition-colors">
+              Support
+            </Link>
           </div>
         </div>
       </footer>

@@ -744,6 +744,7 @@ function UserManager({ token }: { token: string | null }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/host-applications"] });
       toast({ title: "Host access removed" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1120,7 +1121,8 @@ function HostRequestManager({ token }: { token: string | null }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "Host access removed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/host-applications"] });
+      toast({ title: "Host access removed and host request data deleted" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
