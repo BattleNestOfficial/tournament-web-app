@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, Gift } from "lucide-react";
+import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, Gift, TrendingUp, Crosshair, Flame } from "lucide-react";
 import type { Registration, Tournament } from "@shared/schema";
 
 type LoyaltyRoadmapTier = {
@@ -29,6 +29,17 @@ type LoyaltyProfile = {
   matchesToNextTier: number;
   progressPercent: number;
   awardedTierKeys: string[];
+};
+
+type PlayerAnalytics = {
+  summary: {
+    matchesPlayed: number;
+    wins: number;
+    winRate: number;
+    avgKills: number;
+    totalKills: number;
+    totalPrize: number;
+  };
 };
 
 export default function ProfilePage() {
@@ -58,6 +69,17 @@ export default function ProfilePage() {
   const { data: loyalty } = useQuery<LoyaltyProfile>({
     queryKey: ["/api/users/loyalty"],
     enabled: !!user,
+  });
+
+  const { data: personalAnalytics } = useQuery<PlayerAnalytics>({
+    queryKey: ["/api/leaderboard", user?.id, "analytics-self"],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/leaderboard/${user?.id}/analytics`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Failed to load player analytics");
+      return data;
+    },
   });
 
   // 🔹 Helper: check if anything actually changed
@@ -285,6 +307,14 @@ export default function ProfilePage() {
     roadmapTiers.find((tier) => tier.key === loyalty?.nextRoadmapTierKey) || null;
   const awardedTierKeys = new Set(loyalty?.awardedTierKeys || []);
   const progressPercent = Math.max(2, Math.min(100, loyalty?.progressPercent || 0));
+  const statsSummary = personalAnalytics?.summary || {
+    matchesPlayed: 0,
+    wins: 0,
+    winRate: 0,
+    avgKills: 0,
+    totalKills: 0,
+    totalPrize: 0,
+  };
 
   if (!user) return null;
   return (
@@ -601,6 +631,47 @@ export default function ProfilePage() {
         </CardHeader>
 
         <CardContent className="pt-0 pb-4">
+          <div className="mb-5 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Personal Dashboard</p>
+                <p className="text-base font-semibold">Your competitive performance stats</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Matches Played</p>
+                <p className="mt-1 text-lg font-semibold">{statsSummary.matchesPlayed}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Wins</p>
+                <p className="mt-1 text-lg font-semibold">{statsSummary.wins}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <TrendingUp className="h-3.5 w-3.5" /> Win Rate
+                </p>
+                <p className="mt-1 text-lg font-semibold">{statsSummary.winRate.toFixed(1)}%</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Crosshair className="h-3.5 w-3.5" /> Avg Kills/Match
+                </p>
+                <p className="mt-1 text-lg font-semibold">{statsSummary.avgKills.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Flame className="h-3.5 w-3.5" /> Total Kills
+                </p>
+                <p className="mt-1 text-lg font-semibold">{statsSummary.totalKills}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Total Prize</p>
+                <p className="mt-1 text-lg font-semibold">{"\u20B9"}{(statsSummary.totalPrize / 100).toFixed(0)}</p>
+              </div>
+            </div>
+          </div>
+
           {registrations?.length ? (
             <div className="space-y-1">
               {registrations.map((reg) => (

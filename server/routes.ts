@@ -207,6 +207,33 @@ function getTournamentStatusValue(value: unknown): "hot" | "upcoming" | "live" |
   return "cancelled";
 }
 
+function getAutoScaledPrizePoolValue(input: {
+  status: unknown;
+  prizePool: unknown;
+  filledSlots: unknown;
+  maxSlots: unknown;
+}): number {
+  const status = getTournamentStatusValue(input.status);
+  const basePrizePool = Math.max(0, Math.round(Number(input.prizePool || 0)));
+  const maxSlots = Number.isFinite(Number(input.maxSlots)) && Number(input.maxSlots) > 0
+    ? Math.round(Number(input.maxSlots))
+    : 0;
+  const filledSlotsRaw = Number.isFinite(Number(input.filledSlots)) && Number(input.filledSlots) >= 0
+    ? Math.round(Number(input.filledSlots))
+    : 0;
+  const filledSlots = maxSlots > 0 ? Math.min(filledSlotsRaw, maxSlots) : filledSlotsRaw;
+
+  if (status !== "live" && status !== "completed") {
+    return basePrizePool;
+  }
+  if (basePrizePool <= 0 || maxSlots <= 0) {
+    return basePrizePool;
+  }
+
+  const ratio = Math.max(0, Math.min(1, filledSlots / maxSlots));
+  return Math.max(0, Math.round(basePrizePool * ratio));
+}
+
 function parsePrizeDistributionMap(raw: unknown): Map<number, number> {
   const mapping = new Map<number, number>();
   if (!Array.isArray(raw)) return mapping;
@@ -1116,9 +1143,14 @@ app.get(
             ...t,
             title: typeof t.title === "string" ? t.title : "Untitled Tournament",
             entryFee: Number.isFinite(t.entryFee) ? t.entryFee : 0,
-            prizePool: Number.isFinite(t.prizePool) ? t.prizePool : 0,
             maxSlots: Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1,
             filledSlots: Number.isFinite(t.filledSlots) && t.filledSlots >= 0 ? t.filledSlots : 0,
+            prizePool: getAutoScaledPrizePoolValue({
+              status: normalizedStatus,
+              prizePool: t.prizePool,
+              filledSlots: t.filledSlots,
+              maxSlots: t.maxSlots,
+            }),
             status: normalizedStatus,
             roomId: canSeeRoom ? t.roomId : null,
             roomPassword: canSeeRoom ? t.roomPassword : null,
@@ -1174,9 +1206,14 @@ app.get(
         ...t,
         title: typeof t.title === "string" ? t.title : "Untitled Tournament",
         entryFee: Number.isFinite(t.entryFee) ? t.entryFee : 0,
-        prizePool: Number.isFinite(t.prizePool) ? t.prizePool : 0,
         maxSlots: Number.isFinite(t.maxSlots) && t.maxSlots > 0 ? t.maxSlots : 1,
         filledSlots: Number.isFinite(t.filledSlots) && t.filledSlots >= 0 ? t.filledSlots : 0,
+        prizePool: getAutoScaledPrizePoolValue({
+          status: normalizedStatus,
+          prizePool: t.prizePool,
+          filledSlots: t.filledSlots,
+          maxSlots: t.maxSlots,
+        }),
         status: normalizedStatus,
         roomId: canSeeRoom ? t.roomId : null,
         roomPassword: canSeeRoom ? t.roomPassword : null,
@@ -2488,6 +2525,16 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       const prizeDistributionMap = parsePrizeDistributionMap(tournament.prizeDistribution);
+      const basePrizePool = Math.max(0, Math.round(Number(tournament.prizePool || 0)));
+      const effectivePrizePool = getAutoScaledPrizePoolValue({
+        status: tournament.status,
+        prizePool: tournament.prizePool,
+        filledSlots: tournament.filledSlots,
+        maxSlots: tournament.maxSlots,
+      });
+      const prizeScaleRatio =
+        basePrizePool > 0 ? Math.max(0, Math.min(1, effectivePrizePool / basePrizePool)) : 1;
+      let remainingPrizePool = effectivePrizePool;
       const createdResults = [];
       const seenUsers = new Set<number>();
       let totalPrizeDistributed = 0;
@@ -2504,10 +2551,14 @@ app.get("/api/stats/total-users", async (_req, res) => {
 
         const inputPrize = Number(r?.prize);
         const mappedPrize = prizeDistributionMap.get(position) || 0;
-        const payout =
+        const desiredPayout =
           Number.isFinite(inputPrize) && inputPrize >= 0
             ? Math.round(inputPrize)
             : mappedPrize;
+        const scaledPayout =
+          prizeScaleRatio < 1 ? Math.round(desiredPayout * prizeScaleRatio) : desiredPayout;
+        const payout = Math.max(0, Math.min(scaledPayout, remainingPrizePool));
+        remainingPrizePool = Math.max(0, remainingPrizePool - payout);
         const kills = Number.isFinite(Number(r?.kills)) ? Math.max(0, Math.round(Number(r?.kills))) : 0;
 
         const result = await storage.createResult({
