@@ -3,6 +3,16 @@ import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 
 const JWT_SECRET_ENV = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+if (IS_PRODUCTION && !JWT_SECRET_ENV) {
+  throw new Error("[AUTH] SESSION_SECRET/JWT_SECRET is required in production.");
+}
+
+if (IS_PRODUCTION && JWT_SECRET_ENV && JWT_SECRET_ENV.length < 32) {
+  throw new Error("[AUTH] SESSION_SECRET/JWT_SECRET must be at least 32 characters in production.");
+}
+
 const JWT_SECRET: string = JWT_SECRET_ENV || crypto.randomBytes(32).toString("hex");
 if (!JWT_SECRET_ENV) {
   console.warn("[AUTH] SESSION_SECRET/JWT_SECRET is missing. Using ephemeral secret for this process.");
@@ -13,7 +23,7 @@ export function generateToken(userId: number, role: string): string {
 }
 
 export function verifyToken(
-  token: string
+  token: string,
 ): { userId: number; role: string } | null {
   try {
     return jwt.verify(token, JWT_SECRET) as unknown as {
@@ -28,7 +38,7 @@ export function verifyToken(
 export function authMiddleware(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -47,26 +57,26 @@ export function authMiddleware(
 }
 
 /**
- * ✅ OPTIONAL AUTH
+ * Optional auth:
  * - Allows guests
  * - Adds userId + role if token exists
  */
 export function authOptionalMiddleware(
   req: Request,
   _res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(); // guest user
+    return next();
   }
 
   const token = authHeader.slice(7);
   const payload = verifyToken(token);
 
   if (!payload) {
-    return next(); // invalid token → treat as guest
+    return next();
   }
 
   (req as any).userId = payload.userId;
@@ -77,7 +87,7 @@ export function authOptionalMiddleware(
 export function adminMiddleware(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   if ((req as any).userRole !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
@@ -88,7 +98,7 @@ export function adminMiddleware(
 export function staffMiddleware(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const role = String((req as any).userRole || "");
   if (role !== "admin" && role !== "host") {

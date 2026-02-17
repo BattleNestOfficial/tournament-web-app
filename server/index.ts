@@ -25,13 +25,25 @@ declare module "http" {
 
 app.use(
   express.json({
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -52,6 +64,15 @@ function redactSensitive(value: unknown): unknown {
     "roomPassword",
     "razorpaySignature",
     "razorpay_signature",
+    "otp",
+    "emailVerificationToken",
+    "phoneVerificationCode",
+    "passwordResetToken",
+    "devEmailVerificationOtp",
+    "devPasswordResetOtp",
+    "devPhoneOtp",
+    "devEmailVerificationToken",
+    "devPasswordResetToken",
   ]);
 
   if (Array.isArray(value)) {
@@ -62,7 +83,14 @@ function redactSensitive(value: unknown): unknown {
     const obj = value as Record<string, unknown>;
     const output: Record<string, unknown> = {};
     for (const [key, nestedValue] of Object.entries(obj)) {
-      output[key] = sensitiveKeys.has(key) ? "[REDACTED]" : redactSensitive(nestedValue);
+      const lowerKey = key.toLowerCase();
+      const mustRedact =
+        sensitiveKeys.has(key) ||
+        lowerKey.includes("otp") ||
+        lowerKey.includes("verificationtoken") ||
+        lowerKey.includes("resettoken") ||
+        lowerKey.includes("password");
+      output[key] = mustRedact ? "[REDACTED]" : redactSensitive(nestedValue);
     }
     return output;
   }
@@ -86,7 +114,13 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(redactSensitive(capturedJsonResponse))}`;
+        const redactedPayload = JSON.stringify(redactSensitive(capturedJsonResponse));
+        const maxPayloadLen = 1200;
+        const safePayload =
+          redactedPayload.length > maxPayloadLen
+            ? `${redactedPayload.slice(0, maxPayloadLen)}...[truncated]`
+            : redactedPayload;
+        logLine += ` :: ${safePayload}`;
       }
 
       log(logLine);
@@ -119,7 +153,9 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message = process.env.NODE_ENV === "production"
+      ? "Internal Server Error"
+      : err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
 

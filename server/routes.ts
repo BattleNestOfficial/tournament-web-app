@@ -27,6 +27,18 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const allowedImageExtRegex = /\.(jpg|jpeg|png|gif|webp)$/i;
+const allowedImageMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+function isAllowedImageUpload(file: { originalname: string; mimetype: string }) {
+  return allowedImageExtRegex.test(path.extname(file.originalname)) && allowedImageMimeTypes.has(file.mimetype);
+}
+
 const uploadStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -40,8 +52,7 @@ const upload = multer({
   storage: uploadStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
-    if (allowed.test(path.extname(file.originalname))) {
+    if (isAllowedImageUpload(file)) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed"));
@@ -53,8 +64,7 @@ const uploadMemory = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
-    if (allowed.test(path.extname(file.originalname))) {
+    if (isAllowedImageUpload(file)) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed"));
@@ -87,6 +97,26 @@ const OTP_REQUEST_MAX = 5;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCK_MS = 15 * 60 * 1000;
 const DAILY_WITHDRAWAL_LIMIT_PAISA = Number(process.env.DAILY_WITHDRAWAL_LIMIT_PAISA || 2000000);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function shouldExposeDevSecrets() {
+  return !IS_PRODUCTION;
+}
+
+function logDevOtp(scope: string, details: Record<string, unknown>) {
+  if (IS_PRODUCTION) return;
+  const safeDetails = Object.entries(details)
+    .map(([key, value]) => `${key}=${String(value ?? "")}`)
+    .join(" ");
+  console.log(`[${scope}] ${safeDetails}`);
+}
+
+function getPublicErrorMessage(error: unknown, fallback = "Internal Server Error") {
+  if (!IS_PRODUCTION && error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
 
 function createPhoneOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -888,24 +918,24 @@ export async function registerRoutes(
           otp: verificationOtp,
         });
       } else {
-        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Email OTP delivery is disabled.");
       }
     } catch (mailError: any) {
       console.error("Verification email send failed on signup:", mailError?.message || mailError);
     }
-    console.log(`[EMAIL_VERIFY] user=${user.email} otp=${verificationOtp}`);
+    logDevOtp("EMAIL_VERIFY", { user: user.email, otp: verificationOtp });
 
     const token = generateToken(user.id, user.role);
     const safeUser = sanitizeUser(updatedUser || user);
-    const payload: any = {
-      token,
-      user: safeUser,
-      message: "Signup successful. Please verify your email.",
-    };
-    if (process.env.NODE_ENV !== "production") {
-      payload.devEmailVerificationOtp = verificationOtp;
-      payload.devEmailVerificationToken = verificationOtp;
-    }
+      const payload: any = {
+        token,
+        user: safeUser,
+        message: "Signup successful. Please verify your email.",
+      };
+      if (shouldExposeDevSecrets()) {
+        payload.devEmailVerificationOtp = verificationOtp;
+        payload.devEmailVerificationToken = verificationOtp;
+      }
 
     return res.status(201).json(payload);
   } catch (err: any) {
@@ -945,7 +975,7 @@ export async function registerRoutes(
       const safeUser = sanitizeUser(user);
       res.json({ token, user: safeUser });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Server error" });
+      res.status(500).json({ message: getPublicErrorMessage(err, "Server error") });
     }
   });
 
@@ -1045,18 +1075,18 @@ export async function registerRoutes(
           otp: verificationOtp,
         });
       } else {
-        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Email OTP delivery is disabled.");
       }
-      console.log(`[EMAIL_VERIFY] user=${user.email} otp=${verificationOtp}`);
+      logDevOtp("EMAIL_VERIFY", { user: user.email, otp: verificationOtp });
 
       const payload: any = { message: "Email verification OTP sent" };
-      if (process.env.NODE_ENV !== "production") {
+      if (shouldExposeDevSecrets()) {
         payload.devEmailVerificationOtp = verificationOtp;
         payload.devEmailVerificationToken = verificationOtp;
       }
       res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1104,7 +1134,7 @@ export async function registerRoutes(
 
       res.json({ message: "Email verified successfully", user: sanitizeUser(updated || user) });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1148,22 +1178,22 @@ export async function registerRoutes(
             otp: resetOtp,
           });
         } else {
-          console.warn("[PASSWORD_RESET] Brevo is not configured. Falling back to dev OTP logging.");
+          console.warn("[PASSWORD_RESET] Brevo is not configured. Password reset OTP delivery is disabled.");
         }
       } catch (mailError: any) {
         // Keep generic success response to avoid email enumeration vectors.
         console.error("Password reset email send failed:", mailError?.message || mailError);
       }
-      console.log(`[PASSWORD_RESET] user=${email} otp=${resetOtp}`);
+      logDevOtp("PASSWORD_RESET", { user: normalizedEmail, otp: resetOtp });
 
       const payload: any = { message: "If this email exists, a reset OTP has been sent." };
-      if (process.env.NODE_ENV !== "production") {
+      if (shouldExposeDevSecrets()) {
         payload.devPasswordResetOtp = resetOtp;
         payload.devPasswordResetToken = resetOtp;
       }
       res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1215,7 +1245,7 @@ export async function registerRoutes(
 
       res.json({ message: "Password reset successful" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1249,15 +1279,15 @@ export async function registerRoutes(
       });
 
       // TODO: Integrate SMS provider to deliver OTP.
-      console.log(`[PHONE_VERIFY] user=${user.id} phone=${user.phone} otp=${otp}`);
+      logDevOtp("PHONE_VERIFY", { userId: user.id, phone: user.phone, otp });
 
       const payload: any = { message: "Phone verification code sent" };
-      if (process.env.NODE_ENV !== "production") {
+      if (shouldExposeDevSecrets()) {
         payload.devPhoneOtp = otp;
       }
       res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1300,7 +1330,7 @@ export async function registerRoutes(
 
       res.json({ message: "Phone verified successfully", user: sanitizeUser(updated || user) });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -1383,12 +1413,12 @@ export async function registerRoutes(
               otp: verificationOtp,
             });
           } else {
-            console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
+            console.warn("[EMAIL_VERIFY] Brevo is not configured. Email OTP delivery is disabled.");
           }
         } catch (mailError: any) {
           console.error("Verification email send failed after contact update:", mailError?.message || mailError);
         }
-        console.log(`[EMAIL_VERIFY] user=${updated.email} otp=${verificationOtp}`);
+        logDevOtp("EMAIL_VERIFY", { user: updated.email, otp: verificationOtp });
       }
 
       if ((emailChanged || phoneChanged) && isBrevoConfigured()) {
@@ -1409,14 +1439,14 @@ export async function registerRoutes(
         message: "Contact details updated. Withdrawals are temporarily locked for security.",
         user: sanitizeUser(updated),
       };
-      if (verificationOtp && process.env.NODE_ENV !== "production") {
+      if (verificationOtp && shouldExposeDevSecrets()) {
         payload.devEmailVerificationOtp = verificationOtp;
         payload.devEmailVerificationToken = verificationOtp;
       }
 
       res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
