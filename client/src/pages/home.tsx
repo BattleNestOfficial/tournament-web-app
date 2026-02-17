@@ -403,6 +403,19 @@ export default function HomePage() {
     },
   });
 
+  const { data: totalUsersStats } = useQuery<{ count: number }>({
+    queryKey: ["/api/stats/total-users"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats/total-users");
+      if (!res.ok) {
+        throw new Error("Failed to load total users");
+      }
+      const data = await res.json();
+      return { count: Number(data?.count) || 0 };
+    },
+    retry: false,
+  });
+
   const promoSlides = useMemo<PromoSlide[]>(
     () =>
       banners.length > 0
@@ -481,12 +494,12 @@ export default function HomePage() {
   const metrics = useMemo(() => {
     const activeStatuses = new Set(["hot", "upcoming", "live"]);
     return {
-      totalPlayers: normalizedTournaments.reduce((sum, t) => sum + (t.status === "cancelled" ? 0 : t.filledSlots), 0),
+      totalPlayers: Number(totalUsersStats?.count) || 0,
       liveNow: normalizedTournaments.filter((t) => t.status === "live").length,
       totalPrizePool: normalizedTournaments.reduce((sum, t) => sum + (activeStatuses.has(String(t.status)) ? t.prizePool : 0), 0),
       totalPayout: normalizedTournaments.reduce((sum, t) => sum + (t.status === "completed" ? t.prizePool : 0), 0),
     };
-  }, [normalizedTournaments]);
+  }, [normalizedTournaments, totalUsersStats?.count]);
 
   const activeSlide = promoSlides[bannerIndex] ?? promoSlides[0];
 

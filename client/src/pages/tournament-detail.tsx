@@ -37,6 +37,7 @@ import type { Game, Registration, Result, Tournament } from "@shared/schema";
 type Participant = Registration & {
   username?: string;
   displayName?: string;
+  teamName?: string | null;
 };
 
 type PrizeRow = {
@@ -687,7 +688,12 @@ export default function TournamentDetailPage() {
               {!participantsQuery.isLoading && !participantsQuery.isError && participants.length > 0 && participants.map((p, index) => (
                 <div key={p.id} className="flex items-center gap-3 text-sm rounded-md border border-white/10 bg-black/25 px-3 py-2">
                   <span className="w-6 text-xs text-white/60 font-medium">{index + 1}.</span>
-                  <span>{p.displayName || p.username || `Player #${p.userId}`}</span>
+                  <div className="min-w-0">
+                    <p className="truncate">{p.displayName || p.username || `Player #${p.userId}`}</p>
+                    {p.teamName && (
+                      <p className="text-xs text-white/60 truncate">Team: {p.teamName}</p>
+                    )}
+                  </div>
                 </div>
               ))}
             </CardContent>

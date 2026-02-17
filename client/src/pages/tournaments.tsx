@@ -435,7 +435,10 @@ export default function TournamentsPage() {
         if (gameFilter !== "all" && t.gameId !== Number(gameFilter)) return false;
         if (statusFilter !== "all" && t.status !== statusFilter) return false;
         if (typeFilter !== "all" && t.matchType !== typeFilter) return false;
-        if (joinedOnly && !joinedTournamentIds.has(Number(t.id))) return false;
+        if (joinedOnly) {
+          if (!joinedTournamentIds.has(Number(t.id))) return false;
+          if (t.status !== "live" && t.status !== "upcoming") return false;
+        }
         if (searchQuery.trim() && !t.title.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
         return true;
       }),
@@ -595,15 +598,19 @@ export default function TournamentsPage() {
           <Button variant="outline" size="sm" onClick={() => document.getElementById("live-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
             Live ({sectionCounts.live})
           </Button>
-          <Button variant="outline" size="sm" onClick={() => document.getElementById("hot-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-            Hot ({sectionCounts.hot})
-          </Button>
           <Button variant="outline" size="sm" onClick={() => document.getElementById("upcoming-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
             Upcoming ({sectionCounts.upcoming})
           </Button>
-          <Button variant="outline" size="sm" onClick={() => document.getElementById("completed-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-            Completed ({sectionCounts.completed})
-          </Button>
+          {!joinedOnly && (
+            <Button variant="outline" size="sm" onClick={() => document.getElementById("hot-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              Hot ({sectionCounts.hot})
+            </Button>
+          )}
+          {!joinedOnly && (
+            <Button variant="outline" size="sm" onClick={() => document.getElementById("completed-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              Completed ({sectionCounts.completed})
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
@@ -649,34 +656,36 @@ export default function TournamentsPage() {
               )}
             </section>
 
-            <section id="hot-section" className="space-y-2 scroll-mt-24">
-              <SectionHeader
-                icon={<Flame className="w-6 h-6 text-amber-300" />}
-                title="Hot Tournaments"
-                subtitle="Admin spotlight tournaments"
-              />
-              {hotTournaments.length > 0 ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {hotTournaments.map((t, idx) => (
-                    <TournamentMatchCard
-                      key={t.id}
-                      tournament={t}
-                      gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
-                      index={idx}
-                      joined={joinedTournamentIds.has(Number(t.id))}
-                      token={token}
-                      onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
-                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Card className="border-white/10 bg-black/35">
-                  <CardContent className="p-8 text-center text-white/65">No hot tournaments.</CardContent>
-                </Card>
-              )}
-            </section>
+            {!joinedOnly && (
+              <section id="hot-section" className="space-y-2 scroll-mt-24">
+                <SectionHeader
+                  icon={<Flame className="w-6 h-6 text-amber-300" />}
+                  title="Hot Tournaments"
+                  subtitle="Admin spotlight tournaments"
+                />
+                {hotTournaments.length > 0 ? (
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {hotTournaments.map((t, idx) => (
+                      <TournamentMatchCard
+                        key={t.id}
+                        tournament={t}
+                        gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                        index={idx}
+                        joined={joinedTournamentIds.has(Number(t.id))}
+                        token={token}
+                        onShowRoom={setRoomDialogTournament}
+                        onShowWinners={setWinnersDialogTournament}
+                        onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="border-white/10 bg-black/35">
+                    <CardContent className="p-8 text-center text-white/65">No hot tournaments.</CardContent>
+                  </Card>
+                )}
+              </section>
+            )}
 
             <section id="upcoming-section" className="space-y-2 scroll-mt-24">
               <SectionHeader
@@ -707,34 +716,36 @@ export default function TournamentsPage() {
               )}
             </section>
 
-            <section id="completed-section" className="space-y-2 scroll-mt-24">
-              <SectionHeader
-                icon={<Trophy className="w-6 h-6 text-slate-300" />}
-                title="Completed Tournaments"
-                subtitle="Past matches and finished battles"
-              />
-              {completedTournaments.length > 0 ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {completedTournaments.map((t, idx) => (
-                    <TournamentMatchCard
-                      key={t.id}
-                      tournament={t}
-                      gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
-                      index={idx}
-                      joined={joinedTournamentIds.has(Number(t.id))}
-                      token={token}
-                      onShowRoom={setRoomDialogTournament}
-                      onShowWinners={setWinnersDialogTournament}
-                      onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Card className="border-white/10 bg-black/35">
-                  <CardContent className="p-8 text-center text-white/65">No completed tournaments.</CardContent>
-                </Card>
-              )}
-            </section>
+            {!joinedOnly && (
+              <section id="completed-section" className="space-y-2 scroll-mt-24">
+                <SectionHeader
+                  icon={<Trophy className="w-6 h-6 text-slate-300" />}
+                  title="Completed Tournaments"
+                  subtitle="Past matches and finished battles"
+                />
+                {completedTournaments.length > 0 ? (
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {completedTournaments.map((t, idx) => (
+                      <TournamentMatchCard
+                        key={t.id}
+                        tournament={t}
+                        gameName={gameById.get(t.gameId)?.name || "Unknown Game"}
+                        index={idx}
+                        joined={joinedTournamentIds.has(Number(t.id))}
+                        token={token}
+                        onShowRoom={setRoomDialogTournament}
+                        onShowWinners={setWinnersDialogTournament}
+                        onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="border-white/10 bg-black/35">
+                    <CardContent className="p-8 text-center text-white/65">No completed tournaments.</CardContent>
+                  </Card>
+                )}
+              </section>
+            )}
           </>
         )}
 

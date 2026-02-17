@@ -366,10 +366,12 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
     const enriched = await Promise.all(
       regs.map(async (r) => {
         const user = await storage.getUserById(r.userId);
+        const team = r.teamId ? await storage.getTeamById(r.teamId) : null;
         return {
           ...r,
           username: user?.username,
           displayName: r.inGameName || user?.username,
+          teamName: team?.name || null,
         };
       })
     );
