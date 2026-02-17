@@ -37,7 +37,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <img
               src="/favicon.png"
               alt="Battle Nest Logo"
-              className="w-7 h-7 rounded-md object-cover border border-white/10"
+              className="w-8 h-8 rounded-md object-cover border border-white/10"
             />
             <span className="font-bold text-sm tracking-tight hidden sm:block">BATTLE NEST</span>
           </Link>

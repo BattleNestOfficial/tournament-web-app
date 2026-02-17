@@ -251,6 +251,13 @@ export default function TournamentDetailPage() {
   const walletAfterJoin = Math.max(0, currentWalletBalance - (tournament?.entryFee || 0));
   const prizeDistribution = useMemo(() => parsePrizeDistribution(tournament?.prizeDistribution), [tournament?.prizeDistribution]);
   const sortedResults = useMemo(() => [...results].sort((a, b) => a.position - b.position), [results]);
+  const participantNameByUserId = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of participants) {
+      map.set(p.userId, p.displayName || p.username || `Player #${p.userId}`);
+    }
+    return map;
+  }, [participants]);
 
   const eligibleTeams = useMemo(() => {
     if (isDuo) return teams.filter((t) => t.members?.length === 2);
@@ -664,7 +671,12 @@ export default function TournamentDetailPage() {
                   key={r.id}
                   className={`flex items-center justify-between rounded-md border px-3 py-2 ${r.position === 1 ? "border-yellow-400/60 bg-yellow-500/10" : "border-white/10 bg-black/25"}`}
                 >
-                  <span className="font-medium">Rank #{r.position}</span>
+                  <div>
+                    <p className="font-medium">Rank #{r.position}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {participantNameByUserId.get(r.userId) || `Player #${r.userId}`}
+                    </p>
+                  </div>
                   <div className="text-right">
                     <p className="font-semibold">{formatMoney(r.prize)}</p>
                     <p className="text-xs text-muted-foreground">Kills: {r.kills}</p>
