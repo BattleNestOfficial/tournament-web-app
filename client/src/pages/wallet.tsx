@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Clock, TrendingUp, Ban, CheckCircle, AlertCircle, CreditCard } from "lucide-react";
+import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Clock, TrendingUp, Ban, CheckCircle, AlertCircle, CreditCard, TicketPercent } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Transaction, Withdrawal } from "@shared/schema";
 import {
@@ -36,6 +36,8 @@ export default function WalletPage() {
   const [upiId, setUpiId] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
+  const [couponDialogOpen, setCouponDialogOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
   const [razorpayLoading, setRazorpayLoading] = useState(false);
 
   const { data: transactions, isLoading: txLoading } = useQuery<Transaction[]>({
@@ -96,6 +98,29 @@ export default function WalletPage() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const redeemCouponMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/wallet/redeem-coupon", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data.user) updateUser(data.user);
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
+      toast({ title: "Coupon redeemed", description: data.message || "Amount credited to wallet" });
+      setCouponCode("");
+      setCouponDialogOpen(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Coupon failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -246,7 +271,7 @@ export default function WalletPage() {
                 <Wallet className="w-6 h-6 text-primary" />
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-4 flex-wrap">
               <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2 flex-1" data-testid="button-add-money">
@@ -341,6 +366,38 @@ export default function WalletPage() {
                       data-testid="button-confirm-withdraw"
                     >
                       {withdrawMutation.isPending ? "Submitting..." : `Withdraw \u20B9${withdrawAmount || "0"}`}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={couponDialogOpen} onOpenChange={setCouponDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2 flex-1 min-w-[160px]" data-testid="button-redeem-coupon">
+                    <TicketPercent className="w-4 h-4" /> Redeem Coupon
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Redeem Coupon Code</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Coupon Code</Label>
+                      <Input
+                        placeholder="Enter coupon code"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        data-testid="input-coupon-code"
+                      />
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={!couponCode.trim() || redeemCouponMutation.isPending}
+                      onClick={() => redeemCouponMutation.mutate()}
+                      data-testid="button-confirm-redeem-coupon"
+                    >
+                      {redeemCouponMutation.isPending ? "Redeeming..." : "Redeem Coupon"}
                     </Button>
                   </div>
                 </DialogContent>

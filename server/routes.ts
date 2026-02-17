@@ -523,6 +523,31 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
+  app.post("/api/wallet/redeem-coupon", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const rawCode = req.body?.code;
+      const code = typeof rawCode === "string" ? rawCode.trim() : "";
+      if (!code) {
+        return res.status(400).json({ message: "Coupon code is required" });
+      }
+
+      const redeemed = await storage.redeemCoupon(userId, code);
+      const { password, ...safeUser } = redeemed.user;
+      res.json({
+        user: safeUser,
+        coupon: redeemed.coupon,
+        amount: redeemed.amount,
+        message: `Coupon redeemed. Rs.${(redeemed.amount / 100).toFixed(2)} credited to wallet.`,
+      });
+    } catch (err: any) {
+      if (err?.code === "INVALID_COUPON") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_ALREADY_REDEEMED") return res.status(400).json({ message: err.message });
+      if (err?.code === "USER_NOT_FOUND") return res.status(404).json({ message: err.message });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Razorpay payment routes
   app.post("/api/payments/create-order", authMiddleware, async (req, res) => {
     try {
@@ -1396,6 +1421,66 @@ app.get("/api/stats/total-users", async (_req, res) => {
         adminId: (req as any).userId,
         action: "delete_banner",
         targetType: "banner",
+        targetId: id,
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Coupon routes
+  app.get("/api/admin/coupons", authMiddleware, adminMiddleware, async (_req, res) => {
+    try {
+      const items = await storage.getAllCoupons();
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/coupons", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const rawCode = req.body?.code;
+      const amount = Number(req.body?.amount);
+      const enabled = req.body?.enabled !== false;
+      const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
+
+      if (!code || code.length < 3 || code.length > 64) {
+        return res.status(400).json({ message: "Coupon code must be between 3 and 64 characters" });
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ message: "Coupon amount must be greater than 0" });
+      }
+
+      const coupon = await storage.createCoupon({
+        code,
+        amount: Math.round(amount * 100),
+        enabled,
+      });
+
+      await storage.createAdminLog({
+        adminId: (req as any).userId,
+        action: "create_coupon",
+        targetType: "coupon",
+        targetId: coupon.id,
+      });
+
+      res.json(coupon);
+    } catch (err: any) {
+      if (err?.code === "23505") return res.status(400).json({ message: "Coupon code already exists" });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/admin/coupons/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      await storage.deleteCoupon(id);
+      await storage.createAdminLog({
+        adminId: (req as any).userId,
+        action: "delete_coupon",
+        targetType: "coupon",
         targetId: id,
       });
       res.json({ success: true });

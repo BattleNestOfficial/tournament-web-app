@@ -161,6 +161,27 @@ export const banners = pgTable("banners", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const coupons = pgTable("coupons", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  amount: integer("amount").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const couponRedemptions = pgTable(
+  "coupon_redemptions",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    couponId: integer("coupon_id").notNull(),
+    userId: integer("user_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    couponUserUnique: uniqueIndex("coupon_redemptions_coupon_user_uq").on(table.couponId, table.userId),
+  }),
+);
+
 export const insertUserSchema = z.object({
   username: z.string().min(3).max(30),
   email: z.string().email(),
@@ -210,6 +231,11 @@ export const insertBannerSchema = z.object({
   sortOrder: z.number().int().nonnegative().optional(),
   enabled: z.boolean().optional(),
 });
+export const insertCouponSchema = z.object({
+  code: z.string().min(3).max(64),
+  amount: z.number().int().positive(),
+  enabled: z.boolean().optional(),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -228,3 +254,6 @@ export type AdminLog = typeof adminLogs.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Banner = typeof banners.$inferSelect;
 export type InsertBanner = z.infer<typeof insertBannerSchema>;
+export type Coupon = typeof coupons.$inferSelect;
+export type CouponRedemption = typeof couponRedemptions.$inferSelect;
+export type InsertCoupon = z.infer<typeof insertCouponSchema>;

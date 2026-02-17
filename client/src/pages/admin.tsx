@@ -20,8 +20,9 @@ import {
 import {
   Trophy, Users, Gamepad2, Wallet, Shield, Plus, Edit, Ban, CheckCircle, Clock,
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
+  TicketPercent,
 } from "lucide-react";
-import type { Game, Tournament, User, Withdrawal, Banner } from "@shared/schema";
+import type { Game, Tournament, User, Withdrawal, Banner, Coupon } from "@shared/schema";
 
 export default function AdminPage() {
   const { user, token } = useAuth();
@@ -58,8 +59,8 @@ export default function AdminPage() {
 
       <AdminStats token={token} />
 
-      <Tabs defaultValue="tournaments" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <Tabs defaultValue="tournaments" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-6 max-w-3xl">
           <TabsTrigger value="tournaments" data-testid="tab-admin-tournaments">
             <Trophy className="w-3.5 h-3.5 mr-1.5" /> Tournaments
           </TabsTrigger>
@@ -75,6 +76,9 @@ export default function AdminPage() {
           <TabsTrigger value="banners" data-testid="tab-admin-banners">
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Banners
           </TabsTrigger>
+          <TabsTrigger value="coupons" data-testid="tab-admin-coupons">
+            <TicketPercent className="w-3.5 h-3.5 mr-1.5" /> Coupons
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tournaments"><TournamentManager token={token} /></TabsContent>
@@ -82,6 +86,7 @@ export default function AdminPage() {
         <TabsContent value="users"><UserManager token={token} /></TabsContent>
         <TabsContent value="withdrawals"><WithdrawalManager token={token} /></TabsContent>
         <TabsContent value="banners"><BannerManager token={token} /></TabsContent>
+        <TabsContent value="coupons"><CouponManager token={token} /></TabsContent>
       </Tabs>
     </div>
   );
@@ -1004,6 +1009,136 @@ function BannerManager({ token }: { token: string | null }) {
           <CardContent className="p-8 text-center">
             <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground text-sm">No banners uploaded yet. Add up to 5 promo banners for the home page carousel.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function CouponManager({ token }: { token: string | null }) {
+  const { toast } = useToast();
+  const [couponCode, setCouponCode] = useState("");
+  const [couponAmount, setCouponAmount] = useState("");
+
+  const { data: coupons, isLoading } = useQuery<Coupon[]>({
+    queryKey: ["/api/admin/coupons"],
+    enabled: !!token,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const amount = Number(couponAmount);
+      const res = await fetch("/api/admin/coupons", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode.trim().toUpperCase(), amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons"] });
+      toast({ title: "Coupon created" });
+      setCouponCode("");
+      setCouponAmount("");
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/admin/coupons/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons"] });
+      toast({ title: "Coupon deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold">Coupon Codes</h3>
+        <p className="text-sm text-muted-foreground">
+          Create promo coupon codes to credit wallet balance. Users can redeem each code once.
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm font-medium">Add Coupon Code</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Coupon Code</Label>
+              <Input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="e.g. BATTLE50"
+                data-testid="input-coupon-code-admin"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                min="1"
+                value={couponAmount}
+                onChange={(e) => setCouponAmount(e.target.value)}
+                placeholder="e.g. 50"
+                data-testid="input-coupon-amount-admin"
+              />
+            </div>
+          </div>
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={!couponCode.trim() || !couponAmount || Number(couponAmount) <= 0 || createMutation.isPending}
+            data-testid="button-create-coupon-admin"
+          >
+            {createMutation.isPending ? "Creating..." : "Create Coupon"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+      ) : coupons && coupons.length > 0 ? (
+        <div className="space-y-3">
+          {coupons.map((coupon) => (
+            <Card key={coupon.id} data-testid={`admin-coupon-${coupon.id}`}>
+              <CardContent className="p-3 flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="font-semibold tracking-wide">{coupon.code}</p>
+                  <p className="text-xs text-muted-foreground">Amount: ₹{(coupon.amount / 100).toFixed(0)}</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => deleteMutation.mutate(coupon.id)}
+                  data-testid={`button-delete-coupon-${coupon.id}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <TicketPercent className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm">No coupon codes created yet.</p>
           </CardContent>
         </Card>
       )}

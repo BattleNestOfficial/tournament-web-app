@@ -56,4 +56,26 @@ export async function ensureRegistrationsTeamColumn() {
   `);
 }
 
+export async function ensureCouponsTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coupons (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      code varchar(64) NOT NULL UNIQUE,
+      amount integer NOT NULL,
+      enabled boolean NOT NULL DEFAULT true,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coupon_redemptions (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      coupon_id integer NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT coupon_redemptions_coupon_user_uq UNIQUE (coupon_id, user_id)
+    );
+  `);
+}
+
 export const db = drizzle(pool, { schema });

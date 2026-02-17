@@ -2,10 +2,10 @@ import { db } from "./db";
 import { eq, desc, sql, and, or } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
-  payments, adminLogs, notifications, banners,
+  payments, adminLogs, notifications, banners, coupons, couponRedemptions,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
-  type Payment, type AdminLog, type Notification, type Banner,
+  type Payment, type AdminLog, type Notification, type Banner, type Coupon,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
@@ -83,6 +83,11 @@ export interface IStorage {
   updateBanner(id: number, data: Partial<Banner>): Promise<Banner | undefined>;
   deleteBanner(id: number): Promise<void>;
   getBannerCount(): Promise<number>;
+
+  getAllCoupons(): Promise<Coupon[]>;
+  createCoupon(data: { code: string; amount: number; enabled?: boolean }): Promise<Coupon>;
+  deleteCoupon(id: number): Promise<void>;
+  redeemCoupon(userId: number, code: string): Promise<{ user: User; coupon: Coupon; amount: number }>;
 
   seedData(): Promise<void>;
 }
@@ -707,6 +712,84 @@ export class DatabaseStorage implements IStorage {
   async getBannerCount(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(banners);
     return result?.count || 0;
+  }
+
+  async getAllCoupons(): Promise<Coupon[]> {
+    return db.select().from(coupons).orderBy(desc(coupons.createdAt));
+  }
+
+  async createCoupon(data: { code: string; amount: number; enabled?: boolean }): Promise<Coupon> {
+    const normalizedCode = data.code.trim().toUpperCase();
+    const [coupon] = await db.insert(coupons).values({
+      code: normalizedCode,
+      amount: data.amount,
+      enabled: data.enabled ?? true,
+    }).returning();
+    return coupon;
+  }
+
+  async deleteCoupon(id: number): Promise<void> {
+    await db.delete(coupons).where(eq(coupons.id, id));
+  }
+
+  async redeemCoupon(userId: number, code: string): Promise<{ user: User; coupon: Coupon; amount: number }> {
+    const normalizedCode = code.trim().toUpperCase();
+    if (!normalizedCode) {
+      const err = new Error("Coupon code is required") as Error & { code?: string };
+      err.code = "INVALID_COUPON";
+      throw err;
+    }
+
+    return db.transaction(async (tx) => {
+      const [coupon] = await tx.select().from(coupons).where(and(eq(coupons.code, normalizedCode), eq(coupons.enabled, true)));
+      if (!coupon) {
+        const err = new Error("Invalid or inactive coupon code") as Error & { code?: string };
+        err.code = "INVALID_COUPON";
+        throw err;
+      }
+
+      const [alreadyRedeemed] = await tx
+        .select()
+        .from(couponRedemptions)
+        .where(and(eq(couponRedemptions.couponId, coupon.id), eq(couponRedemptions.userId, userId)));
+      if (alreadyRedeemed) {
+        const err = new Error("Coupon already redeemed") as Error & { code?: string };
+        err.code = "COUPON_ALREADY_REDEEMED";
+        throw err;
+      }
+
+      const [updatedUser] = await tx
+        .update(users)
+        .set({ walletBalance: sql`${users.walletBalance} + ${coupon.amount}` })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updatedUser) {
+        const err = new Error("User not found") as Error & { code?: string };
+        err.code = "USER_NOT_FOUND";
+        throw err;
+      }
+
+      await tx.insert(couponRedemptions).values({
+        couponId: coupon.id,
+        userId,
+      });
+
+      await tx.insert(transactions).values({
+        userId,
+        amount: coupon.amount,
+        type: "deposit",
+        description: `Coupon redeemed (${coupon.code})`,
+      });
+
+      await tx.insert(notifications).values({
+        userId,
+        type: "wallet_credit",
+        title: "Coupon Redeemed",
+        message: `Coupon ${coupon.code} credited Rs.${(coupon.amount / 100).toFixed(2)} to your wallet.`,
+      });
+
+      return { user: updatedUser, coupon, amount: coupon.amount };
+    });
   }
 }
 

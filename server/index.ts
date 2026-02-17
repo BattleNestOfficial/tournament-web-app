@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { ensureRegistrationsTeamColumn, ensureTournamentStatusEnumHasHot } from "./db";
+import { ensureCouponsTables, ensureRegistrationsTeamColumn, ensureTournamentStatusEnumHasHot } from "./db";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -90,6 +90,7 @@ app.use((req, res, next) => {
 (async () => {
   await ensureTournamentStatusEnumHasHot();
   await ensureRegistrationsTeamColumn();
+  await ensureCouponsTables();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
