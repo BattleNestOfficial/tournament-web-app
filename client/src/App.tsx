@@ -15,6 +15,7 @@ import ProfilePage from "@/pages/profile";
 import AdminPage from "@/pages/admin";
 import TeamsPage from "@/pages/teams";
 import LeaderboardPage from "@/pages/leaderboard";
+import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
 
 function AppRoutes() {
@@ -32,6 +33,7 @@ function AppRoutes() {
         <Route path="/tournaments/:id" component={TournamentDetailPage} />
         <Route path="/wallet" component={WalletPage} />
         <Route path="/profile" component={ProfilePage} />
+        <Route path="/support" component={SupportPage} />
         <Route path="/teams" component={TeamsPage} />
         <Route path="/leaderboard" component={LeaderboardPage} />
         <Route path="/admin" component={AdminPage} />

@@ -124,12 +124,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   )}
                   {!isAdmin && (
                     <DropdownMenuItem
-                      onClick={() => {
-                        try {
-                          sessionStorage.setItem("bn_focus_support", "1");
-                        } catch {}
-                        setLocation("/profile");
-                      }}
+                      onClick={() => setLocation("/support")}
                       data-testid="menu-support"
                     >
                       <Headset className="w-4 h-4 mr-2" /> Support
