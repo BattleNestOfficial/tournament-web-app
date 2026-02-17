@@ -29,13 +29,6 @@ type LoyaltyProfile = {
   };
 };
 
-function getTierStyle(tier: LoyaltyProfile["tier"] | undefined) {
-  if (tier === "vip") return "text-amber-400 border-amber-500/40 bg-amber-500/10";
-  if (tier === "gold") return "text-yellow-500 border-yellow-500/40 bg-yellow-500/10";
-  if (tier === "silver") return "text-slate-500 border-slate-500/40 bg-slate-500/10";
-  return "text-orange-500 border-orange-500/40 bg-orange-500/10";
-}
-
 function normalizeTicketStatus(status: string): "open" | "in_review" | "resolved" {
   if (status === "in_review") return "in_review";
   if (status === "resolved") return "resolved";
@@ -364,6 +357,20 @@ export default function ProfilePage() {
     !!supportDescription.trim() &&
     !!supportScreenshot &&
     !createSupportTicketMutation.isPending;
+  const matchesPlayed = loyalty?.matchesPlayed ?? 0;
+  const tierRoadmap = [
+    { key: "bronze", label: "Bronze", matches: 0 },
+    { key: "silver", label: "Silver", matches: 20 },
+    { key: "gold", label: "Gold", matches: 50 },
+    { key: "vip", label: "Platinum", matches: 100 },
+  ] as const;
+  const derivedTier = matchesPlayed >= 100 ? "vip" : matchesPlayed >= 50 ? "gold" : matchesPlayed >= 20 ? "silver" : "bronze";
+  const currentTierKey = (loyalty?.tier || derivedTier) as "bronze" | "silver" | "gold" | "vip";
+  const currentTierIndex = Math.max(0, tierRoadmap.findIndex((tier) => tier.key === currentTierKey));
+  const nextTier = currentTierIndex < tierRoadmap.length - 1 ? tierRoadmap[currentTierIndex + 1] : null;
+  const matchesAway = nextTier ? Math.max(0, nextTier.matches - matchesPlayed) : 0;
+  const roadmapProgress = Math.max(0, Math.min((matchesPlayed / tierRoadmap[tierRoadmap.length - 1].matches) * 100, 100));
+  const currentTierLabel = tierRoadmap[currentTierIndex]?.label || "Bronze";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -486,41 +493,49 @@ export default function ProfilePage() {
             <Crown className="w-4 h-4" /> Loyalty Program
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-0 space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Current Tier</p>
-            <Badge className={`capitalize ${getTierStyle(loyalty?.tier)}`}>
-              {loyalty?.tierLabel || "Bronze Member"}
-            </Badge>
+        <CardContent className="pt-0 space-y-5">
+          <div className="rounded-md border bg-muted/30 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p className="text-sm font-semibold">
+              Current Tier: <span className="text-primary">{currentTierLabel}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {nextTier ? `${matchesAway} matches away from ${nextTier.label}` : "Top tier reached"}
+            </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-md border bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">Matches Played</p>
-              <p className="text-xl font-bold">{loyalty?.matchesPlayed ?? 0}</p>
-            </div>
-            <div className="rounded-md border bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">Total Deposits</p>
-              <p className="text-xl font-bold">{"\u20B9"}{((loyalty?.totalDeposits ?? 0) / 100).toFixed(0)}</p>
-            </div>
-            <div className="rounded-md border bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">Total Earnings</p>
-              <p className="text-xl font-bold">{"\u20B9"}{((loyalty?.totalEarnings ?? 0) / 100).toFixed(0)}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-3 text-sm">
-            <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground mb-1">Reduced Platform Fee</p>
-              <p className="font-semibold">{loyalty?.benefits.platformFeePercent ?? 5}%</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground mb-1">Priority Support</p>
-              <p className="font-semibold">{loyalty?.benefits.prioritySupport ? "Enabled" : "Standard"}</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground mb-1">Exclusive Tournaments</p>
-              <p className="font-semibold">{loyalty?.benefits.exclusiveTournaments ? "Enabled" : "Locked"}</p>
+          <div className="overflow-x-auto">
+            <div className="min-w-[680px] px-2 pb-2">
+              <div className="relative pt-1">
+                <div className="absolute left-8 right-8 top-5 h-1 rounded-full bg-muted" />
+                <div
+                  className="absolute left-8 top-5 h-1 rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `calc((100% - 4rem) * ${roadmapProgress / 100})` }}
+                />
+                <div className="grid grid-cols-4 gap-4 relative">
+                  {tierRoadmap.map((tier, index) => {
+                    const reached = matchesPlayed >= tier.matches;
+                    const isCurrent = currentTierKey === tier.key;
+                    const isNext = nextTier?.key === tier.key;
+                    return (
+                      <div key={tier.key} className="text-center space-y-2">
+                        <div
+                          className={`mx-auto w-10 h-10 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                            reached
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-muted-foreground"
+                          }`}
+                        >
+                          {index + 1}
+                        </div>
+                        <p className="text-sm font-semibold">{tier.label}</p>
+                        <p className="text-[11px] text-muted-foreground">{tier.matches} matches</p>
+                        {isCurrent && <Badge variant="outline" className="text-[10px]">Current Tier</Badge>}
+                        {isNext && <p className="text-[11px] text-chart-4">{matchesAway} matches away</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
