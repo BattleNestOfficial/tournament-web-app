@@ -16,6 +16,8 @@ export const couponTypeValues = [
 ] as const;
 
 export const couponContextValues = ["wallet", "tournament_join"] as const;
+export const loyaltyTierValues = ["bronze", "silver", "gold", "vip"] as const;
+export const disputeStatusValues = ["submitted", "in_review", "resolved", "rejected"] as const;
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -123,6 +125,10 @@ export const withdrawals = pgTable("withdrawals", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull(),
   amount: integer("amount").notNull(),
+  platformFee: integer("platform_fee").notNull().default(0),
+  netAmount: integer("net_amount").notNull().default(0),
+  feePercent: integer("fee_percent").notNull().default(0),
+  loyaltyTier: text("loyalty_tier").notNull().default("bronze"),
   upiId: text("upi_id"),
   bankDetails: text("bank_details"),
   status: withdrawalStatusEnum("status").notNull().default("pending"),
@@ -231,6 +237,33 @@ export const couponRedemptions = pgTable(
   },
 );
 
+export const disputes = pgTable("disputes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull(),
+  reportType: text("report_type").notNull().default("hacker"),
+  accusedUsername: text("accused_username"),
+  tournamentId: integer("tournament_id"),
+  description: text("description").notNull(),
+  screenshotUrl: text("screenshot_url"),
+  status: text("status").notNull().default("submitted"),
+  resolutionNote: text("resolution_note"),
+  priorityLevel: text("priority_level").notNull().default("standard"),
+  resolvedBy: integer("resolved_by"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const disputeLogs = pgTable("dispute_logs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  disputeId: integer("dispute_id").notNull(),
+  actorUserId: integer("actor_user_id"),
+  actorRole: text("actor_role").notNull().default("system"),
+  action: text("action").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = z.object({
   username: z.string().min(3).max(30),
   email: z.string().email(),
@@ -294,6 +327,12 @@ export const insertCouponSchema = z.object({
   metadata: z.record(z.any()).optional().nullable(),
   enabled: z.boolean().optional(),
 });
+export const insertDisputeSchema = z.object({
+  reportType: z.string().min(2).max(50).optional(),
+  accusedUsername: z.string().min(2).max(60).optional().nullable(),
+  tournamentId: z.number().int().positive().optional().nullable(),
+  description: z.string().min(10).max(2000),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -317,3 +356,8 @@ export type CouponRedemption = typeof couponRedemptions.$inferSelect;
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type CouponType = (typeof couponTypeValues)[number];
 export type CouponContext = (typeof couponContextValues)[number];
+export type LoyaltyTier = (typeof loyaltyTierValues)[number];
+export type DisputeStatus = (typeof disputeStatusValues)[number];
+export type Dispute = typeof disputes.$inferSelect;
+export type DisputeLog = typeof disputeLogs.$inferSelect;
+export type InsertDispute = z.infer<typeof insertDisputeSchema>;

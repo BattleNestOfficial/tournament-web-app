@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import {
   ensureCouponsTables,
+  ensureDisputesTables,
   ensureRegistrationsTeamColumn,
   ensureTournamentStatusEnumHasHot,
   ensureUserSecurityColumns,
@@ -109,6 +110,7 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
   await runStartupStep("ensureUserSecurityColumns", ensureUserSecurityColumns);
   await runStartupStep("ensureCouponsTables", ensureCouponsTables);
   await runStartupStep("ensureWalletEngineColumns", ensureWalletEngineColumns);
+  await runStartupStep("ensureDisputesTables", ensureDisputesTables);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

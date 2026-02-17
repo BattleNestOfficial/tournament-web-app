@@ -9,8 +9,28 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, ArrowUpRight } from "lucide-react";
 import type { Registration, Tournament } from "@shared/schema";
+
+type LoyaltyProfile = {
+  tier: "bronze" | "silver" | "gold" | "vip";
+  tierLabel: string;
+  matchesPlayed: number;
+  totalDeposits: number;
+  totalEarnings: number;
+  benefits: {
+    platformFeePercent: number;
+    prioritySupport: boolean;
+    exclusiveTournaments: boolean;
+  };
+};
+
+function getTierStyle(tier: LoyaltyProfile["tier"] | undefined) {
+  if (tier === "vip") return "text-amber-400 border-amber-500/40 bg-amber-500/10";
+  if (tier === "gold") return "text-yellow-500 border-yellow-500/40 bg-yellow-500/10";
+  if (tier === "silver") return "text-slate-500 border-slate-500/40 bg-slate-500/10";
+  return "text-orange-500 border-orange-500/40 bg-orange-500/10";
+}
 
 export default function ProfilePage() {
   const { user, token, updateUser } = useAuth();
@@ -33,6 +53,10 @@ export default function ProfilePage() {
     (Registration & { tournament?: Tournament })[]
   >({
     queryKey: ["/api/registrations/my"],
+    enabled: !!user,
+  });
+  const { data: loyalty } = useQuery<LoyaltyProfile>({
+    queryKey: ["/api/users/loyalty"],
     enabled: !!user,
   });
 
@@ -368,6 +392,57 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Crown className="w-4 h-4" /> Loyalty Program
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Current Tier</p>
+              <Badge className={`capitalize ${getTierStyle(loyalty?.tier)}`}>
+                {loyalty?.tierLabel || "Bronze Member"}
+              </Badge>
+            </div>
+            <Button variant="outline" className="gap-1.5" onClick={() => setLocation("/disputes")} data-testid="button-open-disputes-profile">
+              Open Disputes Center <ArrowUpRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Matches Played</p>
+              <p className="text-xl font-bold">{loyalty?.matchesPlayed ?? 0}</p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Total Deposits</p>
+              <p className="text-xl font-bold">{"\u20B9"}{((loyalty?.totalDeposits ?? 0) / 100).toFixed(0)}</p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Total Earnings</p>
+              <p className="text-xl font-bold">{"\u20B9"}{((loyalty?.totalEarnings ?? 0) / 100).toFixed(0)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 text-sm">
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground mb-1">Reduced Platform Fee</p>
+              <p className="font-semibold">{loyalty?.benefits.platformFeePercent ?? 5}%</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground mb-1">Priority Support</p>
+              <p className="font-semibold">{loyalty?.benefits.prioritySupport ? "Enabled" : "Standard"}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground mb-1">Exclusive Tournaments</p>
+              <p className="font-semibold">{loyalty?.benefits.exclusiveTournaments ? "Enabled" : "Locked"}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">

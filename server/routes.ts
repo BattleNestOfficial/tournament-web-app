@@ -7,7 +7,7 @@ import {
   authOptionalMiddleware,
   adminMiddleware,
 } from "./auth";
-import { loginSchema, signupSchema, couponTypeValues, type Tournament } from "@shared/schema";
+import { loginSchema, signupSchema, couponTypeValues, insertDisputeSchema, type Tournament, type LoyaltyTier } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
@@ -232,6 +232,22 @@ function getMetadataSource(value: unknown): string {
 function normalizeCouponTypeForRoute(value: unknown) {
   const raw = String(value || "").toLowerCase().trim();
   return couponTypeValues.includes(raw as any) ? (raw as (typeof couponTypeValues)[number]) : null;
+}
+
+function normalizeDisputeStatus(value: unknown): "submitted" | "in_review" | "resolved" | "rejected" | null {
+  const raw = String(value || "").toLowerCase().trim();
+  if (raw === "submitted") return "submitted";
+  if (raw === "in_review") return "in_review";
+  if (raw === "resolved") return "resolved";
+  if (raw === "rejected") return "rejected";
+  return null;
+}
+
+function getTierBadge(tier: LoyaltyTier): string {
+  if (tier === "vip") return "VIP";
+  if (tier === "gold") return "Gold";
+  if (tier === "silver") return "Silver";
+  return "Bronze";
 }
 
 export async function registerRoutes(
@@ -1819,6 +1835,19 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
+  app.get("/api/users/loyalty", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const profile = await storage.getUserLoyaltyProfile(userId);
+      res.json({
+        ...profile,
+        tierLabel: getTierBadge(profile.tier),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Withdrawals
   app.post("/api/withdrawals", authMiddleware, async (req, res) => {
     try {
@@ -1830,6 +1859,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (!user) return;
       if ((user.mainWalletBalance || 0) < amount) {
         return res.status(400).json({ message: "Insufficient withdrawable balance" });
+      }
+      const loyaltyProfile = await storage.getUserLoyaltyProfile(userId);
+      const feePercent = Math.max(0, Number(loyaltyProfile.benefits.platformFeePercent || 0));
+      const platformFee = Math.round((amount * feePercent) / 100);
+      const netAmount = Math.max(0, amount - platformFee);
+      if (netAmount <= 0) {
+        return res.status(400).json({ message: "Withdrawal amount is too low after platform fee" });
       }
 
       const dayStart = new Date();
@@ -1855,16 +1891,39 @@ app.get("/api/stats/total-users", async (_req, res) => {
         mainBalanceAfter: updatedUser.mainWalletBalance || 0,
         bonusBalanceBefore: user.bonusWalletBalance || 0,
         bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
-        metadata: { source: "withdrawal_request", dailyWithdrawnBefore: withdrawnToday },
-        description: "Withdrawal request",
+        metadata: {
+          source: "withdrawal_request",
+          dailyWithdrawnBefore: withdrawnToday,
+          platformFee,
+          netAmount,
+          feePercent,
+          loyaltyTier: loyaltyProfile.tier,
+        },
+        description: `Withdrawal request (tier ${getTierBadge(loyaltyProfile.tier)}, fee ${feePercent}%)`,
       });
 
-      const wd = await storage.createWithdrawal({ userId, amount, upiId, bankDetails });
+      const wd = await storage.createWithdrawal({
+        userId,
+        amount,
+        platformFee,
+        netAmount,
+        feePercent,
+        loyaltyTier: loyaltyProfile.tier,
+        upiId,
+        bankDetails,
+      });
       res.json({
         ...wd,
         user: sanitizeUser(updatedUser),
         dailyLimit: DAILY_WITHDRAWAL_LIMIT_PAISA,
         dailyUsed: withdrawnToday + amount,
+        loyalty: {
+          tier: loyaltyProfile.tier,
+          tierLabel: getTierBadge(loyaltyProfile.tier),
+          feePercent,
+          platformFee,
+          netAmount,
+        },
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1875,6 +1934,87 @@ app.get("/api/stats/total-users", async (_req, res) => {
     try {
       const wds = await storage.getWithdrawalsByUser((req as any).userId);
       res.json(wds);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Disputes
+  app.post("/api/disputes", authMiddleware, upload.single("screenshot"), async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const rawTournamentId =
+        req.body?.tournamentId == null || req.body?.tournamentId === ""
+          ? null
+          : Number(req.body.tournamentId);
+      const payload = {
+        reportType: typeof req.body?.reportType === "string" ? req.body.reportType.trim().toLowerCase() : "hacker",
+        accusedUsername: typeof req.body?.accusedUsername === "string" ? req.body.accusedUsername.trim() : null,
+        tournamentId: Number.isInteger(rawTournamentId) && rawTournamentId! > 0 ? rawTournamentId : null,
+        description: typeof req.body?.description === "string" ? req.body.description.trim() : "",
+      };
+      const parsed = insertDisputeSchema.safeParse(payload);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid dispute payload" });
+      }
+
+      const loyalty = await storage.getUserLoyaltyProfile(userId);
+      const screenshotUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      const dispute = await storage.createDispute({
+        userId,
+        reportType: parsed.data.reportType || "hacker",
+        accusedUsername: parsed.data.accusedUsername || null,
+        tournamentId: parsed.data.tournamentId ?? null,
+        description: parsed.data.description,
+        screenshotUrl,
+        priorityLevel: loyalty.benefits.prioritySupport ? "priority" : "standard",
+      });
+
+      await storage.createDisputeLog({
+        disputeId: dispute.id,
+        actorUserId: userId,
+        actorRole: "user",
+        action: "created",
+        note: `Dispute submitted (${dispute.reportType})`,
+      });
+
+      res.status(201).json({
+        ...dispute,
+        loyaltyTier: loyalty.tier,
+        loyaltyTierLabel: getTierBadge(loyalty.tier),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/disputes/my", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const myDisputes = await storage.getDisputesByUser(userId);
+      res.json(myDisputes);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/disputes/:id/logs", authMiddleware, async (req, res) => {
+    try {
+      const disputeId = Number(req.params.id);
+      if (!Number.isInteger(disputeId) || disputeId <= 0) {
+        return res.status(400).json({ message: "Invalid dispute id" });
+      }
+      const dispute = await storage.getDisputeById(disputeId);
+      if (!dispute) return res.status(404).json({ message: "Dispute not found" });
+
+      const requesterId = (req as any).userId;
+      const requesterRole = String((req as any).userRole || "user");
+      if (requesterRole !== "admin" && Number(dispute.userId) !== Number(requesterId)) {
+        return res.status(403).json({ message: "Not allowed to view this dispute log" });
+      }
+
+      const logs = await storage.getDisputeLogs(disputeId);
+      res.json(logs);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2532,6 +2672,100 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
 
       res.json(wd);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Admin Disputes
+  app.get("/api/admin/disputes", authMiddleware, adminMiddleware, async (_req, res) => {
+    try {
+      const items = await storage.getAllDisputes();
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/admin/disputes/:id/logs", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const disputeId = Number(req.params.id);
+      if (!Number.isInteger(disputeId) || disputeId <= 0) {
+        return res.status(400).json({ message: "Invalid dispute id" });
+      }
+      const dispute = await storage.getDisputeById(disputeId);
+      if (!dispute) return res.status(404).json({ message: "Dispute not found" });
+
+      const logs = await storage.getDisputeLogs(disputeId);
+      res.json(logs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/admin/disputes/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const disputeId = Number(req.params.id);
+      if (!Number.isInteger(disputeId) || disputeId <= 0) {
+        return res.status(400).json({ message: "Invalid dispute id" });
+      }
+
+      const status = normalizeDisputeStatus(req.body?.status);
+      if (!status) return res.status(400).json({ message: "Invalid dispute status" });
+
+      const resolutionNote =
+        typeof req.body?.resolutionNote === "string" ? req.body.resolutionNote.trim() : "";
+      if (resolutionNote.length > 2000) {
+        return res.status(400).json({ message: "Resolution note is too long" });
+      }
+
+      const existing = await storage.getDisputeById(disputeId);
+      if (!existing) return res.status(404).json({ message: "Dispute not found" });
+
+      const adminId = Number((req as any).userId);
+      const updatePayload: any = {
+        status,
+      };
+
+      if (resolutionNote) {
+        updatePayload.resolutionNote = resolutionNote;
+      }
+
+      if (status === "resolved" || status === "rejected") {
+        updatePayload.resolvedBy = adminId;
+        updatePayload.resolvedAt = new Date();
+      } else if (status === "submitted" || status === "in_review") {
+        updatePayload.resolvedBy = null;
+        updatePayload.resolvedAt = null;
+      }
+
+      const updated = await storage.updateDispute(disputeId, updatePayload);
+      if (!updated) return res.status(404).json({ message: "Dispute not found" });
+
+      await storage.createDisputeLog({
+        disputeId,
+        actorUserId: adminId,
+        actorRole: "admin",
+        action: `status_${status}`,
+        note: resolutionNote || `Status updated to ${status}`,
+      });
+
+      await storage.createNotification({
+        userId: updated.userId,
+        type: "general",
+        title: "Dispute Update",
+        message: `Your dispute #${updated.id} is now ${status.replace("_", " ")}.${resolutionNote ? ` Note: ${resolutionNote}` : ""}`,
+      });
+
+      await storage.createAdminLog({
+        adminId,
+        action: "update_dispute_status",
+        targetType: "dispute",
+        targetId: disputeId,
+        details: `status=${status}${resolutionNote ? `, note=${resolutionNote}` : ""}`,
+      });
+
+      res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

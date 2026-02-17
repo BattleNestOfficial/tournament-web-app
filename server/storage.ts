@@ -2,13 +2,28 @@ import { db } from "./db";
 import { eq, desc, sql, and, or } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
-  payments, adminLogs, notifications, banners, coupons, couponRedemptions,
+  payments, adminLogs, notifications, banners, coupons, couponRedemptions, disputes, disputeLogs,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
-  type Payment, type AdminLog, type Notification, type Banner, type Coupon, type CouponType,
+  type Payment, type AdminLog, type Notification, type Banner, type Coupon, type CouponType, type Dispute, type DisputeLog, type LoyaltyTier,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+
+type LoyaltyBenefits = {
+  platformFeePercent: number;
+  prioritySupport: boolean;
+  exclusiveTournaments: boolean;
+};
+
+type UserLoyaltyProfile = {
+  userId: number;
+  tier: LoyaltyTier;
+  matchesPlayed: number;
+  totalDeposits: number;
+  totalEarnings: number;
+  benefits: LoyaltyBenefits;
+};
 
 export interface IStorage {
   createUser(data: { username: string; email: string; password: string }): Promise<User>;
@@ -57,12 +72,44 @@ export interface IStorage {
   }): Promise<Transaction>;
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
 
-  createWithdrawal(data: { userId: number; amount: number; upiId?: string; bankDetails?: string }): Promise<Withdrawal>;
+  createWithdrawal(data: {
+    userId: number;
+    amount: number;
+    platformFee?: number;
+    netAmount?: number;
+    feePercent?: number;
+    loyaltyTier?: LoyaltyTier;
+    upiId?: string;
+    bankDetails?: string;
+  }): Promise<Withdrawal>;
   getUserWithdrawalTotalForDay(userId: number, dayStart: Date, dayEnd: Date): Promise<number>;
   getWithdrawalById(id: number): Promise<Withdrawal | undefined>;
   getWithdrawalsByUser(userId: number): Promise<Withdrawal[]>;
   getAllWithdrawals(): Promise<(Withdrawal & { username?: string })[]>;
   updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal | undefined>;
+  getUserLoyaltyProfile(userId: number): Promise<UserLoyaltyProfile>;
+
+  createDispute(data: {
+    userId: number;
+    reportType?: string;
+    accusedUsername?: string | null;
+    tournamentId?: number | null;
+    description: string;
+    screenshotUrl?: string | null;
+    priorityLevel?: "standard" | "priority";
+  }): Promise<Dispute>;
+  getDisputeById(id: number): Promise<Dispute | undefined>;
+  getDisputesByUser(userId: number): Promise<Dispute[]>;
+  getAllDisputes(): Promise<(Dispute & { username?: string; resolvedByUsername?: string })[]>;
+  updateDispute(id: number, data: Partial<Dispute>): Promise<Dispute | undefined>;
+  createDisputeLog(data: {
+    disputeId: number;
+    actorUserId?: number | null;
+    actorRole?: string;
+    action: string;
+    note?: string | null;
+  }): Promise<DisputeLog>;
+  getDisputeLogs(disputeId: number): Promise<(DisputeLog & { actorUsername?: string })[]>;
 
   getResultsByTournament(tournamentId: number): Promise<Result[]>;
   createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result>;
@@ -146,6 +193,50 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   private getSafeBalance(value: number | null | undefined): number {
     return Number(value || 0);
+  }
+
+  private normalizeLoyaltyTier(value: unknown): LoyaltyTier {
+    const raw = String(value || "").toLowerCase().trim();
+    if (raw === "vip") return "vip";
+    if (raw === "gold") return "gold";
+    if (raw === "silver") return "silver";
+    return "bronze";
+  }
+
+  private getLoyaltyTier(matchesPlayed: number, totalDeposits: number, totalEarnings: number): LoyaltyTier {
+    if (matchesPlayed >= 100 || totalDeposits >= 2000000 || totalEarnings >= 1000000) return "vip";
+    if (matchesPlayed >= 50 || totalDeposits >= 1000000 || totalEarnings >= 500000) return "gold";
+    if (matchesPlayed >= 20 || totalDeposits >= 300000 || totalEarnings >= 150000) return "silver";
+    return "bronze";
+  }
+
+  private getLoyaltyBenefits(tier: LoyaltyTier): LoyaltyBenefits {
+    if (tier === "vip") {
+      return {
+        platformFeePercent: 2,
+        prioritySupport: true,
+        exclusiveTournaments: true,
+      };
+    }
+    if (tier === "gold") {
+      return {
+        platformFeePercent: 3,
+        prioritySupport: true,
+        exclusiveTournaments: true,
+      };
+    }
+    if (tier === "silver") {
+      return {
+        platformFeePercent: 4,
+        prioritySupport: true,
+        exclusiveTournaments: false,
+      };
+    }
+    return {
+      platformFeePercent: 5,
+      prioritySupport: false,
+      exclusiveTournaments: false,
+    };
   }
 
   private isSupportedCouponType(value: unknown): value is CouponType {
@@ -847,10 +938,23 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(desc(transactions.createdAt));
   }
 
-  async createWithdrawal(data: { userId: number; amount: number; upiId?: string; bankDetails?: string }): Promise<Withdrawal> {
+  async createWithdrawal(data: {
+    userId: number;
+    amount: number;
+    platformFee?: number;
+    netAmount?: number;
+    feePercent?: number;
+    loyaltyTier?: LoyaltyTier;
+    upiId?: string;
+    bankDetails?: string;
+  }): Promise<Withdrawal> {
     const [wd] = await db.insert(withdrawals).values({
       userId: data.userId,
       amount: data.amount,
+      platformFee: Math.max(0, Math.round(Number(data.platformFee || 0))),
+      netAmount: Math.max(0, Math.round(Number(data.netAmount ?? data.amount))),
+      feePercent: Math.max(0, Math.round(Number(data.feePercent || 0))),
+      loyaltyTier: this.normalizeLoyaltyTier(data.loyaltyTier),
       upiId: data.upiId || null,
       bankDetails: data.bankDetails || null,
     }).returning();
@@ -894,6 +998,108 @@ export class DatabaseStorage implements IStorage {
   async updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal | undefined> {
     const [wd] = await db.update(withdrawals).set(data).where(eq(withdrawals.id, id)).returning();
     return wd;
+  }
+
+  async createDispute(data: {
+    userId: number;
+    reportType?: string;
+    accusedUsername?: string | null;
+    tournamentId?: number | null;
+    description: string;
+    screenshotUrl?: string | null;
+    priorityLevel?: "standard" | "priority";
+  }): Promise<Dispute> {
+    const [created] = await db
+      .insert(disputes)
+      .values({
+        userId: data.userId,
+        reportType: data.reportType || "hacker",
+        accusedUsername: data.accusedUsername || null,
+        tournamentId: data.tournamentId ?? null,
+        description: data.description,
+        screenshotUrl: data.screenshotUrl || null,
+        priorityLevel: data.priorityLevel || "standard",
+        status: "submitted",
+      })
+      .returning();
+    return created;
+  }
+
+  async getDisputeById(id: number): Promise<Dispute | undefined> {
+    const [item] = await db.select().from(disputes).where(eq(disputes.id, id));
+    return item;
+  }
+
+  async getDisputesByUser(userId: number): Promise<Dispute[]> {
+    return db.select().from(disputes).where(eq(disputes.userId, userId)).orderBy(desc(disputes.createdAt));
+  }
+
+  async getAllDisputes(): Promise<(Dispute & { username?: string; resolvedByUsername?: string })[]> {
+    const all = await db.select().from(disputes).orderBy(desc(disputes.createdAt));
+    const enriched = await Promise.all(
+      all.map(async (item) => {
+        const [reportedBy, resolvedBy] = await Promise.all([
+          this.getUserById(item.userId),
+          item.resolvedBy ? this.getUserById(item.resolvedBy) : Promise.resolve(undefined),
+        ]);
+        return {
+          ...item,
+          username: reportedBy?.username,
+          resolvedByUsername: resolvedBy?.username,
+        };
+      }),
+    );
+    return enriched;
+  }
+
+  async updateDispute(id: number, data: Partial<Dispute>): Promise<Dispute | undefined> {
+    const [updated] = await db
+      .update(disputes)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(disputes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async createDisputeLog(data: {
+    disputeId: number;
+    actorUserId?: number | null;
+    actorRole?: string;
+    action: string;
+    note?: string | null;
+  }): Promise<DisputeLog> {
+    const [created] = await db
+      .insert(disputeLogs)
+      .values({
+        disputeId: data.disputeId,
+        actorUserId: data.actorUserId ?? null,
+        actorRole: data.actorRole || "system",
+        action: data.action,
+        note: data.note || null,
+      })
+      .returning();
+    return created;
+  }
+
+  async getDisputeLogs(disputeId: number): Promise<(DisputeLog & { actorUsername?: string })[]> {
+    const logs = await db
+      .select()
+      .from(disputeLogs)
+      .where(eq(disputeLogs.disputeId, disputeId))
+      .orderBy(desc(disputeLogs.createdAt));
+    const enriched = await Promise.all(
+      logs.map(async (log) => {
+        const actor = log.actorUserId ? await this.getUserById(log.actorUserId) : undefined;
+        return {
+          ...log,
+          actorUsername: actor?.username,
+        };
+      }),
+    );
+    return enriched;
   }
 
   async getResultsByTournament(tournamentId: number): Promise<Result[]> {
@@ -1037,6 +1243,40 @@ export class DatabaseStorage implements IStorage {
       .from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
     return Number(result.count);
+  }
+
+  async getUserLoyaltyProfile(userId: number): Promise<UserLoyaltyProfile> {
+    const [matchesRows, depositsRows, earningsRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(registrations)
+        .where(eq(registrations.userId, userId)),
+      db
+        .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), sql`${transactions.type} IN ('deposit', 'razorpay')`)),
+      db
+        .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.type, "winning"))),
+    ]);
+
+    const matchesResult = matchesRows[0];
+    const depositsResult = depositsRows[0];
+    const earningsResult = earningsRows[0];
+    const matchesPlayed = Number(matchesResult?.count || 0);
+    const totalDeposits = Number(depositsResult?.sum || 0);
+    const totalEarnings = Number(earningsResult?.sum || 0);
+    const tier = this.getLoyaltyTier(matchesPlayed, totalDeposits, totalEarnings);
+
+    return {
+      userId,
+      tier,
+      matchesPlayed,
+      totalDeposits,
+      totalEarnings,
+      benefits: this.getLoyaltyBenefits(tier),
+    };
   }
 
   async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {

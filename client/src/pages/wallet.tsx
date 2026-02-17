@@ -27,6 +27,16 @@ declare global {
   }
 }
 
+type LoyaltyProfile = {
+  tier: "bronze" | "silver" | "gold" | "vip";
+  tierLabel: string;
+  benefits: {
+    platformFeePercent: number;
+    prioritySupport: boolean;
+    exclusiveTournaments: boolean;
+  };
+};
+
 export default function WalletPage() {
   const { user, token, updateUser } = useAuth();
   const [, setLocation] = useLocation();
@@ -52,6 +62,10 @@ export default function WalletPage() {
 
   const { data: razorpayConfig } = useQuery<{ keyId: string | null }>({
     queryKey: ["/api/config/razorpay-key"],
+  });
+  const { data: loyalty } = useQuery<LoyaltyProfile>({
+    queryKey: ["/api/users/loyalty"],
+    enabled: !!user,
   });
 
   const addMoneyMutation = useMutation({
@@ -216,6 +230,10 @@ export default function WalletPage() {
   const mainWalletBalance = user.mainWalletBalance || 0;
   const bonusWalletBalance = user.bonusWalletBalance || 0;
   const totalWalletBalance = user.walletBalance || mainWalletBalance + bonusWalletBalance;
+  const currentFeePercent = Number(loyalty?.benefits.platformFeePercent || 5);
+  const withdrawalAmountPaisa = Math.max(0, Math.round(Number(withdrawAmount || 0) * 100));
+  const estimatedFee = Math.max(0, Math.round((withdrawalAmountPaisa * currentFeePercent) / 100));
+  const estimatedNet = Math.max(0, withdrawalAmountPaisa - estimatedFee);
 
   const txTypeIcons: Record<string, any> = {
     deposit: { icon: ArrowDownLeft, color: "text-chart-3", label: "Deposit" },
@@ -374,6 +392,14 @@ export default function WalletPage() {
                     <p className="text-xs text-muted-foreground">
                       Withdrawals are processed from Main Wallet only. Daily limit applies.
                     </p>
+                    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+                      <p className="font-medium">
+                        Tier: {loyalty?.tierLabel || "Bronze"} ({currentFeePercent}% fee)
+                      </p>
+                      <p className="text-muted-foreground">
+                        Estimated fee: {"\u20B9"}{(estimatedFee / 100).toFixed(2)} | Estimated payout: {"\u20B9"}{(estimatedNet / 100).toFixed(2)}
+                      </p>
+                    </div>
                     <Button
                       className="w-full"
                       disabled={!withdrawAmount || Number(withdrawAmount) < 50 || !upiId || withdrawMutation.isPending || mainWalletBalance < Number(withdrawAmount) * 100}
@@ -511,6 +537,11 @@ export default function WalletPage() {
                             <p className="text-xs text-muted-foreground">
                               UPI: {wd.upiId || "N/A"} | {new Date(wd.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                             </p>
+                            {typeof wd.netAmount === "number" && typeof wd.platformFee === "number" && (
+                              <p className="text-xs text-muted-foreground">
+                                Net: {"\u20B9"}{(wd.netAmount / 100).toFixed(2)} | Fee: {"\u20B9"}{(wd.platformFee / 100).toFixed(2)} ({wd.feePercent || 0}%)
+                              </p>
+                            )}
                           </div>
                         </div>
                         <Badge variant="outline" className={`text-[10px] ${config.color}`}>{config.label}</Badge>

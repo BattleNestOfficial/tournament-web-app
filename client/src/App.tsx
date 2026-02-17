@@ -15,6 +15,7 @@ import ProfilePage from "@/pages/profile";
 import AdminPage from "@/pages/admin";
 import TeamsPage from "@/pages/teams";
 import LeaderboardPage from "@/pages/leaderboard";
+import DisputesPage from "@/pages/disputes";
 import NotFound from "@/pages/not-found";
 
 function AppRoutes() {
@@ -34,6 +35,7 @@ function AppRoutes() {
         <Route path="/profile" component={ProfilePage} />
         <Route path="/teams" component={TeamsPage} />
         <Route path="/leaderboard" component={LeaderboardPage} />
+        <Route path="/disputes" component={DisputesPage} />
         <Route path="/admin" component={AdminPage} />
         <Route component={NotFound} />
       </Switch>

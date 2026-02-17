@@ -201,6 +201,102 @@ export async function ensureWalletEngineColumns() {
     ADD COLUMN IF NOT EXISTS entry_hash text NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS metadata jsonb;
   `);
+
+  await pool.query(`
+    ALTER TABLE withdrawals
+    ADD COLUMN IF NOT EXISTS platform_fee integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS net_amount integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS fee_percent integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS loyalty_tier text NOT NULL DEFAULT 'bronze';
+  `);
+
+  await pool.query(`
+    UPDATE withdrawals
+    SET
+      platform_fee = COALESCE(platform_fee, 0),
+      net_amount = CASE
+        WHEN net_amount IS NULL OR net_amount <= 0 THEN GREATEST(COALESCE(amount, 0) - COALESCE(platform_fee, 0), 0)
+        ELSE net_amount
+      END,
+      fee_percent = COALESCE(fee_percent, 0),
+      loyalty_tier = COALESCE(NULLIF(loyalty_tier, ''), 'bronze');
+  `);
+}
+
+export async function ensureDisputesTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS disputes (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      report_type text NOT NULL DEFAULT 'hacker',
+      accused_username text,
+      tournament_id integer,
+      description text NOT NULL,
+      screenshot_url text,
+      status text NOT NULL DEFAULT 'submitted',
+      resolution_note text,
+      priority_level text NOT NULL DEFAULT 'standard',
+      resolved_by integer,
+      resolved_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE disputes
+    ADD COLUMN IF NOT EXISTS report_type text NOT NULL DEFAULT 'hacker',
+    ADD COLUMN IF NOT EXISTS accused_username text,
+    ADD COLUMN IF NOT EXISTS tournament_id integer,
+    ADD COLUMN IF NOT EXISTS description text,
+    ADD COLUMN IF NOT EXISTS screenshot_url text,
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'submitted',
+    ADD COLUMN IF NOT EXISTS resolution_note text,
+    ADD COLUMN IF NOT EXISTS priority_level text NOT NULL DEFAULT 'standard',
+    ADD COLUMN IF NOT EXISTS resolved_by integer,
+    ADD COLUMN IF NOT EXISTS resolved_at timestamp,
+    ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
+  `);
+
+  await pool.query(`
+    UPDATE disputes
+    SET
+      report_type = COALESCE(NULLIF(report_type, ''), 'hacker'),
+      status = COALESCE(NULLIF(status, ''), 'submitted'),
+      priority_level = COALESCE(NULLIF(priority_level, ''), 'standard'),
+      updated_at = COALESCE(updated_at, now())
+    WHERE report_type IS NULL OR status IS NULL OR priority_level IS NULL OR updated_at IS NULL;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dispute_logs (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      dispute_id integer NOT NULL REFERENCES disputes(id) ON DELETE CASCADE,
+      actor_user_id integer,
+      actor_role text NOT NULL DEFAULT 'system',
+      action text NOT NULL,
+      note text,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE dispute_logs
+    ADD COLUMN IF NOT EXISTS actor_user_id integer,
+    ADD COLUMN IF NOT EXISTS actor_role text NOT NULL DEFAULT 'system',
+    ADD COLUMN IF NOT EXISTS action text,
+    ADD COLUMN IF NOT EXISTS note text;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS disputes_user_created_idx ON disputes(user_id, created_at DESC);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS disputes_status_created_idx ON disputes(status, created_at DESC);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS dispute_logs_dispute_created_idx ON dispute_logs(dispute_id, created_at DESC);
+  `);
 }
 
 export const db = drizzle(pool, { schema });
