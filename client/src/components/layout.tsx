@@ -21,18 +21,75 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const notificationMemoryRef = useRef<Record<string, number>>({});
+  const userId = user?.id ?? null;
 
   const isAdmin = user?.role === "admin";
   const isHost = user?.role === "host";
   const canAccessAdminPanel = isAdmin || isHost;
 
   useEffect(() => {
-    const stream = new EventSource("/api/tournaments/stream");
+    let stream: EventSource | null = null;
+    let closedByEffect = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastHeartbeatAt = Date.now();
+    let reconnectDelayMs = 3000;
+    let heartbeatIntervalMs = 25000;
+    let heartbeatStaleMs = 70000;
+    let authRefreshInFlight = false;
+
+    const realtimeRefreshKeys = [
+      "/api/tournaments",
+      "/api/leaderboard",
+      "/api/registrations/my",
+      "/api/users/loyalty",
+      "/api/transactions/my",
+      "/api/withdrawals/my",
+      "/api/disputes/my",
+      "/api/host/application/my",
+      "/api/banners",
+      "/api/games",
+      "/api/teams/my",
+      "/api/stats/total-users",
+      "/api/admin/stats",
+      "/api/admin/users",
+      "/api/admin/withdrawals",
+      "/api/admin/disputes",
+      "/api/admin/host-applications",
+      "/api/admin/banners",
+      "/api/admin/coupons",
+      "/api/admin/coupons/analytics",
+    ];
 
     const invalidateKeys = (keys: string[]) => {
-      keys.forEach((key) => {
+      Array.from(new Set(keys)).forEach((key) => {
         queryClient.invalidateQueries({ queryKey: [key] });
       });
+    };
+
+    const parseSseNumber = (value: unknown, min: number, max: number) => {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) return null;
+      const rounded = Math.round(parsed);
+      if (rounded < min || rounded > max) return null;
+      return rounded;
+    };
+
+    const refreshAuthUser = () => {
+      if (!token || authRefreshInFlight) return;
+      authRefreshInFlight = true;
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.user) updateUser(data.user);
+        })
+        .catch(() => {
+          // Ignore background auth refresh failures.
+        })
+        .finally(() => {
+          authRefreshInFlight = false;
+        });
     };
 
     const shouldNotify = (key: string, ttlMs = 5 * 60 * 1000) => {
@@ -46,7 +103,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
 
     const maybeNotifyFromTournamentUpdate = (payload: any) => {
-      if (!user) return;
+      if (!userId) return;
       const tournamentId = Number(payload?.tournamentId || 0);
       if (!tournamentId) return;
       const reason = String(payload?.reason || "");
@@ -90,7 +147,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
 
     const maybeNotifyFromAdminUpdate = (payload: any) => {
-      if (!user) return;
+      if (!userId) return;
       const targetId = Number(payload?.targetId || 0);
       if (!targetId) return;
       if (payload?.entity === "tournament_room" && shouldNotify(`room-admin-${targetId}`)) {
@@ -110,6 +167,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
 
     const refreshTournamentViews = (event: MessageEvent) => {
+      lastHeartbeatAt = Date.now();
       try {
         const payload = JSON.parse(String(event.data || "{}"));
         maybeNotifyFromTournamentUpdate(payload);
@@ -125,72 +183,156 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
 
     const refreshAdminViews = (event: MessageEvent) => {
+      lastHeartbeatAt = Date.now();
       const fallbackKeys = [
         "/api/admin/stats",
         "/api/tournaments",
         "/api/games",
         "/api/leaderboard",
+        "/api/registrations/my",
+        "/api/users/loyalty",
       ];
 
       try {
-        const payload = JSON.parse(String(event.data || "{}")) as { entity?: string };
+        const payload = JSON.parse(String(event.data || "{}")) as { entity?: string; action?: string };
         const keyMap: Record<string, string[]> = {
-          user: ["/api/admin/users"],
+          user: ["/api/admin/users", "/api/host/application/my"],
           wallet: [
             "/api/admin/users",
             "/api/admin/stats",
             "/api/transactions/my",
             "/api/withdrawals/my",
             "/api/users/loyalty",
+            "/api/payments/my",
           ],
           game: ["/api/games"],
           tournament: ["/api/tournaments", "/api/leaderboard", "/api/registrations/my"],
-          tournament_room: ["/api/tournaments"],
+          tournament_room: ["/api/tournaments", "/api/registrations/my"],
           tournament_results: [
             "/api/tournaments",
             "/api/leaderboard",
             "/api/registrations/my",
             "/api/users/loyalty",
+            "/api/transactions/my",
+            "/api/withdrawals/my",
           ],
-          withdrawal: ["/api/admin/withdrawals", "/api/withdrawals/my", "/api/transactions/my"],
+          withdrawal: [
+            "/api/admin/withdrawals",
+            "/api/withdrawals/my",
+            "/api/transactions/my",
+            "/api/users/loyalty",
+          ],
           support_ticket: ["/api/admin/disputes", "/api/disputes/my"],
           banner: ["/api/admin/banners", "/api/banners"],
           coupon: ["/api/admin/coupons", "/api/admin/coupons/analytics"],
           host_application: ["/api/admin/host-applications", "/api/host/application/my", "/api/admin/users"],
         };
 
-        if (payload.entity === "user" && token) {
-          fetch("/api/auth/me", {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => {
-              if (data?.user) updateUser(data.user);
-            })
-            .catch(() => {
-              // Ignore soft refresh failures from background sync.
-            });
+        const resolvedKeys = [...(keyMap[payload.entity || ""] || fallbackKeys)];
+        if (payload.entity === "tournament" && String(payload.action || "").startsWith("status_")) {
+          resolvedKeys.push("/api/transactions/my", "/api/withdrawals/my", "/api/users/loyalty");
+        }
+
+        const shouldRefreshAuth =
+          payload.entity === "user" ||
+          payload.entity === "wallet" ||
+          payload.entity === "withdrawal" ||
+          payload.entity === "tournament_results";
+
+        if (shouldRefreshAuth) {
+          refreshAuthUser();
         }
 
         maybeNotifyFromAdminUpdate(payload);
-        invalidateKeys(keyMap[payload.entity || ""] || fallbackKeys);
+        invalidateKeys(resolvedKeys);
       } catch {
         invalidateKeys(fallbackKeys);
       }
     };
 
-    stream.addEventListener("tournament_update", refreshTournamentViews as EventListener);
-    stream.addEventListener("admin_update", refreshAdminViews as EventListener);
-    stream.onerror = () => {
-      // EventSource auto-reconnects; no manual retry needed.
+    const onHeartbeat = () => {
+      lastHeartbeatAt = Date.now();
     };
 
-    return () => {
+    const onStreamStatus = (event: MessageEvent) => {
+      lastHeartbeatAt = Date.now();
+      try {
+        const payload = JSON.parse(String(event.data || "{}")) as {
+          retryMs?: number;
+          heartbeatMs?: number;
+        };
+        const nextRetryMs = parseSseNumber(payload.retryMs, 1000, 30000);
+        if (nextRetryMs) {
+          reconnectDelayMs = nextRetryMs;
+        }
+        const nextHeartbeatMs = parseSseNumber(payload.heartbeatMs, 10000, 60000);
+        if (nextHeartbeatMs) {
+          heartbeatIntervalMs = nextHeartbeatMs;
+          heartbeatStaleMs = Math.max(45000, heartbeatIntervalMs * 3);
+        }
+      } catch {
+        // Ignore malformed stream status payloads.
+      }
+      invalidateKeys(realtimeRefreshKeys);
+      refreshAuthUser();
+    };
+
+    const closeStream = () => {
+      if (!stream) return;
       stream.removeEventListener("tournament_update", refreshTournamentViews as EventListener);
       stream.removeEventListener("admin_update", refreshAdminViews as EventListener);
+      stream.removeEventListener("heartbeat", onHeartbeat as EventListener);
+      stream.removeEventListener("stream_status", onStreamStatus as EventListener);
       stream.close();
+      stream = null;
     };
-  }, [token, updateUser, user]);
+
+    const scheduleReconnect = () => {
+      if (closedByEffect || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        openStream();
+      }, reconnectDelayMs + Math.floor(Math.random() * 600));
+    };
+
+    const openStream = () => {
+      if (closedByEffect) return;
+      closeStream();
+      stream = new EventSource("/api/tournaments/stream");
+      stream.addEventListener("tournament_update", refreshTournamentViews as EventListener);
+      stream.addEventListener("admin_update", refreshAdminViews as EventListener);
+      stream.addEventListener("heartbeat", onHeartbeat as EventListener);
+      stream.addEventListener("stream_status", onStreamStatus as EventListener);
+      stream.onopen = () => {
+        lastHeartbeatAt = Date.now();
+      };
+      stream.onerror = () => {
+        closeStream();
+        scheduleReconnect();
+      };
+    };
+
+    const heartbeatWatchdog = setInterval(() => {
+      if (closedByEffect) return;
+      if (!stream) return;
+      const staleForMs = Date.now() - lastHeartbeatAt;
+      if (staleForMs > heartbeatStaleMs) {
+        closeStream();
+        scheduleReconnect();
+      }
+    }, 15_000);
+
+    openStream();
+
+    return () => {
+      closedByEffect = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      clearInterval(heartbeatWatchdog);
+      closeStream();
+    };
+  }, [token, updateUser, userId]);
 
   const navItems = [
     { href: "/", label: "Home", icon: Home },

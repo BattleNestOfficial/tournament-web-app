@@ -871,6 +871,8 @@ export async function registerRoutes(
   }
 
   const paymentCreditLocks = new Map<string, Promise<{ user: any | null; credited: boolean }>>();
+  const sseRetryMs = Math.min(30000, Math.max(1000, Number(process.env.SSE_RETRY_MS || 3000)));
+  const sseHeartbeatMs = Math.min(60000, Math.max(10000, Number(process.env.SSE_HEARTBEAT_MS || 25000)));
 
   async function ensurePaymentWalletCredit(
     payment: { userId: number; amount: number; razorpayOrderId: string },
@@ -938,12 +940,19 @@ export async function registerRoutes(
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    res.write(": connected\n\n");
+    res.write(`retry: ${sseRetryMs}\n\n`);
+    pushSseEvent(res, "stream_status", {
+      status: "connected",
+      retryMs: sseRetryMs,
+      heartbeatMs: sseHeartbeatMs,
+      ts: Date.now(),
+    });
     tournamentStreamClients.add(res);
 
     const keepAlive = setInterval(() => {
-      res.write(": ping\n\n");
-    }, 25000);
+      if ((res as any).writableEnded) return;
+      pushSseEvent(res, "heartbeat", { ts: Date.now() });
+    }, sseHeartbeatMs);
 
     res.on("close", () => {
       clearInterval(keepAlive);
@@ -3367,7 +3376,18 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       if (nextStatus === "cancelled" && previousStatus !== "cancelled") {
-        await refundCancelledTournament(t);
+        const refundStats = await refundCancelledTournament(t);
+        if (refundStats.refundedUsers > 0) {
+          broadcastAdminUpdate({
+            entity: "wallet",
+            action: "tournament_cancel_refund",
+            targetId: tournamentId,
+            metadata: {
+              refundedUsers: refundStats.refundedUsers,
+              refundedAmount: refundStats.refundedAmount,
+            },
+          });
+        }
       }
 
       await storage.createAdminLog({
