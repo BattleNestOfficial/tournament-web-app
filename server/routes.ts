@@ -627,6 +627,25 @@ export async function registerRoutes(
     });
   }
 
+  function broadcastAdminUpdate(data: {
+    entity: string;
+    action: string;
+    targetId?: number | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    if (tournamentStreamClients.size === 0) return;
+    const payload = {
+      entity: data.entity,
+      action: data.action,
+      targetId: data.targetId ?? null,
+      metadata: data.metadata || null,
+      ts: Date.now(),
+    };
+    tournamentStreamClients.forEach((client) => {
+      pushSseEvent(client, "admin_update", payload);
+    });
+  }
+
   async function notifyTournamentLive(tournament: Tournament, source: "auto_start" | "manual_live" | "full_slots") {
     const regs = await storage.getRegistrationsByTournament(Number(tournament.id));
     if (regs.length === 0) return;
@@ -2566,6 +2585,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId,
       });
 
+      broadcastAdminUpdate({
+        entity: "user",
+        action: banned ? "ban" : "unban",
+        targetId,
+      });
       res.json(sanitizeUser(user));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2624,6 +2648,12 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `Amount: ${amount}, Reason: ${description || "N/A"}`,
       });
 
+      broadcastAdminUpdate({
+        entity: "wallet",
+        action: type === "admin_credit" ? "credit" : "debit",
+        targetId,
+        metadata: { amount },
+      });
       res.json(sanitizeUser(updatedUser));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2642,6 +2672,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId: game.id,
       });
 
+      broadcastAdminUpdate({
+        entity: "game",
+        action: "create",
+        targetId: Number(game.id),
+      });
       res.json(game);
     } catch (err: any) {
       if (err.code === "23505") return res.status(400).json({ message: "Game already exists" });
@@ -2653,6 +2688,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
     try {
       const game = await storage.updateGame(Number(req.params.id), req.body);
       if (!game) return res.status(404).json({ message: "Game not found" });
+      broadcastAdminUpdate({
+        entity: "game",
+        action: "update",
+        targetId: Number(game.id),
+      });
       res.json(game);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2676,6 +2716,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `Deleted game: ${target.name}`,
       });
 
+      broadcastAdminUpdate({
+        entity: "game",
+        action: "delete",
+        targetId: gameId,
+      });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2733,6 +2778,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
     data.filledSlots = 0;
 
     const t = await storage.createTournament(data);
+    broadcastAdminUpdate({
+      entity: "tournament",
+      action: "create",
+      targetId: Number(t.id),
+    });
     res.json(t);
   } catch (err: any) {
     console.error("CREATE TOURNAMENT ERROR:", err);
@@ -2792,6 +2842,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
       delete (data as any).filledSlots;
       const t = await storage.updateTournament(Number(req.params.id), data);
       if (!t) return res.status(404).json({ message: "Tournament not found" });
+      broadcastAdminUpdate({
+        entity: "tournament",
+        action: "update",
+        targetId: Number(t.id),
+      });
       res.json(t);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2831,6 +2886,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId: tournamentId,
       });
 
+      broadcastAdminUpdate({
+        entity: "tournament",
+        action: `status_${nextStatus}`,
+        targetId: tournamentId,
+      });
       res.json(t);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2862,6 +2922,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
 
       broadcastTournamentUpdate(t, "room_published");
+      broadcastAdminUpdate({
+        entity: "tournament_room",
+        action: "update",
+        targetId: tournamentId,
+      });
       res.json(t);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2884,6 +2949,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `Deleted tournament: ${t.title}`,
       });
 
+      broadcastAdminUpdate({
+        entity: "tournament",
+        action: "delete",
+        targetId: tournamentId,
+      });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3017,6 +3087,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (completedTournament) {
         broadcastTournamentUpdate(completedTournament, "results_declared");
       }
+      broadcastAdminUpdate({
+        entity: "tournament_results",
+        action: "declare",
+        targetId: tournamentId,
+      });
       res.json({ message: "Results declared and prizes distributed", results: createdResults });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3084,6 +3159,12 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId: wdId,
       });
 
+      broadcastAdminUpdate({
+        entity: "withdrawal",
+        action: status,
+        targetId: wdId,
+        metadata: { userId: wd.userId },
+      });
       res.json(wd);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3152,6 +3233,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `status=${status}`,
       });
 
+      broadcastAdminUpdate({
+        entity: "support_ticket",
+        action: status,
+        targetId: disputeId,
+      });
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3209,6 +3295,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetType: "banner",
         targetId: banner.id,
       });
+      broadcastAdminUpdate({
+        entity: "banner",
+        action: "create",
+        targetId: Number(banner.id),
+      });
       res.json(banner);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3220,6 +3311,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const id = Number(req.params.id);
       const banner = await storage.updateBanner(id, req.body);
       if (!banner) return res.status(404).json({ message: "Banner not found" });
+      broadcastAdminUpdate({
+        entity: "banner",
+        action: "update",
+        targetId: id,
+      });
       res.json(banner);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3234,6 +3330,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         adminId: (req as any).userId,
         action: "delete_banner",
         targetType: "banner",
+        targetId: id,
+      });
+      broadcastAdminUpdate({
+        entity: "banner",
+        action: "delete",
         targetId: id,
       });
       res.json({ success: true });
@@ -3362,6 +3463,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         details: `type=${rawType}, value=${value}, perUserLimit=${perUserLimit}, globalUsageLimit=${globalUsageLimit ?? "none"}`,
       });
 
+      broadcastAdminUpdate({
+        entity: "coupon",
+        action: "create",
+        targetId: Number(coupon.id),
+      });
       res.json(coupon);
     } catch (err: any) {
       if (err?.code === "23505") return res.status(400).json({ message: "Coupon code already exists" });
@@ -3377,6 +3483,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
         adminId: (req as any).userId,
         action: "delete_coupon",
         targetType: "coupon",
+        targetId: id,
+      });
+      broadcastAdminUpdate({
+        entity: "coupon",
+        action: "delete",
         targetId: id,
       });
       res.json({ success: true });

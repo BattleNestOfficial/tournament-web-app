@@ -25,18 +25,70 @@ export default function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stream = new EventSource("/api/tournaments/stream");
 
+    const invalidateKeys = (keys: string[]) => {
+      keys.forEach((key) => {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      });
+    };
+
     const refreshTournamentViews = () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      invalidateKeys([
+        "/api/tournaments",
+        "/api/leaderboard",
+        "/api/registrations/my",
+        "/api/users/loyalty",
+      ]);
+    };
+
+    const refreshAdminViews = (event: MessageEvent) => {
+      const fallbackKeys = [
+        "/api/admin/stats",
+        "/api/tournaments",
+        "/api/games",
+        "/api/leaderboard",
+      ];
+
+      try {
+        const payload = JSON.parse(String(event.data || "{}")) as { entity?: string };
+        const keyMap: Record<string, string[]> = {
+          user: ["/api/admin/users"],
+          wallet: [
+            "/api/admin/users",
+            "/api/admin/stats",
+            "/api/transactions/my",
+            "/api/withdrawals/my",
+            "/api/users/loyalty",
+          ],
+          game: ["/api/games"],
+          tournament: ["/api/tournaments", "/api/leaderboard", "/api/registrations/my"],
+          tournament_room: ["/api/tournaments"],
+          tournament_results: [
+            "/api/tournaments",
+            "/api/leaderboard",
+            "/api/registrations/my",
+            "/api/users/loyalty",
+          ],
+          withdrawal: ["/api/admin/withdrawals", "/api/withdrawals/my", "/api/transactions/my"],
+          support_ticket: ["/api/admin/disputes", "/api/disputes/my"],
+          banner: ["/api/admin/banners", "/api/banners"],
+          coupon: ["/api/admin/coupons", "/api/admin/coupons/analytics"],
+        };
+
+        invalidateKeys(keyMap[payload.entity || ""] || fallbackKeys);
+      } catch {
+        invalidateKeys(fallbackKeys);
+      }
     };
 
     stream.addEventListener("tournament_update", refreshTournamentViews as EventListener);
+    stream.addEventListener("admin_update", refreshAdminViews as EventListener);
     stream.onerror = () => {
       // EventSource auto-reconnects; no manual retry needed.
     };
 
     return () => {
       stream.removeEventListener("tournament_update", refreshTournamentViews as EventListener);
+      stream.removeEventListener("admin_update", refreshAdminViews as EventListener);
       stream.close();
     };
   }, []);
