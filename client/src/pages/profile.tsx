@@ -335,6 +335,20 @@ export default function ProfilePage() {
     });
   }, [user?.email, user?.phone]);
 
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const shouldFocusSupport = sessionStorage.getItem("bn_focus_support") === "1";
+      if (!shouldFocusSupport) return;
+      sessionStorage.removeItem("bn_focus_support");
+      requestAnimationFrame(() => {
+        document.getElementById("support-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } catch {
+      // ignore storage/scroll errors
+    }
+  }, [user]);
+
   if (!user) return null;
 
   const normalizedTickets = (supportTickets || []).map((ticket) => ({
@@ -512,7 +526,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="support-section">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <Headset className="w-4 h-4" /> Support

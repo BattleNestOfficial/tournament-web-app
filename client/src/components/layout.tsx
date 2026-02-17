@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users, BarChart3 } from "lucide-react";
+import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users, BarChart3, Headset } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -120,6 +120,19 @@ export default function Layout({ children }: { children: ReactNode }) {
                   {!isAdmin && (
                     <DropdownMenuItem onClick={() => setLocation("/wallet")} data-testid="menu-wallet">
                       <Wallet className="w-4 h-4 mr-2" /> Wallet
+                    </DropdownMenuItem>
+                  )}
+                  {!isAdmin && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        try {
+                          sessionStorage.setItem("bn_focus_support", "1");
+                        } catch {}
+                        setLocation("/profile");
+                      }}
+                      data-testid="menu-support"
+                    >
+                      <Headset className="w-4 h-4 mr-2" /> Support
                     </DropdownMenuItem>
                   )}
                   {isAdmin && (

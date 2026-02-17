@@ -126,9 +126,9 @@ export default function LeaderboardPage() {
         <CardContent className="p-5 sm:p-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
             <Badge variant="outline" className="text-[11px] border-primary/40 text-primary">PRO ANALYTICS</Badge>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Leaderboard Intelligence Hub</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Leaderboard Analytics Center</h1>
             <p className="text-sm text-muted-foreground">
-              Heatmap performance, win-rate momentum, and kills-per-match analytics for esports tracking.
+              Track player heatmaps, win-rate trends, and average kills per match with pro-level esports insights.
             </p>
           </div>
           {analytics && (
@@ -381,4 +381,3 @@ export default function LeaderboardPage() {
     </div>
   );
 }
-
