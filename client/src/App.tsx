@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import Layout from "@/components/layout";
+import PwaManager from "@/components/pwa-manager";
 import HomePage from "@/pages/home";
 import AuthPage from "@/pages/auth";
 import TournamentsPage from "@/pages/tournaments";
@@ -52,6 +53,7 @@ function App() {
         <AuthProvider>
           <TooltipProvider>
             <Toaster />
+            <PwaManager />
             <WouterRouter>
               <AppRoutes />
             </WouterRouter>

@@ -84,6 +84,10 @@ export default function LeaderboardPage() {
 
   const leaderboardQuery = useQuery<LeaderboardEntry[]>({
     queryKey: ["/api/leaderboard", "limit=100"],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchInterval: 15000,
     queryFn: async () => {
       const res = await fetch("/api/leaderboard?limit=100");
       const data = await res.json();
@@ -95,6 +99,10 @@ export default function LeaderboardPage() {
   const analyticsQuery = useQuery<PlayerAnalytics>({
     queryKey: ["/api/leaderboard", selectedUserId, "analytics"],
     enabled: !!selectedUserId,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchInterval: 20000,
     queryFn: async () => {
       const res = await fetch(`/api/leaderboard/${selectedUserId}/analytics`);
       const data = await res.json();

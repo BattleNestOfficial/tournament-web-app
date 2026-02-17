@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useLocation, Link } from "wouter";
 import { queryClient } from "@/lib/queryClient";
+import { pushLocalNotification } from "@/lib/pwa";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -12,13 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users, BarChart3, Headset, UserCheck } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout, token, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const notificationMemoryRef = useRef<Record<string, number>>({});
 
   const isAdmin = user?.role === "admin";
   const isHost = user?.role === "host";
@@ -33,7 +35,87 @@ export default function Layout({ children }: { children: ReactNode }) {
       });
     };
 
-    const refreshTournamentViews = () => {
+    const shouldNotify = (key: string, ttlMs = 5 * 60 * 1000) => {
+      const now = Date.now();
+      const prev = notificationMemoryRef.current[key] || 0;
+      if (now - prev < ttlMs) {
+        return false;
+      }
+      notificationMemoryRef.current[key] = now;
+      return true;
+    };
+
+    const maybeNotifyFromTournamentUpdate = (payload: any) => {
+      if (!user) return;
+      const tournamentId = Number(payload?.tournamentId || 0);
+      if (!tournamentId) return;
+      const reason = String(payload?.reason || "");
+      const status = String(payload?.status || "");
+      const startIso = typeof payload?.startTime === "string" ? payload.startTime : null;
+      const startMs = startIso ? new Date(startIso).getTime() : NaN;
+      const msUntilStart = Number.isNaN(startMs) ? null : startMs - Date.now();
+
+      if (
+        status === "upcoming" &&
+        msUntilStart !== null &&
+        msUntilStart > 0 &&
+        msUntilStart <= 10 * 60 * 1000 &&
+        shouldNotify(`match-soon-${tournamentId}`)
+      ) {
+        pushLocalNotification("Match starting soon", {
+          body: `Tournament #${tournamentId} starts in under 10 minutes.`,
+          tag: `match-soon-${tournamentId}`,
+          data: { url: "/tournaments" },
+        }).catch(() => {});
+      }
+
+      if (reason === "room_published" && payload?.roomPublished && shouldNotify(`room-${tournamentId}`)) {
+        pushLocalNotification("Room ID published", {
+          body: `Room details are now available for tournament #${tournamentId}.`,
+          tag: `room-${tournamentId}`,
+          data: { url: `/tournaments/${tournamentId}` },
+        }).catch(() => {});
+      }
+
+      if (
+        (reason === "results_declared" || status === "completed") &&
+        shouldNotify(`results-${tournamentId}`)
+      ) {
+        pushLocalNotification("Result updated", {
+          body: `Results are now live for tournament #${tournamentId}.`,
+          tag: `results-${tournamentId}`,
+          data: { url: `/tournaments/${tournamentId}` },
+        }).catch(() => {});
+      }
+    };
+
+    const maybeNotifyFromAdminUpdate = (payload: any) => {
+      if (!user) return;
+      const targetId = Number(payload?.targetId || 0);
+      if (!targetId) return;
+      if (payload?.entity === "tournament_room" && shouldNotify(`room-admin-${targetId}`)) {
+        pushLocalNotification("Room ID published", {
+          body: `Tournament #${targetId} room details were published.`,
+          tag: `room-admin-${targetId}`,
+          data: { url: `/tournaments/${targetId}` },
+        }).catch(() => {});
+      }
+      if (payload?.entity === "tournament_results" && shouldNotify(`results-admin-${targetId}`)) {
+        pushLocalNotification("Result updated", {
+          body: `Tournament #${targetId} results were updated.`,
+          tag: `results-admin-${targetId}`,
+          data: { url: `/tournaments/${targetId}` },
+        }).catch(() => {});
+      }
+    };
+
+    const refreshTournamentViews = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(String(event.data || "{}"));
+        maybeNotifyFromTournamentUpdate(payload);
+      } catch {
+        // Ignore malformed SSE payloads.
+      }
       invalidateKeys([
         "/api/tournaments",
         "/api/leaderboard",
@@ -90,6 +172,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             });
         }
 
+        maybeNotifyFromAdminUpdate(payload);
         invalidateKeys(keyMap[payload.entity || ""] || fallbackKeys);
       } catch {
         invalidateKeys(fallbackKeys);
@@ -107,7 +190,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       stream.removeEventListener("admin_update", refreshAdminViews as EventListener);
       stream.close();
     };
-  }, [token, updateUser]);
+  }, [token, updateUser, user]);
 
   const navItems = [
     { href: "/", label: "Home", icon: Home },

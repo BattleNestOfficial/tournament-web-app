@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { submitTournamentResultsWithOfflineSupport } from "@/lib/pwa";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -1874,20 +1875,25 @@ function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; t
           prize: Math.round(Number(w.prize || 0) * 100),
         }));
       if (resultData.length === 0) throw new Error("Add at least one winner");
-      const res = await fetch(`/api/admin/tournaments/${tournament.id}/results`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ results: resultData }),
+      return submitTournamentResultsWithOfflineSupport({
+        tournamentId: tournament.id,
+        token,
+        results: resultData,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      return data;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament.id.toString(), "results"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament.id.toString(), "participants"] });
-      toast({ title: "Winners declared and prizes distributed!" });
+      if (result.queued) {
+        toast({
+          title: "Offline mode: result queued",
+          description: "Result submission saved locally and will auto-sync when online.",
+        });
+      } else {
+        toast({ title: "Winners declared and prizes distributed!" });
+      }
       onClose();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
