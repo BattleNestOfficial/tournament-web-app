@@ -17,6 +17,7 @@ import {
   Trophy,
   Users,
   Wallet,
+  Radio,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -253,6 +254,8 @@ export default function TournamentDetailPage() {
   const isDuo = tournament?.matchType === "duo";
   const isSquad = tournament?.matchType === "squad";
   const canJoinTournament = normalizedStatus === "upcoming" || normalizedStatus === "hot";
+  const liveStreamUrl = (tournament?.liveStreamUrl || "").trim();
+  const canWatchLive = normalizedStatus === "live" && liveStreamUrl.length > 0;
   const normalizedCouponCode = couponCode.trim().toUpperCase();
   const hasCouponCode = normalizedCouponCode.length > 0;
   const walletInsufficient = !!user && !!tournament && tournament.entryFee > 0 && (user.walletBalance || 0) < tournament.entryFee;
@@ -588,12 +591,21 @@ export default function TournamentDetailPage() {
                 </p>
               )}
 
-              <Button
-                disabled={joined || !canJoinTournament || joinMutation.isPending}
-                onClick={openJoinModal}
-              >
-                {joined ? "Registered" : !canJoinTournament ? "Registration Closed" : "Join Tournament"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={joined || !canJoinTournament || joinMutation.isPending}
+                  onClick={openJoinModal}
+                >
+                  {joined ? "Registered" : !canJoinTournament ? "Registration Closed" : "Join Tournament"}
+                </Button>
+                {canWatchLive && (
+                  <Button variant="destructive" asChild>
+                    <a href={liveStreamUrl} target="_blank" rel="noreferrer noopener">
+                      <Radio className="w-4 h-4 mr-1.5" /> Watch Live
+                    </a>
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 

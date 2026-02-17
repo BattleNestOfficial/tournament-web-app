@@ -221,6 +221,8 @@ function TournamentMatchCard({
   const theme = SHOWCASE_THEME[status];
   const progress = Math.min(100, (tournament.filledSlots / Math.max(tournament.maxSlots, 1)) * 100);
   const canJoin = status === "hot" || status === "upcoming";
+  const liveStreamUrl = (tournament.liveStreamUrl || "").trim();
+  const canWatchLive = status === "live" && liveStreamUrl.length > 0;
   const joinHref = token ? `/tournaments/${tournament.id}?action=join` : "/auth";
   const interactiveSelector = "a,button,input,select,textarea,[role='button']";
 
@@ -305,7 +307,7 @@ function TournamentMatchCard({
               <Progress value={progress} className="h-2" />
               <p className="text-[11px] text-right text-white/60">{Math.round(progress)}% filled</p>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className={`grid gap-2 pt-1 ${canWatchLive ? "grid-cols-3" : "grid-cols-2"}`}>
                 {status === "live" ? (
                   <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
                     Show ID/Password
@@ -324,6 +326,15 @@ function TournamentMatchCard({
                 ) : (
                   <Button size="sm" disabled variant="secondary" className="w-full">
                     {status === "live" ? "Live" : "Closed"}
+                  </Button>
+                )}
+
+                {canWatchLive && (
+                  <Button size="sm" variant="destructive" className="w-full gap-1.5" asChild>
+                    <a href={liveStreamUrl} target="_blank" rel="noreferrer noopener">
+                      <Radio className="w-3.5 h-3.5" />
+                      Watch Live
+                    </a>
                   </Button>
                 )}
 

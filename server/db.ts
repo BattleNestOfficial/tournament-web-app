@@ -79,6 +79,13 @@ export async function ensureRegistrationsTeamColumn() {
   `);
 }
 
+export async function ensureTournamentLiveStreamColumn() {
+  await pool.query(`
+    ALTER TABLE tournaments
+    ADD COLUMN IF NOT EXISTS live_stream_url text;
+  `);
+}
+
 export async function ensureUserSecurityColumns() {
   await pool.query(`
     ALTER TABLE users

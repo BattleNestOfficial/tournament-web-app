@@ -170,7 +170,7 @@ function TournamentManager({ token }: { token: string | null }) {
   const [resultsTournament, setResultsTournament] = useState<Tournament | null>(null);
   const [form, setForm] = useState({
     title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100",
-    matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "",
+    matchType: "solo", startTime: "", roomId: "", roomPassword: "", liveStreamUrl: "", rules: "", mapName: "", imageUrl: "",
     description: "",
   });
 
@@ -216,6 +216,7 @@ function TournamentManager({ token }: { token: string | null }) {
         startTime: form.startTime,
         roomId: form.roomId || null,
         roomPassword: form.roomPassword || null,
+        liveStreamUrl: form.liveStreamUrl.trim() || null,
         rules: form.rules || null,
         mapName: form.mapName || null,
         imageUrl: form.imageUrl || null,
@@ -281,7 +282,7 @@ function TournamentManager({ token }: { token: string | null }) {
 });
 
   function resetForm() {
-    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", rules: "", mapName: "", imageUrl: "", description: "" });
+    setForm({ title: "", gameId: "", entryFee: "", prizePool: "", maxSlots: "100", matchType: "solo", startTime: "", roomId: "", roomPassword: "", liveStreamUrl: "", rules: "", mapName: "", imageUrl: "", description: "" });
     setEditId(null);
     setImagePreview(null);
     setPrizes([]);
@@ -299,6 +300,7 @@ function editTournament(t: Tournament) {
     startTime: new Date(t.startTime).toISOString().slice(0, 16),
     roomId: t.roomId || "",
     roomPassword: t.roomPassword || "",
+    liveStreamUrl: t.liveStreamUrl || "",
     rules: t.rules || "",
     mapName: t.mapName || "",
     imageUrl: t.imageUrl || "",
@@ -451,6 +453,15 @@ function editTournament(t: Tournament) {
                   <Label>Room Password (optional)</Label>
                   <Input value={form.roomPassword} onChange={(e) => setForm({ ...form, roomPassword: e.target.value })} placeholder="Password" data-testid="input-tournament-roompw" />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>YouTube Live Link (optional)</Label>
+                <Input
+                  value={form.liveStreamUrl}
+                  onChange={(e) => setForm({ ...form, liveStreamUrl: e.target.value })}
+                  placeholder="https://www.youtube.com/live/..."
+                  data-testid="input-tournament-live-stream-url"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Map Name (optional)</Label>

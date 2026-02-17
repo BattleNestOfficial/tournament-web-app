@@ -676,6 +676,31 @@ function normalizeHostApplicationStatus(value: unknown): "pending" | "in_review"
   return null;
 }
 
+function normalizeYouTubeLiveUrl(value: unknown): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  try {
+    const parsed = new URL(raw);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "https:" && protocol !== "http:") {
+      return null;
+    }
+    const host = parsed.hostname.toLowerCase();
+    const validHost =
+      host === "youtube.com" ||
+      host.endsWith(".youtube.com") ||
+      host === "youtu.be";
+    if (!validHost) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function getTierBadge(tier: LoyaltyTier): string {
   if (tier === "vip") return "VIP";
   if (tier === "gold") return "Gold";
@@ -3263,6 +3288,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
     if (!Number.isFinite(data.prizePool) || data.prizePool < 0) {
       return res.status(400).json({ message: "Prize pool must be a non-negative number" });
     }
+    if (data.liveStreamUrl !== undefined) {
+      const hasLiveStreamInput =
+        typeof data.liveStreamUrl === "string"
+          ? data.liveStreamUrl.trim().length > 0
+          : Boolean(data.liveStreamUrl);
+      const normalizedLiveStreamUrl = normalizeYouTubeLiveUrl(data.liveStreamUrl);
+      if (hasLiveStreamInput && !normalizedLiveStreamUrl) {
+        return res.status(400).json({ message: "Live stream URL must be a valid YouTube link" });
+      }
+      data.liveStreamUrl = normalizedLiveStreamUrl;
+    }
 
     // Parse prizeDistribution if needed
     if (typeof data.prizeDistribution === "string") {
@@ -3329,6 +3365,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
         if (!["solo", "duo", "squad"].includes(data.matchType)) {
           return res.status(400).json({ message: "Invalid match type" });
         }
+      }
+      if (data.liveStreamUrl !== undefined) {
+        const hasLiveStreamInput =
+          typeof data.liveStreamUrl === "string"
+            ? data.liveStreamUrl.trim().length > 0
+            : Boolean(data.liveStreamUrl);
+        const normalizedLiveStreamUrl = normalizeYouTubeLiveUrl(data.liveStreamUrl);
+        if (hasLiveStreamInput && !normalizedLiveStreamUrl) {
+          return res.status(400).json({ message: "Live stream URL must be a valid YouTube link" });
+        }
+        data.liveStreamUrl = normalizedLiveStreamUrl;
       }
       if (data.prizeDistribution && typeof data.prizeDistribution === "string") {
         try {

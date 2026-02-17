@@ -9,6 +9,7 @@ import {
   ensureCouponsTables,
   ensureDisputesTables,
   ensureRegistrationsTeamColumn,
+  ensureTournamentLiveStreamColumn,
   ensureTournamentStatusEnumHasHot,
   ensureUserSecurityColumns,
   ensureWalletEngineColumns,
@@ -157,6 +158,7 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
   await runStartupStep("ensureTournamentStatusEnumHasHot", ensureTournamentStatusEnumHasHot);
   await runStartupStep("ensureRoleEnumHasHost", ensureRoleEnumHasHost);
   await runStartupStep("ensureRegistrationsTeamColumn", ensureRegistrationsTeamColumn);
+  await runStartupStep("ensureTournamentLiveStreamColumn", ensureTournamentLiveStreamColumn);
   await runStartupStep("ensureUserSecurityColumns", ensureUserSecurityColumns);
   await runStartupStep("ensureCouponsTables", ensureCouponsTables);
   await runStartupStep("ensureWalletEngineColumns", ensureWalletEngineColumns);
