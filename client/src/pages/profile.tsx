@@ -26,7 +26,7 @@ export default function ProfilePage() {
     email: user?.email || "",
     phone: user?.phone || "",
   });
-  const [emailToken, setEmailToken] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
 
   const { data: registrations } = useQuery<
@@ -145,8 +145,9 @@ export default function ProfilePage() {
         title: "Contact updated",
         description: data.message || "Contact details saved",
       });
-      if (data.devEmailVerificationToken) {
-        setEmailToken(data.devEmailVerificationToken);
+      const devOtp = data.devEmailVerificationOtp || data.devEmailVerificationToken;
+      if (devOtp) {
+        setEmailOtp(devOtp);
       }
     },
     onError: (err: Error) => {
@@ -161,12 +162,13 @@ export default function ProfilePage() {
   const requestEmailVerificationMutation = useMutation({
     mutationFn: async () => authRequest("/api/auth/request-email-verification"),
     onSuccess: (data) => {
-      if (data.devEmailVerificationToken) {
-        setEmailToken(data.devEmailVerificationToken);
+      const devOtp = data.devEmailVerificationOtp || data.devEmailVerificationToken;
+      if (devOtp) {
+        setEmailOtp(devOtp);
       }
       toast({
-        title: "Verification email sent",
-        description: data.devEmailVerificationToken ? "Dev token auto-filled below" : "Check your inbox",
+        title: "Email OTP sent",
+        description: devOtp ? "Dev OTP auto-filled below" : "Check your inbox",
       });
     },
     onError: (err: Error) => {
@@ -179,10 +181,10 @@ export default function ProfilePage() {
   });
 
   const verifyEmailMutation = useMutation({
-    mutationFn: async () => authRequest("/api/auth/verify-email", { token: emailToken.trim() }),
+    mutationFn: async () => authRequest("/api/auth/verify-email", { otp: emailOtp.trim() }),
     onSuccess: (data) => {
       if (data.user) updateUser(data.user);
-      setEmailToken("");
+      setEmailOtp("");
       toast({
         title: "Email verified",
         description: "Your email is now verified",
@@ -419,7 +421,7 @@ export default function ProfilePage() {
               onClick={() => requestEmailVerificationMutation.mutate()}
               disabled={requestEmailVerificationMutation.isPending}
             >
-              {requestEmailVerificationMutation.isPending ? "Sending..." : "Send Email Verify Link"}
+              {requestEmailVerificationMutation.isPending ? "Sending..." : "Send Email OTP"}
             </Button>
             <Button
               variant="outline"
@@ -432,16 +434,16 @@ export default function ProfilePage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-xs">Email Verification Token</Label>
+              <Label className="text-xs">Email OTP</Label>
               <Input
-                value={emailToken}
-                onChange={(e) => setEmailToken(e.target.value)}
-                placeholder="Paste token from email/dev response"
+                value={emailOtp}
+                onChange={(e) => setEmailOtp(e.target.value)}
+                placeholder="Enter OTP from email"
               />
               <Button
                 className="mt-2 w-full"
                 onClick={() => verifyEmailMutation.mutate()}
-                disabled={verifyEmailMutation.isPending || !emailToken.trim()}
+                disabled={verifyEmailMutation.isPending || !emailOtp.trim()}
               >
                 {verifyEmailMutation.isPending ? "Verifying..." : "Verify Email"}
               </Button>

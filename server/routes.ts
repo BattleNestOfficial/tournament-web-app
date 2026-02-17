@@ -69,11 +69,11 @@ const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 const PHONE_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
-function createSecureToken() {
-  return crypto.randomBytes(32).toString("hex");
+function createPhoneOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function createPhoneOtp() {
+function createEmailVerificationOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
@@ -193,10 +193,10 @@ export async function registerRoutes(
       password,
     });
 
-    const verificationToken = createSecureToken();
+    const verificationOtp = createEmailVerificationOtp();
     const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
     const updatedUser = await storage.updateUserProfile(user.id, {
-      emailVerificationToken: verificationToken,
+      emailVerificationToken: verificationOtp,
       emailVerificationExpires: verificationExpires,
       emailVerified: false,
     });
@@ -206,15 +206,15 @@ export async function registerRoutes(
         await sendVerificationEmail({
           toEmail: user.email,
           username: user.username,
-          token: verificationToken,
+          otp: verificationOtp,
         });
       } else {
-        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
       }
     } catch (mailError: any) {
       console.error("Verification email send failed on signup:", mailError?.message || mailError);
     }
-    console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
+    console.log(`[EMAIL_VERIFY] user=${user.email} otp=${verificationOtp}`);
 
     const token = generateToken(user.id, user.role);
     const safeUser = sanitizeUser(updatedUser || user);
@@ -224,7 +224,8 @@ export async function registerRoutes(
       message: "Signup successful. Please verify your email.",
     };
     if (process.env.NODE_ENV !== "production") {
-      payload.devEmailVerificationToken = verificationToken;
+      payload.devEmailVerificationOtp = verificationOtp;
+      payload.devEmailVerificationToken = verificationOtp;
     }
 
     return res.status(201).json(payload);
@@ -337,10 +338,10 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.emailVerified) return res.json({ message: "Email already verified" });
 
-      const verificationToken = createSecureToken();
+      const verificationOtp = createEmailVerificationOtp();
       const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
       await storage.updateUserProfile(userId, {
-        emailVerificationToken: verificationToken,
+        emailVerificationToken: verificationOtp,
         emailVerificationExpires: verificationExpires,
       });
 
@@ -348,16 +349,17 @@ export async function registerRoutes(
         await sendVerificationEmail({
           toEmail: user.email,
           username: user.username,
-          token: verificationToken,
+          otp: verificationOtp,
         });
       } else {
-        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
       }
-      console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
+      console.log(`[EMAIL_VERIFY] user=${user.email} otp=${verificationOtp}`);
 
-      const payload: any = { message: "Verification email sent" };
+      const payload: any = { message: "Email verification OTP sent" };
       if (process.env.NODE_ENV !== "production") {
-        payload.devEmailVerificationToken = verificationToken;
+        payload.devEmailVerificationOtp = verificationOtp;
+        payload.devEmailVerificationToken = verificationOtp;
       }
       res.json(payload);
     } catch (err: any) {
@@ -367,13 +369,17 @@ export async function registerRoutes(
 
   app.post("/api/auth/verify-email", authLimiter, async (req, res) => {
     try {
-      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
-      if (!token) return res.status(400).json({ message: "Verification token is required" });
+      const otpInput = typeof req.body?.otp === "string"
+        ? req.body.otp.trim()
+        : typeof req.body?.token === "string"
+          ? req.body.token.trim()
+          : "";
+      if (!otpInput) return res.status(400).json({ message: "Email verification OTP is required" });
 
-      const user = await storage.getUserByEmailVerificationToken(token);
-      if (!user) return res.status(400).json({ message: "Invalid verification token" });
+      const user = await storage.getUserByEmailVerificationToken(otpInput);
+      if (!user) return res.status(400).json({ message: "Invalid email verification OTP" });
       if (!user.emailVerificationExpires || user.emailVerificationExpires.getTime() < Date.now()) {
-        return res.status(400).json({ message: "Verification token expired" });
+        return res.status(400).json({ message: "Email verification OTP expired" });
       }
 
       const updated = await storage.updateUserProfile(user.id, {
@@ -533,7 +539,7 @@ export async function registerRoutes(
       const updates: any = {};
       let emailChanged = false;
       let phoneChanged = false;
-      let verificationToken: string | null = null;
+      let verificationOtp: string | null = null;
 
       if (hasEmailInput) {
         const nextEmail = normalizeEmail(req.body?.email);
@@ -545,10 +551,10 @@ export async function registerRoutes(
           if (existing && existing.id !== userId) {
             return res.status(400).json({ message: "Email already registered" });
           }
-          verificationToken = createSecureToken();
+          verificationOtp = createEmailVerificationOtp();
           updates.email = nextEmail;
           updates.emailVerified = false;
-          updates.emailVerificationToken = verificationToken;
+          updates.emailVerificationToken = verificationOtp;
           updates.emailVerificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
           updates.emailChangedAt = new Date();
           emailChanged = true;
@@ -584,21 +590,21 @@ export async function registerRoutes(
       const updated = await storage.updateUserProfile(userId, updates);
       if (!updated) return res.status(404).json({ message: "User not found" });
 
-      if (verificationToken) {
+      if (verificationOtp) {
         try {
           if (isBrevoConfigured()) {
             await sendVerificationEmail({
               toEmail: updated.email,
               username: updated.username,
-              token: verificationToken,
+              otp: verificationOtp,
             });
           } else {
-            console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+            console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev OTP logging.");
           }
         } catch (mailError: any) {
           console.error("Verification email send failed after contact update:", mailError?.message || mailError);
         }
-        console.log(`[EMAIL_VERIFY] user=${updated.email} token=${verificationToken}`);
+        console.log(`[EMAIL_VERIFY] user=${updated.email} otp=${verificationOtp}`);
       }
 
       if ((emailChanged || phoneChanged) && isBrevoConfigured()) {
@@ -619,8 +625,9 @@ export async function registerRoutes(
         message: "Contact details updated. Withdrawals are temporarily locked for security.",
         user: sanitizeUser(updated),
       };
-      if (verificationToken && process.env.NODE_ENV !== "production") {
-        payload.devEmailVerificationToken = verificationToken;
+      if (verificationOtp && process.env.NODE_ENV !== "production") {
+        payload.devEmailVerificationOtp = verificationOtp;
+        payload.devEmailVerificationToken = verificationOtp;
       }
 
       res.json(payload);

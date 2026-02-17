@@ -19,19 +19,6 @@ function getBrevoConfig() {
   return { apiKey, senderEmail, senderName };
 }
 
-function buildAppUrl(path: string, params?: Record<string, string>) {
-  const baseUrl = process.env.APP_BASE_URL?.trim();
-  if (!baseUrl) return null;
-
-  const url = new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, value);
-    }
-  }
-  return url.toString();
-}
-
 export function isBrevoConfigured() {
   const { apiKey, senderEmail } = getBrevoConfig();
   return Boolean(apiKey && senderEmail);
@@ -68,24 +55,15 @@ export async function sendBrevoEmail(options: SendEmailOptions) {
 export async function sendVerificationEmail(params: {
   toEmail: string;
   username?: string | null;
-  token: string;
+  otp: string;
 }) {
-  const verifyUrl = buildAppUrl("/auth", {
-    mode: "verify-email",
-    token: params.token,
-  });
-
   const greetingName = params.username?.trim() || "Player";
-  const actionText = verifyUrl
-    ? `Click this link to verify your email: ${verifyUrl}`
-    : `Use this verification token in the app: ${params.token}`;
-  const htmlAction = verifyUrl
-    ? `<p><a href="${verifyUrl}" target="_blank" rel="noopener noreferrer">Verify Email</a></p>`
-    : `<p><b>Verification Token:</b> ${params.token}</p>`;
+  const actionText = `Use this OTP to verify your email: ${params.otp}. It is valid for 24 hours.`;
+  const htmlAction = `<p><b>Email Verification OTP:</b> ${params.otp}</p>`;
 
   await sendBrevoEmail({
     to: [{ email: params.toEmail, name: greetingName }],
-    subject: "Verify your BattleNest email",
+    subject: "BattleNest email verification OTP",
     textContent: `Hi ${greetingName},\n\n${actionText}\n\nIf you did not create this account, ignore this email.`,
     htmlContent: `
       <p>Hi ${greetingName},</p>
