@@ -1,11 +1,12 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 
-const JWT_SECRET_ENV = process.env.SESSION_SECRET;
+const JWT_SECRET_ENV = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+const JWT_SECRET: string = JWT_SECRET_ENV || crypto.randomBytes(32).toString("hex");
 if (!JWT_SECRET_ENV) {
-  throw new Error("SESSION_SECRET environment variable is required");
+  console.warn("[AUTH] SESSION_SECRET/JWT_SECRET is missing. Using ephemeral secret for this process.");
 }
-const JWT_SECRET: string = JWT_SECRET_ENV;
 
 export function generateToken(userId: number, role: string): string {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "7d" });

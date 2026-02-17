@@ -2,11 +2,14 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-/**
- * Railway REQUIRED check
- */
-if (!process.env.DATABASE_URL) {
-  throw new Error("❌ DATABASE_URL is not set in environment variables");
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.PGDATABASE_URL ||
+  process.env.DATABASE_PUBLIC_URL;
+
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is not set in environment variables");
 }
 
 /**
@@ -15,7 +18,7 @@ if (!process.env.DATABASE_URL) {
  * - rejectUnauthorized must be false
  */
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
   ssl: {
     rejectUnauthorized: false,
   },

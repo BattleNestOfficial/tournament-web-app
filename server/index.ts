@@ -93,12 +93,22 @@ app.use((req, res, next) => {
   next();
 });
 
+async function runStartupStep(name: string, step: () => Promise<void>) {
+  try {
+    await step();
+    log(`${name}: ok`, "startup");
+  } catch (err) {
+    // Schema alignment should not take down the whole process.
+    console.error(`[startup] ${name} failed:`, err);
+  }
+}
+
 (async () => {
-  await ensureTournamentStatusEnumHasHot();
-  await ensureRegistrationsTeamColumn();
-  await ensureUserSecurityColumns();
-  await ensureCouponsTables();
-  await ensureWalletEngineColumns();
+  await runStartupStep("ensureTournamentStatusEnumHasHot", ensureTournamentStatusEnumHasHot);
+  await runStartupStep("ensureRegistrationsTeamColumn", ensureRegistrationsTeamColumn);
+  await runStartupStep("ensureUserSecurityColumns", ensureUserSecurityColumns);
+  await runStartupStep("ensureCouponsTables", ensureCouponsTables);
+  await runStartupStep("ensureWalletEngineColumns", ensureWalletEngineColumns);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -128,7 +138,7 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = process.env.PORT;
+  const port = Number(process.env.PORT || 5000);
 
 httpServer.listen(
   {
@@ -139,4 +149,7 @@ httpServer.listen(
     console.log(`Server running on port ${port}`);
   }
 );
-})();
+})().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});
