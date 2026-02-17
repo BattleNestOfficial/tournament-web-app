@@ -47,14 +47,25 @@ export default function AuthPage() {
   const [resetOtp, setResetOtp] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [googleUiError, setGoogleUiError] = useState("");
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const magicLinkHandledRef = useRef(false);
 
-  const { data: googleConfig } = useQuery<{ clientId: string | null }>({
-    queryKey: ["/api/config/google-client-id"],
+  const { data: googleConfig, error: googleConfigError } = useQuery<{ clientId: string | null }>({
+    queryKey: ["/api/config/google-client-id", "fresh"],
+    queryFn: async () => {
+      const res = await fetch(`/api/config/google-client-id?t=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Failed to load Google config");
+      return data;
+    },
+    staleTime: 0,
   });
 
   const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "" } });
@@ -82,21 +93,35 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (!googleConfig?.clientId) return;
+    setGoogleUiError("");
 
     const initGoogle = () => {
-      if (!window.google?.accounts?.id) return;
-      window.google.accounts.id.initialize({
-        client_id: googleConfig.clientId,
-        callback: handleGoogleCredential,
-      });
-      if (googleButtonRef.current) {
-        window.google.accounts.id.renderButton(googleButtonRef.current, {
-          theme: "outline",
-          size: "large",
-          width: "100%",
-          text: "continue_with",
-          shape: "rectangular",
+      if (!window.google?.accounts?.id) {
+        setGoogleUiError("Google script loaded but API unavailable.");
+        return;
+      }
+      try {
+        window.google.accounts.id.initialize({
+          client_id: googleConfig.clientId,
+          callback: handleGoogleCredential,
         });
+        if (googleButtonRef.current) {
+          googleButtonRef.current.innerHTML = "";
+          window.google.accounts.id.renderButton(googleButtonRef.current, {
+            theme: "outline",
+            size: "large",
+            width: "100%",
+            text: "continue_with",
+            shape: "rectangular",
+          });
+          window.setTimeout(() => {
+            if (googleButtonRef.current && googleButtonRef.current.childElementCount === 0) {
+              setGoogleUiError("Google sign-in did not render. Check authorized origins and browser extensions.");
+            }
+          }, 500);
+        }
+      } catch (err: any) {
+        setGoogleUiError(err?.message || "Failed to initialize Google sign-in.");
       }
     };
 
@@ -108,6 +133,7 @@ export default function AuthPage() {
       script.async = true;
       script.defer = true;
       script.onload = initGoogle;
+      script.onerror = () => setGoogleUiError("Failed to load Google script.");
       document.head.appendChild(script);
     }
   }, [googleConfig?.clientId, handleGoogleCredential]);
@@ -440,6 +466,20 @@ export default function AuthPage() {
                   <p className="text-center text-sm text-muted-foreground mt-2">Signing in with Google...</p>
                 )}
               </>
+            )}
+
+            {!googleConfig?.clientId && (
+              <p className="text-center text-xs text-muted-foreground mt-3">
+                Google login is currently unavailable.
+              </p>
+            )}
+            {!!googleConfig?.clientId && !!googleUiError && (
+              <p className="text-center text-xs text-destructive mt-3">{googleUiError}</p>
+            )}
+            {googleConfigError && (
+              <p className="text-center text-xs text-destructive mt-2">
+                Failed to load Google config from server.
+              </p>
             )}
           </CardContent>
         </Card>

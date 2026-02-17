@@ -1911,7 +1911,11 @@ app.get("/api/stats/total-users", async (_req, res) => {
 
   // Google Client ID endpoint for frontend
   app.get("/api/config/google-client-id", (_req, res) => {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientId =
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.VITE_GOOGLE_CLIENT_ID ||
+      null;
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.json({ clientId: clientId || null });
   });
 
