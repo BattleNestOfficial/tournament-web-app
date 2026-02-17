@@ -270,8 +270,8 @@ export async function pushLocalNotification(
     if (registration) {
       await registration.showNotification(title, {
         body: options.body,
-        icon: "/favicon.png",
-        badge: "/favicon.png",
+        icon: "/favicon-192.png",
+        badge: "/favicon-48x48.png",
         tag: options.tag,
         data: options.data || {},
       });
@@ -283,7 +283,7 @@ export async function pushLocalNotification(
 
   new Notification(title, {
     body: options.body,
-    icon: "/favicon.png",
+    icon: "/favicon-192.png",
     tag: options.tag,
     data: options.data,
   });

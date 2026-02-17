@@ -1,4 +1,4 @@
-const SW_VERSION = "bn-sw-v1.0.0";
+const SW_VERSION = "bn-sw-v1.0.1";
 const STATIC_CACHE = `bn-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `bn-runtime-${SW_VERSION}`;
 const RESULT_SYNC_TAG = "bn-sync-results-v1";
@@ -10,10 +10,13 @@ const STATIC_ASSETS = [
   "/",
   "/offline.html",
   "/manifest.webmanifest",
-  "/favicon.png",
-  "/icons/icon-192.svg",
-  "/icons/icon-512.svg",
-  "/icons/maskable-512.svg",
+  "/favicon.ico",
+  "/favicon-16x16.png",
+  "/favicon-32x32.png",
+  "/favicon-48x48.png",
+  "/favicon-192.png",
+  "/favicon-512.png",
+  "/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -60,8 +63,8 @@ self.addEventListener("message", (event) => {
     const title = data.title || "Battle Nest";
     const options = {
       body: data.body || "",
-      icon: "/favicon.png",
-      badge: "/favicon.png",
+      icon: "/favicon-192.png",
+      badge: "/favicon-48x48.png",
       tag: data.tag || "battle-nest-general",
       renotify: false,
       data: data.data || {},
@@ -107,8 +110,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Battle Nest";
   const options = {
     body: payload.body || "",
-    icon: payload.icon || "/favicon.png",
-    badge: payload.badge || "/favicon.png",
+    icon: payload.icon || "/favicon-192.png",
+    badge: payload.badge || "/favicon-48x48.png",
     tag: payload.tag || "battle-nest-push",
     data: payload.data || {},
   };
