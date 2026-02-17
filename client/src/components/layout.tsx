@@ -34,9 +34,11 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 h-14">
           <Link href="/" className="flex items-center gap-2 shrink-0" data-testid="link-logo">
-            <div className="p-1.5 bg-primary rounded-md">
-              <Swords className="w-4 h-4 text-primary-foreground" />
-            </div>
+            <img
+              src="/favicon.png"
+              alt="Battle Nest Logo"
+              className="w-7 h-7 rounded-md object-cover border border-white/10"
+            />
             <span className="font-bold text-sm tracking-tight hidden sm:block">BATTLE NEST</span>
           </Link>
 
