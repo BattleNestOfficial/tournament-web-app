@@ -30,7 +30,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
 
-import type { Game, Registration, Tournament } from "@shared/schema";
+import type { Game, Registration, Result, Tournament } from "@shared/schema";
+
+type ParticipantLite = {
+  userId: number;
+  username?: string;
+  displayName?: string;
+};
+
+type WinnerRow = Result & {
+  playerName: string;
+};
 
 type ShowcaseStatus = "hot" | "upcoming" | "live" | "completed";
 type SortBy = "start_asc" | "start_desc" | "prize_desc" | "slots_desc";
@@ -143,6 +153,7 @@ function TournamentMatchCard({
   joined,
   token,
   onShowRoom,
+  onShowWinners,
   onOpenDetails,
 }: {
   tournament: Tournament;
@@ -151,6 +162,7 @@ function TournamentMatchCard({
   joined: boolean;
   token: string | null;
   onShowRoom: (tournament: Tournament) => void;
+  onShowWinners: (tournament: Tournament) => void;
   onOpenDetails: (tournamentId: number) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -251,6 +263,10 @@ function TournamentMatchCard({
                   <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowRoom(tournament)}>
                     Show ID/Password
                   </Button>
+                ) : status === "completed" ? (
+                  <Button size="sm" variant="secondary" className="w-full" onClick={() => onShowWinners(tournament)}>
+                    View Winners
+                  </Button>
                 ) : joined ? (
                   <Button size="sm" disabled className="w-full">
                     Registered
@@ -311,6 +327,7 @@ export default function TournamentsPage() {
   const [joinedOnly, setJoinedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("start_asc");
   const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
+  const [winnersDialogTournament, setWinnersDialogTournament] = useState<Tournament | null>(null);
   const [copiedRoomField, setCopiedRoomField] = useState<"roomId" | "roomPassword" | null>(null);
 
   const { data: tournaments = [], isLoading, isError } = useQuery<Tournament[]>({
@@ -341,6 +358,49 @@ export default function TournamentsPage() {
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const {
+    data: winnersDialogResults = [],
+    isLoading: winnersLoading,
+    isError: winnersError,
+    refetch: refetchWinners,
+  } = useQuery<WinnerRow[]>({
+    queryKey: ["/api/tournaments", winnersDialogTournament?.id?.toString() || "0", "winners-dialog"],
+    enabled: !!winnersDialogTournament,
+    queryFn: async () => {
+      if (!winnersDialogTournament) return [];
+
+      const [resultsRes, participantsRes] = await Promise.all([
+        fetch(`/api/tournaments/${winnersDialogTournament.id}/results`),
+        fetch(`/api/tournaments/${winnersDialogTournament.id}/participants`),
+      ]);
+
+      if (!resultsRes.ok) {
+        const text = await resultsRes.text();
+        throw new Error(text || "Failed to fetch winners");
+      }
+
+      const resultsData = await resultsRes.json();
+      const safeResults = Array.isArray(resultsData) ? (resultsData as Result[]) : [];
+
+      const participantsData: ParticipantLite[] = participantsRes.ok
+        ? ((await participantsRes.json()) as ParticipantLite[])
+        : [];
+      const participantNameByUserId = new Map<number, string>(
+        participantsData.map((p) => [
+          Number(p.userId),
+          p.displayName || p.username || `Player #${p.userId}`,
+        ])
+      );
+
+      return [...safeResults]
+        .sort((a, b) => a.position - b.position)
+        .map((row) => ({
+          ...row,
+          playerName: participantNameByUserId.get(Number(row.userId)) || `Player #${row.userId}`,
+        }));
     },
   });
 
@@ -577,6 +637,7 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -605,6 +666,7 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -633,6 +695,7 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -661,6 +724,7 @@ export default function TournamentsPage() {
                       joined={joinedTournamentIds.has(Number(t.id))}
                       token={token}
                       onShowRoom={setRoomDialogTournament}
+                      onShowWinners={setWinnersDialogTournament}
                       onOpenDetails={(tournamentId) => setLocation(`/tournaments/${tournamentId}`)}
                     />
                   ))}
@@ -736,6 +800,64 @@ export default function TournamentsPage() {
               ) : (
                 <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
                   Room credentials are visible only to registered players when the tournament is live.
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!winnersDialogTournament}
+        onOpenChange={(open) => {
+          if (!open) setWinnersDialogTournament(null);
+        }}
+      >
+        <DialogContent className="max-w-md border-white/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Winners</DialogTitle>
+          </DialogHeader>
+          {winnersDialogTournament && (
+            <div className="space-y-3">
+              <p className="text-sm text-white/70">{winnersDialogTournament.title}</p>
+
+              {winnersLoading && (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-11 w-full" />
+                  ))}
+                </div>
+              )}
+
+              {winnersError && (
+                <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 space-y-2">
+                  <p className="text-sm text-red-200">Failed to load winners.</p>
+                  <Button size="sm" variant="outline" onClick={() => refetchWinners()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
+
+              {!winnersLoading && !winnersError && winnersDialogResults.length === 0 && (
+                <div className="rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/75">
+                  Winners have not been declared yet.
+                </div>
+              )}
+
+              {!winnersLoading && !winnersError && winnersDialogResults.length > 0 && (
+                <div className="space-y-2">
+                  {winnersDialogResults.map((winner) => (
+                    <div
+                      key={winner.id}
+                      className={`rounded-md border px-3 py-2 ${winner.position === 1 ? "border-amber-400/60 bg-amber-500/10" : "border-white/15 bg-white/5"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold">Rank #{winner.position}</p>
+                        <p className="text-sm font-medium">{formatMoney(winner.prize)}</p>
+                      </div>
+                      <p className="text-sm text-white/80">{winner.playerName}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
