@@ -575,7 +575,7 @@ function normalizeDisputeStatus(value: unknown): "open" | "in_review" | "resolve
 
 function normalizeHostApplicationStatus(value: unknown): "pending" | "in_review" | "approved" | "rejected" | null {
   const raw = String(value || "").toLowerCase().trim();
-  if (raw === "pending") return "pending";
+  if (raw === "pending" || raw === "open") return "pending";
   if (raw === "in_review") return "in_review";
   if (raw === "approved") return "approved";
   if (raw === "rejected") return "rejected";
@@ -2719,6 +2719,8 @@ app.get("/api/stats/total-users", async (_req, res) => {
         message:
           status === "approved"
             ? "Your host request was approved. You now have host tournament panel access."
+            : status === "pending"
+              ? "Your host request is now open."
             : status === "rejected"
               ? "Your host request was rejected. You can update details and re-apply."
               : "Your host request is now in review.",
@@ -2772,6 +2774,51 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId,
       });
       res.json(sanitizeUser(user));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/remove-host", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const targetId = Number(req.params.id);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        return res.status(400).json({ message: "Invalid user id" });
+      }
+
+      const targetUser = await storage.getUserById(targetId);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+      if (targetUser.role === "admin") {
+        return res.status(400).json({ message: "Cannot remove admin role using this action" });
+      }
+      if (targetUser.role !== "host") {
+        return res.status(400).json({ message: "User is not a host" });
+      }
+
+      const updated = await storage.updateUserProfile(targetId, { role: "user" as any });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+
+      await storage.createNotification({
+        userId: targetId,
+        type: "general",
+        title: "Host Access Removed",
+        message: "Your host panel access has been removed by admin.",
+      });
+
+      await storage.createAdminLog({
+        adminId: (req as any).userId,
+        action: "remove_host_access",
+        targetType: "user",
+        targetId,
+      });
+
+      broadcastAdminUpdate({
+        entity: "user",
+        action: "remove_host",
+        targetId,
+      });
+
+      res.json(sanitizeUser(updated));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

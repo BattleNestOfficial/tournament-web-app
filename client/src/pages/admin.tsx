@@ -19,7 +19,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Trophy, Users, Gamepad2, Wallet, Shield, Plus, Minus, Edit, Ban, CheckCircle, Clock,
+  Trophy, Users, Gamepad2, Wallet, Shield, Plus, Edit, Ban, CheckCircle, Clock,
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
   TicketPercent, Flag,
 } from "lucide-react";
@@ -731,6 +731,23 @@ function UserManager({ token }: { token: string | null }) {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const removeHostMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/admin/users/${id}/remove-host`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to remove host access");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Host access removed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
   const hostUsers = (users || []).filter((u) => u.role === "host");
 
   return (
@@ -795,11 +812,21 @@ function UserManager({ token }: { token: string | null }) {
                   <p className="font-medium text-sm">{u.username}</p>
                   <p className="text-xs text-muted-foreground">{u.email}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right space-y-2">
                   <Badge variant="outline" className="text-[10px]">Host</Badge>
                   <p className="text-xs text-muted-foreground mt-1">
                     Wallet: {"\u20B9"}{((u.walletBalance || 0) / 100).toFixed(0)}
                   </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive"
+                    disabled={removeHostMutation.isPending}
+                    onClick={() => removeHostMutation.mutate(u.id)}
+                    data-testid={`button-remove-host-user-${u.id}`}
+                  >
+                    Remove Host
+                  </Button>
                 </div>
               </div>
             ))
@@ -905,7 +932,7 @@ type AdminDisputeRow = Dispute & { username?: string; resolvedByUsername?: strin
 
 function SupportTicketManager({ token }: { token: string | null }) {
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusSession, setStatusSession] = useState<"open" | "in_review" | "resolved">("open");
 
   const { data: disputes, isLoading } = useQuery<AdminDisputeRow[]>({
     queryKey: ["/api/admin/disputes"],
@@ -934,7 +961,7 @@ function SupportTicketManager({ token }: { token: string | null }) {
     const status = item.status === "in_review" ? "in_review" : item.status === "resolved" ? "resolved" : "open";
     return { ...item, status };
   });
-  const filtered = normalized.filter((item) => statusFilter === "all" || item.status === statusFilter);
+  const filtered = normalized.filter((item) => item.status === statusSession);
 
   const statusClass: Record<string, string> = {
     open: "text-muted-foreground",
@@ -955,17 +982,6 @@ function SupportTicketManager({ token }: { token: string | null }) {
           <h3 className="text-lg font-semibold">Support Ticket Queue</h3>
           <p className="text-sm text-muted-foreground">Open, review, and resolve user tickets.</p>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-admin-support-filter">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="in_review">In Review</SelectItem>
-            <SelectItem value="resolved">Resolved</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -973,6 +989,18 @@ function SupportTicketManager({ token }: { token: string | null }) {
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">In Review</p><p className="text-xl font-bold">{counts.inReview}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Resolved</p><p className="text-xl font-bold">{counts.resolved}</p></CardContent></Card>
       </div>
+
+      <Tabs
+        value={statusSession}
+        onValueChange={(value) => setStatusSession(value as "open" | "in_review" | "resolved")}
+        className="space-y-0"
+      >
+        <TabsList className="grid w-full grid-cols-3 max-w-xl">
+          <TabsTrigger value="open" data-testid="tab-admin-support-open">Open</TabsTrigger>
+          <TabsTrigger value="in_review" data-testid="tab-admin-support-review">In Review</TabsTrigger>
+          <TabsTrigger value="resolved" data-testid="tab-admin-support-resolved">Resolved</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <Card>
         <CardContent className="p-4 space-y-3">
@@ -1038,7 +1066,7 @@ function SupportTicketManager({ token }: { token: string | null }) {
             </div>
           ) : (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No support tickets found for the selected filter.
+              No support tickets found for this session.
             </div>
           )}
         </CardContent>
@@ -1051,7 +1079,7 @@ type AdminHostApplicationRow = HostApplication & { username?: string; reviewerUs
 
 function HostRequestManager({ token }: { token: string | null }) {
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusSession, setStatusSession] = useState<"pending" | "in_review" | "approved" | "rejected">("pending");
   const [adminNotes, setAdminNotes] = useState<Record<number, string>>({});
 
   const { data: applications, isLoading } = useQuery<AdminHostApplicationRow[]>({
@@ -1081,12 +1109,30 @@ function HostRequestManager({ token }: { token: string | null }) {
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/host-applications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "Host request updated", description: `Request #${vars.id} moved to ${vars.status.replace("_", " ")}.` });
+      const statusLabel = vars.status === "pending" ? "open" : vars.status.replace("_", " ");
+      toast({ title: "Host request updated", description: `Request #${vars.id} moved to ${statusLabel}.` });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const filtered = (applications || []).filter((row) => statusFilter === "all" || row.status === statusFilter);
+  const removeHostMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await fetch(`/api/admin/users/${userId}/remove-host`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to remove host access");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Host access removed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const filtered = (applications || []).filter((row) => row.status === statusSession);
   const counts = {
     pending: (applications || []).filter((row) => row.status === "pending").length,
     inReview: (applications || []).filter((row) => row.status === "in_review").length,
@@ -1101,26 +1147,27 @@ function HostRequestManager({ token }: { token: string | null }) {
           <h3 className="text-lg font-semibold">Host / Youtuber Requests</h3>
           <p className="text-sm text-muted-foreground">Review creator applications and grant host panel access.</p>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-admin-host-filter">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="in_review">In Review</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pending</p><p className="text-xl font-bold">{counts.pending}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Open</p><p className="text-xl font-bold">{counts.pending}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">In Review</p><p className="text-xl font-bold">{counts.inReview}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Approved</p><p className="text-xl font-bold">{counts.approved}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Rejected</p><p className="text-xl font-bold">{counts.rejected}</p></CardContent></Card>
       </div>
+
+      <Tabs
+        value={statusSession}
+        onValueChange={(value) => setStatusSession(value as "pending" | "in_review" | "approved" | "rejected")}
+        className="space-y-0"
+      >
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsTrigger value="pending" data-testid="tab-host-open">Open</TabsTrigger>
+          <TabsTrigger value="in_review" data-testid="tab-host-review">In Review</TabsTrigger>
+          <TabsTrigger value="approved" data-testid="tab-host-approved">Approved</TabsTrigger>
+          <TabsTrigger value="rejected" data-testid="tab-host-rejected">Rejected</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <Card>
         <CardContent className="p-4 space-y-3">
@@ -1134,7 +1181,9 @@ function HostRequestManager({ token }: { token: string | null }) {
                 <div key={item.id} className="rounded-md border p-3 space-y-2" data-testid={`admin-host-request-${item.id}`}>
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-sm">Request #{item.id} - {item.username || `User #${item.userId}`}</p>
-                    <Badge variant="outline" className="text-[10px] capitalize">{item.status.replace("_", " ")}</Badge>
+                    <Badge variant="outline" className="text-[10px] capitalize">
+                      {item.status === "pending" ? "Open" : item.status.replace("_", " ")}
+                    </Badge>
                   </div>
                   <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
                     <p>Full Name: {item.fullName}</p>
@@ -1157,6 +1206,17 @@ function HostRequestManager({ token }: { token: string | null }) {
                     data-testid={`input-host-note-${item.id}`}
                   />
                   <div className="flex flex-wrap gap-2 pt-1">
+                    {item.status !== "pending" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => reviewMutation.mutate({ id: item.id, status: "pending", adminNote: adminNotes[item.id] })}
+                        disabled={reviewMutation.isPending}
+                        data-testid={`button-host-open-${item.id}`}
+                      >
+                        Open
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -1186,13 +1246,25 @@ function HostRequestManager({ token }: { token: string | null }) {
                     >
                       Reject
                     </Button>
+                    {item.status === "approved" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        onClick={() => removeHostMutation.mutate(item.userId)}
+                        disabled={removeHostMutation.isPending}
+                        data-testid={`button-host-remove-${item.id}`}
+                      >
+                        Remove Host
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No host applications found for this filter.
+              No host applications found for this session.
             </div>
           )}
         </CardContent>
@@ -1216,12 +1288,10 @@ function HostWalletManager({ token }: { token: string | null }) {
   const walletMutation = useMutation({
     mutationFn: async ({
       userId,
-      type,
       amountRupees,
       description,
     }: {
       userId: number;
-      type: "admin_credit" | "admin_debit";
       amountRupees: number;
       description?: string;
     }) => {
@@ -1230,7 +1300,7 @@ function HostWalletManager({ token }: { token: string | null }) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: Math.round(amountRupees * 100),
-          type,
+          type: "admin_credit",
           description: description || null,
         }),
       });
@@ -1242,9 +1312,7 @@ function HostWalletManager({ token }: { token: string | null }) {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
-      toast({
-        title: vars.type === "admin_credit" ? "Host wallet credited" : "Host wallet debited",
-      });
+      toast({ title: "Host wallet credited" });
       setAmountByHost((prev) => ({ ...prev, [vars.userId]: "" }));
       setNoteByHost((prev) => ({ ...prev, [vars.userId]: "" }));
     },
@@ -1254,9 +1322,9 @@ function HostWalletManager({ token }: { token: string | null }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold">Host Wallet Settlement</h3>
+        <h3 className="text-lg font-semibold">Host Wallet Credit</h3>
         <p className="text-sm text-muted-foreground">
-          Credit host earnings after tournament completion (for example: gross profit minus your platform deduction).
+          Credit earnings directly to host wallet. Hosts withdraw like normal users, and you can approve/reject requests in the Withdrawals tab.
         </p>
       </div>
 
@@ -1282,7 +1350,7 @@ function HostWalletManager({ token }: { token: string | null }) {
                       min="1"
                       value={amountByHost[host.id] || ""}
                       onChange={(e) => setAmountByHost((prev) => ({ ...prev, [host.id]: e.target.value }))}
-                      placeholder="Amount in ₹"
+                      placeholder="Amount in INR"
                       data-testid={`input-host-amount-${host.id}`}
                     />
                     <Input
@@ -1301,7 +1369,6 @@ function HostWalletManager({ token }: { token: string | null }) {
                       onClick={() =>
                         walletMutation.mutate({
                           userId: host.id,
-                          type: "admin_credit",
                           amountRupees: amount,
                           description: noteByHost[host.id] || "Host tournament settlement credit",
                         })
@@ -1309,22 +1376,6 @@ function HostWalletManager({ token }: { token: string | null }) {
                       data-testid={`button-host-credit-${host.id}`}
                     >
                       <Plus className="w-3.5 h-3.5" /> Credit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={walletMutation.isPending || !Number.isFinite(amount) || amount <= 0}
-                      onClick={() =>
-                        walletMutation.mutate({
-                          userId: host.id,
-                          type: "admin_debit",
-                          amountRupees: amount,
-                          description: noteByHost[host.id] || "Host wallet adjustment debit",
-                        })
-                      }
-                      data-testid={`button-host-debit-${host.id}`}
-                    >
-                      <Minus className="w-3.5 h-3.5 mr-1" /> Debit
                     </Button>
                   </div>
                 </CardContent>
@@ -1342,7 +1393,6 @@ function HostWalletManager({ token }: { token: string | null }) {
     </div>
   );
 }
-
 function BannerManager({ token }: { token: string | null }) {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -2139,5 +2189,6 @@ function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; t
     </div>
   );
 }
+
 
 

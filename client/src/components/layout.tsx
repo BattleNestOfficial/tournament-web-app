@@ -273,7 +273,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                       <Wallet className="w-4 h-4 mr-2" /> Wallet
                     </DropdownMenuItem>
                   )}
-                  {!isAdmin && (
+                  {!isAdmin && !isHost && (
                     <DropdownMenuItem
                       onClick={() => setLocation("/become-host")}
                       data-testid="menu-become-host"
