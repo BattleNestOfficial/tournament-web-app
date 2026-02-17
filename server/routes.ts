@@ -2687,15 +2687,28 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(404).json({ message: "Host application not found" });
       }
 
+      const currentStatus = normalizeHostApplicationStatus(existing.status);
+      if (!currentStatus) {
+        return res.status(400).json({ message: "Current host application status is invalid" });
+      }
+      const allowedTransitions: Record<"pending" | "in_review" | "approved" | "rejected", Array<"pending" | "in_review" | "approved" | "rejected">> = {
+        pending: ["in_review", "approved", "rejected"],
+        in_review: ["approved", "rejected"],
+        approved: [],
+        rejected: [],
+      };
+      if (!allowedTransitions[currentStatus].includes(status)) {
+        return res.status(400).json({
+          message: `Invalid status transition: ${currentStatus} -> ${status}`,
+        });
+      }
+
       const adminId = Number((req as any).userId);
       const updates: any = {
         status,
         adminNote: adminNote || null,
       };
-      if (status === "pending") {
-        updates.reviewedBy = null;
-        updates.reviewedAt = null;
-      } else {
+      if (status === "in_review" || status === "approved" || status === "rejected") {
         updates.reviewedBy = adminId;
         updates.reviewedAt = new Date();
       }

@@ -1206,46 +1206,41 @@ function HostRequestManager({ token }: { token: string | null }) {
                     data-testid={`input-host-note-${item.id}`}
                   />
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {item.status !== "pending" && (
+                    {item.status === "pending" && (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => reviewMutation.mutate({ id: item.id, status: "pending", adminNote: adminNotes[item.id] })}
+                        onClick={() => reviewMutation.mutate({ id: item.id, status: "in_review", adminNote: adminNotes[item.id] })}
                         disabled={reviewMutation.isPending}
-                        data-testid={`button-host-open-${item.id}`}
+                        data-testid={`button-host-review-${item.id}`}
                       >
-                        Open
+                        In Review
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => reviewMutation.mutate({ id: item.id, status: "in_review", adminNote: adminNotes[item.id] })}
-                      disabled={reviewMutation.isPending}
-                      data-testid={`button-host-review-${item.id}`}
-                    >
-                      In Review
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-chart-3"
-                      onClick={() => reviewMutation.mutate({ id: item.id, status: "approved", adminNote: adminNotes[item.id] })}
-                      disabled={reviewMutation.isPending}
-                      data-testid={`button-host-approve-${item.id}`}
-                    >
-                      Approve Host
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-destructive"
-                      onClick={() => reviewMutation.mutate({ id: item.id, status: "rejected", adminNote: adminNotes[item.id] })}
-                      disabled={reviewMutation.isPending}
-                      data-testid={`button-host-reject-${item.id}`}
-                    >
-                      Reject
-                    </Button>
+                    {(item.status === "pending" || item.status === "in_review") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-chart-3"
+                        onClick={() => reviewMutation.mutate({ id: item.id, status: "approved", adminNote: adminNotes[item.id] })}
+                        disabled={reviewMutation.isPending}
+                        data-testid={`button-host-approve-${item.id}`}
+                      >
+                        Approve Host
+                      </Button>
+                    )}
+                    {(item.status === "pending" || item.status === "in_review") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        onClick={() => reviewMutation.mutate({ id: item.id, status: "rejected", adminNote: adminNotes[item.id] })}
+                        disabled={reviewMutation.isPending}
+                        data-testid={`button-host-reject-${item.id}`}
+                      >
+                        Reject
+                      </Button>
+                    )}
                     {item.status === "approved" && (
                       <Button
                         size="sm"
