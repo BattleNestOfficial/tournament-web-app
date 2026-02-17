@@ -99,24 +99,15 @@ export async function sendVerificationEmail(params: {
 export async function sendPasswordResetEmail(params: {
   toEmail: string;
   username?: string | null;
-  token: string;
+  otp: string;
 }) {
-  const resetUrl = buildAppUrl("/auth", {
-    mode: "reset-password",
-    token: params.token,
-  });
-
   const greetingName = params.username?.trim() || "Player";
-  const actionText = resetUrl
-    ? `Click this link to reset your password: ${resetUrl}`
-    : `Use this reset token in the app: ${params.token}`;
-  const htmlAction = resetUrl
-    ? `<p><a href="${resetUrl}" target="_blank" rel="noopener noreferrer">Reset Password</a></p>`
-    : `<p><b>Reset Token:</b> ${params.token}</p>`;
+  const actionText = `Use this OTP to reset your password: ${params.otp}. It is valid for 30 minutes.`;
+  const htmlAction = `<p><b>Password Reset OTP:</b> ${params.otp}</p>`;
 
   await sendBrevoEmail({
     to: [{ email: params.toEmail, name: greetingName }],
-    subject: "BattleNest password reset",
+    subject: "BattleNest password reset OTP",
     textContent: `Hi ${greetingName},\n\n${actionText}\n\nIf you did not request this, ignore this email.`,
     htmlContent: `
       <p>Hi ${greetingName},</p>

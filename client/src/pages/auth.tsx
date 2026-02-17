@@ -44,7 +44,7 @@ export default function AuthPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
-  const [resetToken, setResetToken] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const { login } = useAuth();
@@ -124,9 +124,9 @@ export default function AuthPage() {
     if (modeParam === "reset-password") {
       setMode("login");
       setResetOpen(true);
-      setResetToken(tokenParam);
+      setResetOtp(tokenParam);
       toast({
-        title: "Reset link opened",
+        title: "Reset code detected",
         description: "Enter your new password to complete reset",
       });
     }
@@ -214,13 +214,14 @@ export default function AuthPage() {
         body: JSON.stringify({ email: resetEmail.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to send reset link");
-      if (data.devPasswordResetToken) {
-        setResetToken(data.devPasswordResetToken);
+      if (!res.ok) throw new Error(data.message || "Failed to send reset OTP");
+      const devOtp = data.devPasswordResetOtp || data.devPasswordResetToken;
+      if (devOtp) {
+        setResetOtp(devOtp);
       }
       toast({
-        title: "Reset link sent",
-        description: data.devPasswordResetToken ? "Dev token auto-filled below" : "Check your email",
+        title: "Reset OTP sent",
+        description: devOtp ? "Dev OTP auto-filled below" : "Check your email",
       });
     } catch (err: any) {
       toast({ title: "Reset request failed", description: err.message, variant: "destructive" });
@@ -230,8 +231,8 @@ export default function AuthPage() {
   }
 
   async function submitPasswordReset() {
-    if (!resetToken.trim() || !resetPassword.trim()) {
-      toast({ title: "Missing fields", description: "Token and new password are required", variant: "destructive" });
+    if (!resetOtp.trim() || !resetPassword.trim()) {
+      toast({ title: "Missing fields", description: "OTP and new password are required", variant: "destructive" });
       return;
     }
     if (resetPassword.length < 6) {
@@ -243,13 +244,13 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: resetToken.trim(), newPassword: resetPassword }),
+        body: JSON.stringify({ otp: resetOtp.trim(), newPassword: resetPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Reset failed");
       toast({ title: "Password updated", description: "You can now sign in with your new password" });
       setResetOpen(false);
-      setResetToken("");
+      setResetOtp("");
       setResetPassword("");
     } catch (err: any) {
       toast({ title: "Password reset failed", description: err.message, variant: "destructive" });
@@ -464,14 +465,14 @@ export default function AuthPage() {
                 onClick={requestPasswordReset}
                 disabled={resetLoading}
               >
-                {resetLoading ? "Sending..." : "Send Reset Link"}
+                {resetLoading ? "Sending..." : "Send Reset OTP"}
               </Button>
               <div className="space-y-1">
-                <Label>Reset Token</Label>
+                <Label>Reset OTP</Label>
                 <Input
-                  placeholder="Paste token from email/dev response"
-                  value={resetToken}
-                  onChange={(e) => setResetToken(e.target.value)}
+                  placeholder="Enter OTP from email"
+                  value={resetOtp}
+                  onChange={(e) => setResetOtp(e.target.value)}
                 />
               </div>
               <div className="space-y-1">

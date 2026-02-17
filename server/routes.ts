@@ -77,6 +77,10 @@ function createPhoneOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function createPasswordResetOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 function normalizeEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -390,12 +394,12 @@ export async function registerRoutes(
       if (!email) return res.status(400).json({ message: "Email is required" });
 
       const user = await storage.getUserByEmail(email);
-      if (!user) return res.json({ message: "If this email exists, a reset link has been sent." });
+      if (!user) return res.json({ message: "If this email exists, a reset OTP has been sent." });
 
-      const resetToken = createSecureToken();
+      const resetOtp = createPasswordResetOtp();
       const resetExpires = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
       await storage.updateUserProfile(user.id, {
-        passwordResetToken: resetToken,
+        passwordResetToken: resetOtp,
         passwordResetExpires: resetExpires,
       });
 
@@ -404,20 +408,21 @@ export async function registerRoutes(
           await sendPasswordResetEmail({
             toEmail: user.email,
             username: user.username,
-            token: resetToken,
+            otp: resetOtp,
           });
         } else {
-          console.warn("[PASSWORD_RESET] Brevo is not configured. Falling back to dev token logging.");
+          console.warn("[PASSWORD_RESET] Brevo is not configured. Falling back to dev OTP logging.");
         }
       } catch (mailError: any) {
         // Keep generic success response to avoid email enumeration vectors.
         console.error("Password reset email send failed:", mailError?.message || mailError);
       }
-      console.log(`[PASSWORD_RESET] user=${email} token=${resetToken}`);
+      console.log(`[PASSWORD_RESET] user=${email} otp=${resetOtp}`);
 
-      const payload: any = { message: "If this email exists, a reset link has been sent." };
+      const payload: any = { message: "If this email exists, a reset OTP has been sent." };
       if (process.env.NODE_ENV !== "production") {
-        payload.devPasswordResetToken = resetToken;
+        payload.devPasswordResetOtp = resetOtp;
+        payload.devPasswordResetToken = resetOtp;
       }
       res.json(payload);
     } catch (err: any) {
@@ -427,17 +432,21 @@ export async function registerRoutes(
 
   app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
     try {
-      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+      const otpInput = typeof req.body?.otp === "string"
+        ? req.body.otp.trim()
+        : typeof req.body?.token === "string"
+          ? req.body.token.trim()
+          : "";
       const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
-      if (!token) return res.status(400).json({ message: "Reset token is required" });
+      if (!otpInput) return res.status(400).json({ message: "Reset OTP is required" });
       if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ message: "New password must be at least 6 characters" });
       }
 
-      const user = await storage.getUserByPasswordResetToken(token);
-      if (!user) return res.status(400).json({ message: "Invalid reset token" });
+      const user = await storage.getUserByPasswordResetToken(otpInput);
+      if (!user) return res.status(400).json({ message: "Invalid reset OTP" });
       if (!user.passwordResetExpires || user.passwordResetExpires.getTime() < Date.now()) {
-        return res.status(400).json({ message: "Reset token expired" });
+        return res.status(400).json({ message: "Reset OTP expired" });
       }
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
