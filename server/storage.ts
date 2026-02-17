@@ -359,6 +359,15 @@ export class DatabaseStorage implements IStorage {
         err.code = "TOURNAMENT_CLOSED";
         throw err;
       }
+      if (new Date(tournament.startTime).getTime() <= Date.now()) {
+        await tx
+          .update(tournaments)
+          .set({ status: "live" as any })
+          .where(eq(tournaments.id, data.tournamentId));
+        const err = new Error("Tournament has already started") as Error & { code?: string };
+        err.code = "TOURNAMENT_CLOSED";
+        throw err;
+      }
 
       const [existingReg] = await tx
         .select()

@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
@@ -7,7 +7,7 @@ import {
   authOptionalMiddleware,
   adminMiddleware,
 } from "./auth";
-import { loginSchema, signupSchema } from "@shared/schema";
+import { loginSchema, signupSchema, type Tournament } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
@@ -198,6 +198,37 @@ function sanitizeUser(user: any) {
   return safeUser;
 }
 
+function getTournamentStatusValue(value: unknown): "hot" | "upcoming" | "live" | "completed" | "cancelled" {
+  const normalized = String(value || "").toLowerCase().trim();
+  if (normalized === "hot") return "hot";
+  if (normalized === "upcoming") return "upcoming";
+  if (normalized === "live") return "live";
+  if (normalized === "completed") return "completed";
+  return "cancelled";
+}
+
+function parsePrizeDistributionMap(raw: unknown): Map<number, number> {
+  const mapping = new Map<number, number>();
+  if (!Array.isArray(raw)) return mapping;
+
+  for (const entry of raw) {
+    const item = entry as { position?: unknown; prize?: unknown };
+    const position = Number(item?.position);
+    const prize = Number(item?.prize);
+    if (!Number.isInteger(position) || position <= 0) continue;
+    if (!Number.isFinite(prize) || prize < 0) continue;
+    mapping.set(position, Math.round(prize));
+  }
+
+  return mapping;
+}
+
+function getMetadataSource(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const sourceValue = (value as Record<string, unknown>).source;
+  return typeof sourceValue === "string" ? sourceValue : "";
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -217,6 +248,179 @@ export async function registerRoutes(
       res.status(500).json({ message: err.message });
     }
   });
+
+  const tournamentStreamClients = new Set<Response>();
+
+  function pushSseEvent(client: Response, event: string, data: Record<string, unknown>) {
+    client.write(`event: ${event}\n`);
+    client.write(`data: ${JSON.stringify(data)}\n\n`);
+  }
+
+  function broadcastTournamentUpdate(
+    tournament: Pick<Tournament, "id" | "status" | "filledSlots" | "maxSlots" | "startTime" | "roomId" | "roomPassword">,
+    reason: string,
+  ) {
+    if (tournamentStreamClients.size === 0) return;
+    const payload = {
+      tournamentId: Number(tournament.id),
+      status: getTournamentStatusValue(tournament.status),
+      filledSlots: Number(tournament.filledSlots || 0),
+      maxSlots: Number(tournament.maxSlots || 0),
+      startTime: tournament.startTime ? new Date(tournament.startTime).toISOString() : null,
+      roomPublished: Boolean(tournament.roomId && tournament.roomPassword),
+      reason,
+      ts: Date.now(),
+    };
+
+    tournamentStreamClients.forEach((client) => {
+      pushSseEvent(client, "tournament_update", payload);
+    });
+  }
+
+  async function notifyTournamentLive(tournament: Tournament, source: "auto_start" | "manual_live" | "full_slots") {
+    const regs = await storage.getRegistrationsByTournament(Number(tournament.id));
+    if (regs.length === 0) return;
+
+    for (const reg of regs) {
+      await storage.createNotification({
+        userId: reg.userId,
+        type: "match_started",
+        title: "Match Started",
+        message: `"${tournament.title}" is now LIVE! ${
+          tournament.roomId ? `Room ID: ${tournament.roomId}` : "Check tournament details."
+        }`,
+      });
+    }
+
+    broadcastTournamentUpdate(tournament, source);
+  }
+
+  async function refundCancelledTournament(tournament: Tournament) {
+    const entryFee = Number(tournament.entryFee || 0);
+    const tournamentId = Number(tournament.id);
+    if (entryFee <= 0 || !Number.isInteger(tournamentId) || tournamentId <= 0) {
+      const regs = await storage.getRegistrationsByTournament(tournamentId);
+      for (const reg of regs) {
+        await storage.createNotification({
+          userId: reg.userId,
+          type: "general",
+          title: "Tournament Cancelled",
+          message: `"${tournament.title}" has been cancelled.`,
+        });
+      }
+      return { refundedUsers: 0, refundedAmount: 0 };
+    }
+
+    const regs = await storage.getRegistrationsByTournament(tournamentId);
+    const uniqueUserIds = Array.from(
+      new Set(regs.map((reg) => Number(reg.userId)).filter((id) => Number.isInteger(id) && id > 0)),
+    );
+    let refundedUsers = 0;
+    let refundedAmount = 0;
+
+    for (const userId of uniqueUserIds) {
+      const txHistory = await storage.getTransactionsByUser(userId);
+      const alreadyRefunded = txHistory.some(
+        (tx) =>
+          Number(tx.tournamentId) === tournamentId &&
+          String(tx.type) === "admin_credit" &&
+          getMetadataSource(tx.metadata) === "tournament_cancel_refund",
+      );
+
+      if (alreadyRefunded) {
+        continue;
+      }
+
+      const beforeUser = await storage.getUserById(userId);
+      if (!beforeUser) continue;
+      const afterUser = await storage.updateWalletBalance(userId, entryFee);
+      if (!afterUser) continue;
+
+      await storage.createTransaction({
+        userId,
+        amount: entryFee,
+        type: "admin_credit",
+        walletType: "main",
+        mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+        mainBalanceAfter: afterUser.mainWalletBalance || 0,
+        bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+        bonusBalanceAfter: afterUser.bonusWalletBalance || 0,
+        metadata: { source: "tournament_cancel_refund" },
+        description: `Refund for cancelled tournament "${tournament.title}"`,
+        tournamentId,
+      });
+
+      await storage.createNotification({
+        userId,
+        type: "wallet_credit",
+        title: "Tournament Cancelled",
+        message: `"${tournament.title}" was cancelled. Entry fee Rs.${(entryFee / 100).toFixed(2)} has been refunded.`,
+      });
+
+      refundedUsers += 1;
+      refundedAmount += entryFee;
+    }
+
+    return { refundedUsers, refundedAmount };
+  }
+
+  app.get("/api/tournaments/stream", (_req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    res.write(": connected\n\n");
+    tournamentStreamClients.add(res);
+
+    const keepAlive = setInterval(() => {
+      res.write(": ping\n\n");
+    }, 25000);
+
+    res.on("close", () => {
+      clearInterval(keepAlive);
+      tournamentStreamClients.delete(res);
+    });
+  });
+
+  let lifecycleTickRunning = false;
+  const lifecyclePollMs = Math.max(3000, Number(process.env.TOURNAMENT_LIFECYCLE_POLL_MS || 10000));
+
+  async function runTournamentLifecycleTick() {
+    if (lifecycleTickRunning) return;
+    lifecycleTickRunning = true;
+
+    try {
+      const now = Date.now();
+      const allTournaments = await storage.getAllTournaments();
+
+      for (const tournament of allTournaments) {
+        const status = getTournamentStatusValue(tournament.status);
+        const startMs = new Date(tournament.startTime).getTime();
+        if (Number.isNaN(startMs)) continue;
+        if ((status === "upcoming" || status === "hot") && startMs <= now) {
+          const updated = await storage.updateTournamentStatus(Number(tournament.id), "live");
+          if (updated) {
+            await notifyTournamentLive(updated, "auto_start");
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Tournament lifecycle tick failed:", err);
+    } finally {
+      lifecycleTickRunning = false;
+    }
+  }
+
+  const lifecycleTimer = setInterval(() => {
+    void runTournamentLifecycleTick();
+  }, lifecyclePollMs);
+  if (typeof (lifecycleTimer as any).unref === "function") {
+    (lifecycleTimer as any).unref();
+  }
+  httpServer.on("close", () => clearInterval(lifecycleTimer));
+  void runTournamentLifecycleTick();
 
   async function requireVerifiedEmail(userId: number, res: any) {
     const user = await storage.getUserById(userId);
@@ -1000,6 +1204,66 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
 });
 
   // 🔓 Public: Total registered users (email + Google)
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+
+    const [allUsers, allTournaments] = await Promise.all([
+      storage.getAllUsers(),
+      storage.getAllTournaments(),
+    ]);
+    const usernameById = new Map<number, string>(
+      allUsers.map((user) => [Number(user.id), user.username || `User #${user.id}`]),
+    );
+
+    const leaderboard = new Map<
+      number,
+      { userId: number; username: string; totalPrize: number; totalKills: number; wins: number; podiums: number; tournamentsPlayed: number }
+    >();
+
+    for (const tournament of allTournaments) {
+      if (getTournamentStatusValue(tournament.status) !== "completed") continue;
+      const rows = await storage.getResultsByTournament(Number(tournament.id));
+      for (const row of rows) {
+        const userId = Number(row.userId);
+        if (!Number.isInteger(userId) || userId <= 0) continue;
+
+        const current = leaderboard.get(userId) || {
+          userId,
+          username: usernameById.get(userId) || `User #${userId}`,
+          totalPrize: 0,
+          totalKills: 0,
+          wins: 0,
+          podiums: 0,
+          tournamentsPlayed: 0,
+        };
+
+        current.totalPrize += Number(row.prize || 0);
+        current.totalKills += Number(row.kills || 0);
+        current.tournamentsPlayed += 1;
+        if (Number(row.position) === 1) current.wins += 1;
+        if (Number(row.position) > 0 && Number(row.position) <= 3) current.podiums += 1;
+        leaderboard.set(userId, current);
+      }
+    }
+
+    const ranked = Array.from(leaderboard.values())
+      .sort((a, b) => {
+        if (b.totalPrize !== a.totalPrize) return b.totalPrize - a.totalPrize;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        if (b.totalKills !== a.totalKills) return b.totalKills - a.totalKills;
+        return a.userId - b.userId;
+      })
+      .slice(0, limit)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+    res.json(ranked);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.get("/api/stats/total-users", async (_req, res) => {
   try {
     const users = await storage.getAllUsers();
@@ -1052,6 +1316,12 @@ app.get("/api/stats/total-users", async (_req, res) => {
         inGameName,
         teamId,
       });
+
+      if (getTournamentStatusValue(tournament.status) !== "live" && getTournamentStatusValue(joined.tournament.status) === "live") {
+        await notifyTournamentLive(joined.tournament, "full_slots");
+      } else {
+        broadcastTournamentUpdate(joined.tournament, "slot_filled");
+      }
 
       res.json({ message: "Joined successfully", user: sanitizeUser(joined.user) });
     } catch (err: any) {
@@ -1803,24 +2073,28 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Invalid tournament status" });
       }
       const tournamentId = Number(req.params.id);
-      const t = await storage.updateTournamentStatus(tournamentId, status);
+      const previous = await storage.getTournamentById(tournamentId);
+      if (!previous) return res.status(404).json({ message: "Tournament not found" });
+
+      const previousStatus = getTournamentStatusValue(previous.status);
+      const nextStatus = getTournamentStatusValue(status);
+
+      const t = await storage.updateTournamentStatus(tournamentId, nextStatus);
       if (!t) return res.status(404).json({ message: "Tournament not found" });
 
-      if (status === "live") {
-        const regs = await storage.getRegistrationsByTournament(tournamentId);
-        for (const reg of regs) {
-          await storage.createNotification({
-            userId: reg.userId,
-            type: "match_started",
-            title: "Match Started",
-            message: `"${t.title}" is now LIVE! ${t.roomId ? `Room ID: ${t.roomId}` : "Check tournament details."}`,
-          });
-        }
+      if (nextStatus === "live" && previousStatus !== "live") {
+        await notifyTournamentLive(t, "manual_live");
+      } else {
+        broadcastTournamentUpdate(t, `admin_status_${nextStatus}`);
+      }
+
+      if (nextStatus === "cancelled" && previousStatus !== "cancelled") {
+        await refundCancelledTournament(t);
       }
 
       await storage.createAdminLog({
         adminId: (req as any).userId,
-        action: `update_tournament_status_${status}`,
+        action: `update_tournament_status_${nextStatus}`,
         targetType: "tournament",
         targetId: tournamentId,
       });
@@ -1855,6 +2129,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId: tournamentId,
       });
 
+      broadcastTournamentUpdate(t, "room_published");
       res.json(t);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1903,71 +2178,99 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Results array is required" });
       }
 
+      const prizeDistributionMap = parsePrizeDistributionMap(tournament.prizeDistribution);
       const createdResults = [];
       const seenUsers = new Set<number>();
+      let totalPrizeDistributed = 0;
       for (const r of resultData) {
-        if (!r.userId || !r.position) {
+        const userId = Number(r?.userId);
+        const position = Number(r?.position);
+        if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(position) || position <= 0) {
           continue;
         }
-        if (seenUsers.has(r.userId)) {
+        if (seenUsers.has(userId)) {
           return res.status(400).json({ message: "Duplicate users in results payload" });
         }
-        seenUsers.add(r.userId);
+        seenUsers.add(userId);
+
+        const inputPrize = Number(r?.prize);
+        const mappedPrize = prizeDistributionMap.get(position) || 0;
+        const payout =
+          Number.isFinite(inputPrize) && inputPrize >= 0
+            ? Math.round(inputPrize)
+            : mappedPrize;
+        const kills = Number.isFinite(Number(r?.kills)) ? Math.max(0, Math.round(Number(r?.kills))) : 0;
+
         const result = await storage.createResult({
           tournamentId,
-          userId: r.userId,
-          position: r.position,
-          kills: r.kills || 0,
-          prize: r.prize || 0,
+          userId,
+          position,
+          kills,
+          prize: payout,
         });
         createdResults.push(result);
 
-        if (r.prize > 0) {
-          const winnerBefore = await storage.getUserById(r.userId);
-          const winnerAfter = await storage.updateWalletBalance(r.userId, r.prize);
+        if (payout > 0) {
+          const winnerBefore = await storage.getUserById(userId);
+          const winnerAfter = await storage.updateWalletBalance(userId, payout);
           if (!winnerBefore || !winnerAfter) {
             return res.status(404).json({ message: "Winner account not found" });
           }
           await storage.createTransaction({
-            userId: r.userId,
-            amount: r.prize,
+            userId,
+            amount: payout,
             type: "winning",
             walletType: "main",
             mainBalanceBefore: winnerBefore.mainWalletBalance || 0,
             mainBalanceAfter: winnerAfter.mainWalletBalance || 0,
             bonusBalanceBefore: winnerBefore.bonusWalletBalance || 0,
             bonusBalanceAfter: winnerAfter.bonusWalletBalance || 0,
-            metadata: { source: "result_payout", position: r.position },
-            description: `Prize for position #${r.position} in "${tournament.title}"`,
+            metadata: { source: "result_payout", position },
+            description: `Prize for position #${position} in "${tournament.title}"`,
             tournamentId,
           });
 
           await storage.createNotification({
-            userId: r.userId,
+            userId,
             type: "results_declared",
             title: "Results Declared",
-            message: `You placed #${r.position} in "${tournament.title}" and won Rs.${(r.prize / 100).toFixed(2)}!`,
+            message: `You placed #${position} in "${tournament.title}" and won Rs.${(payout / 100).toFixed(2)}!`,
           });
+          totalPrizeDistributed += payout;
         } else {
           await storage.createNotification({
-            userId: r.userId,
+            userId,
             type: "results_declared",
             title: "Results Declared",
-            message: `You placed #${r.position} in "${tournament.title}".`,
+            message: `You placed #${position} in "${tournament.title}".`,
           });
         }
       }
 
-      await storage.updateTournamentStatus(tournamentId, "completed");
+      const completedTournament = await storage.updateTournamentStatus(tournamentId, "completed");
+
+      const participantRegs = await storage.getRegistrationsByTournament(tournamentId);
+      for (const reg of participantRegs) {
+        if (seenUsers.has(Number(reg.userId))) continue;
+        await storage.createNotification({
+          userId: reg.userId,
+          type: "results_declared",
+          title: "Leaderboard Updated",
+          message: `Results for "${tournament.title}" are now live. Check the leaderboard.`,
+        });
+      }
 
       await storage.createAdminLog({
         adminId: (req as any).userId,
         action: "declare_results",
         targetType: "tournament",
         targetId: tournamentId,
-        details: `Declared ${createdResults.length} results, total prize distributed`,
+        details: `Declared ${createdResults.length} results, total prize distributed ${totalPrizeDistributed}`,
       });
 
+      if (completedTournament) {
+        broadcastTournamentUpdate(completedTournament, "results_declared");
+      }
       res.json({ message: "Results declared and prizes distributed", results: createdResults });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

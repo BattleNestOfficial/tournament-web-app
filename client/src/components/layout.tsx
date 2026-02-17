@@ -1,6 +1,7 @@
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useLocation, Link } from "wouter";
+import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -20,6 +21,25 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAdmin = user?.role === "admin";
+
+  useEffect(() => {
+    const stream = new EventSource("/api/tournaments/stream");
+
+    const refreshTournamentViews = () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+    };
+
+    stream.addEventListener("tournament_update", refreshTournamentViews as EventListener);
+    stream.onerror = () => {
+      // EventSource auto-reconnects; no manual retry needed.
+    };
+
+    return () => {
+      stream.removeEventListener("tournament_update", refreshTournamentViews as EventListener);
+      stream.close();
+    };
+  }, []);
 
   const navItems = [
     { href: "/", label: "Home", icon: Home },
