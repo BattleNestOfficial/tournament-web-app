@@ -3435,6 +3435,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const existing = await storage.getDisputeById(disputeId);
       if (!existing) return res.status(404).json({ message: "Dispute not found" });
 
+      const currentStatus = normalizeDisputeStatus(existing.status);
+      if (!currentStatus) {
+        return res.status(400).json({ message: "Current dispute status is invalid" });
+      }
+      if (currentStatus === "resolved" && status !== "resolved") {
+        return res.status(400).json({ message: "Resolved tickets are final and cannot be moved back" });
+      }
+      if (currentStatus === "resolved" && status === "resolved") {
+        return res.json(existing);
+      }
+
       const adminId = Number((req as any).userId);
       const updatePayload: any = {
         status,

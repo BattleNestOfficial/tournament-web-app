@@ -1029,38 +1029,31 @@ function SupportTicketManager({ token }: { token: string | null }) {
                       View screenshot evidence
                     </a>
                   )}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {item.status !== "open" && (
+                  {item.status !== "resolved" && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {item.status === "open" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateStatusMutation.mutate({ id: item.id, status: "in_review" })}
+                          disabled={updateStatusMutation.isPending}
+                          data-testid={`button-ticket-review-${item.id}`}
+                        >
+                          In Review
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "open" })}
+                        className="text-chart-3"
+                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "resolved" })}
                         disabled={updateStatusMutation.isPending}
-                        data-testid={`button-ticket-open-${item.id}`}
+                        data-testid={`button-ticket-resolved-${item.id}`}
                       >
-                        Move to Open
+                        Mark Resolved
                       </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => updateStatusMutation.mutate({ id: item.id, status: "in_review" })}
-                      disabled={updateStatusMutation.isPending}
-                      data-testid={`button-ticket-review-${item.id}`}
-                    >
-                      In Review
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-chart-3"
-                      onClick={() => updateStatusMutation.mutate({ id: item.id, status: "resolved" })}
-                      disabled={updateStatusMutation.isPending}
-                      data-testid={`button-ticket-resolved-${item.id}`}
-                    >
-                      Mark Resolved
-                    </Button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
