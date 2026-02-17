@@ -265,6 +265,66 @@
  */
 @layer utilities {
 
+  html:not(.dark) .esports-theme .text-white { color: hsl(var(--foreground)) !important; }
+  html:not(.dark) .esports-theme .text-white\/85 { color: hsl(var(--foreground) / 0.85) !important; }
+  html:not(.dark) .esports-theme .text-white\/80 { color: hsl(var(--foreground) / 0.8) !important; }
+  html:not(.dark) .esports-theme .text-white\/75 { color: hsl(var(--foreground) / 0.75) !important; }
+  html:not(.dark) .esports-theme .text-white\/70 { color: hsl(var(--foreground) / 0.7) !important; }
+  html:not(.dark) .esports-theme .text-white\/65 { color: hsl(var(--foreground) / 0.65) !important; }
+  html:not(.dark) .esports-theme .text-white\/60 { color: hsl(var(--foreground) / 0.6) !important; }
+  html:not(.dark) .esports-theme .text-white\/55 { color: hsl(var(--foreground) / 0.55) !important; }
+
+  html:not(.dark) .esports-theme .bg-black { background-color: hsl(var(--background)) !important; }
+  html:not(.dark) .esports-theme .bg-black\/85 { background-color: hsl(var(--card) / 0.85) !important; }
+  html:not(.dark) .esports-theme .bg-black\/80 { background-color: hsl(var(--card) / 0.8) !important; }
+  html:not(.dark) .esports-theme .bg-black\/45 { background-color: hsl(var(--card) / 0.9) !important; }
+  html:not(.dark) .esports-theme .bg-black\/40 { background-color: hsl(var(--card) / 0.88) !important; }
+  html:not(.dark) .esports-theme .bg-black\/35 { background-color: hsl(var(--card) / 0.86) !important; }
+  html:not(.dark) .esports-theme .bg-black\/30 { background-color: hsl(var(--card) / 0.84) !important; }
+  html:not(.dark) .esports-theme .bg-black\/25 { background-color: hsl(var(--card) / 0.82) !important; }
+  html:not(.dark) .esports-theme .bg-black\/20 { background-color: hsl(var(--card) / 0.8) !important; }
+  html:not(.dark) .esports-theme .bg-slate-950 { background-color: hsl(var(--card)) !important; }
+
+  html:not(.dark) .esports-theme .border-white\/20 { border-color: hsl(var(--border) / 0.75) !important; }
+  html:not(.dark) .esports-theme .border-white\/15 { border-color: hsl(var(--border) / 0.65) !important; }
+  html:not(.dark) .esports-theme .border-white\/10 { border-color: hsl(var(--border) / 0.55) !important; }
+  html:not(.dark) .esports-theme .bg-white\/5 { background-color: hsl(var(--muted) / 0.55) !important; }
+
+  html:not(.dark) .esports-theme .esports-page-backdrop {
+    background-image: linear-gradient(135deg, hsl(120 66% 98%), hsl(148 62% 95%), hsl(var(--background))) !important;
+  }
+  html:not(.dark) .esports-theme .esports-page-glow-top {
+    background-image: radial-gradient(circle at top, hsl(142 74% 44% / 0.18), transparent 58%) !important;
+  }
+  html:not(.dark) .esports-theme .esports-page-glow-bottom {
+    background-image: radial-gradient(circle at bottom, hsl(146 70% 40% / 0.14), transparent 64%) !important;
+  }
+  html:not(.dark) .esports-theme .esports-page-vignette {
+    background-image: linear-gradient(to bottom, hsl(150 50% 62% / 0.05), hsl(var(--background) / 0.72)) !important;
+  }
+  html:not(.dark) .esports-theme .esports-card-surface {
+    background-image: linear-gradient(135deg, hsl(var(--card) / 0.97), hsl(145 42% 94% / 0.92)) !important;
+  }
+  html:not(.dark) .esports-theme .esports-card-placeholder {
+    background-image: linear-gradient(135deg, hsl(148 52% 85%), hsl(140 44% 90%), hsl(220 38% 93%)) !important;
+  }
+  html:not(.dark) .esports-theme .esports-card-image-overlay {
+    background-image: linear-gradient(to top, hsl(var(--background) / 0.9), hsl(var(--background) / 0.5), transparent) !important;
+  }
+
+  html:not(.dark) .esports-theme .text-lime-300 { color: hsl(94 66% 32%) !important; }
+  html:not(.dark) .esports-theme .text-lime-200 { color: hsl(94 62% 34%) !important; }
+  html:not(.dark) .esports-theme .text-emerald-300 { color: hsl(155 58% 31%) !important; }
+  html:not(.dark) .esports-theme .text-emerald-100 { color: hsl(156 56% 26%) !important; }
+  html:not(.dark) .esports-theme .text-indigo-300 { color: hsl(240 48% 41%) !important; }
+  html:not(.dark) .esports-theme .text-indigo-200 { color: hsl(238 44% 39%) !important; }
+  html:not(.dark) .esports-theme .text-amber-300 { color: hsl(35 88% 36%) !important; }
+  html:not(.dark) .esports-theme .text-red-300 { color: hsl(355 70% 42%) !important; }
+  html:not(.dark) .esports-theme .text-blue-300 { color: hsl(213 70% 40%) !important; }
+  html:not(.dark) .esports-theme .text-fuchsia-300 { color: hsl(292 58% 42%) !important; }
+  html:not(.dark) .esports-theme .text-yellow-300 { color: hsl(40 90% 36%) !important; }
+  html:not(.dark) .esports-theme .text-slate-300 { color: hsl(216 18% 34%) !important; }
+
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
