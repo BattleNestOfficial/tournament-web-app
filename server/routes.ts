@@ -14,6 +14,12 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import {
+  isBrevoConfigured,
+  sendContactSecurityAlert,
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "./email";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -191,7 +197,19 @@ export async function registerRoutes(
       emailVerified: false,
     });
 
-    // TODO: Integrate email provider to deliver this token as verification link.
+    try {
+      if (isBrevoConfigured()) {
+        await sendVerificationEmail({
+          toEmail: user.email,
+          username: user.username,
+          token: verificationToken,
+        });
+      } else {
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+      }
+    } catch (mailError: any) {
+      console.error("Verification email send failed on signup:", mailError?.message || mailError);
+    }
     console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
 
     const token = generateToken(user.id, user.role);
@@ -322,7 +340,15 @@ export async function registerRoutes(
         emailVerificationExpires: verificationExpires,
       });
 
-      // TODO: Integrate email provider to deliver this token as verification link.
+      if (isBrevoConfigured()) {
+        await sendVerificationEmail({
+          toEmail: user.email,
+          username: user.username,
+          token: verificationToken,
+        });
+      } else {
+        console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+      }
       console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
 
       const payload: any = { message: "Verification email sent" };
@@ -373,7 +399,20 @@ export async function registerRoutes(
         passwordResetExpires: resetExpires,
       });
 
-      // TODO: Integrate email provider to deliver this token as reset link.
+      try {
+        if (isBrevoConfigured()) {
+          await sendPasswordResetEmail({
+            toEmail: user.email,
+            username: user.username,
+            token: resetToken,
+          });
+        } else {
+          console.warn("[PASSWORD_RESET] Brevo is not configured. Falling back to dev token logging.");
+        }
+      } catch (mailError: any) {
+        // Keep generic success response to avoid email enumeration vectors.
+        console.error("Password reset email send failed:", mailError?.message || mailError);
+      }
       console.log(`[PASSWORD_RESET] user=${email} token=${resetToken}`);
 
       const payload: any = { message: "If this email exists, a reset link has been sent." };
@@ -531,13 +570,40 @@ export async function registerRoutes(
         return res.json({ message: "No contact changes detected", user: sanitizeUser(currentUser) });
       }
 
-      updates.withdrawalLockUntil = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
+      const withdrawalLockUntil = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
+      updates.withdrawalLockUntil = withdrawalLockUntil;
       const updated = await storage.updateUserProfile(userId, updates);
       if (!updated) return res.status(404).json({ message: "User not found" });
 
       if (verificationToken) {
-        // TODO: Integrate email provider to deliver this token as verification link.
+        try {
+          if (isBrevoConfigured()) {
+            await sendVerificationEmail({
+              toEmail: updated.email,
+              username: updated.username,
+              token: verificationToken,
+            });
+          } else {
+            console.warn("[EMAIL_VERIFY] Brevo is not configured. Falling back to dev token logging.");
+          }
+        } catch (mailError: any) {
+          console.error("Verification email send failed after contact update:", mailError?.message || mailError);
+        }
         console.log(`[EMAIL_VERIFY] user=${updated.email} token=${verificationToken}`);
+      }
+
+      if ((emailChanged || phoneChanged) && isBrevoConfigured()) {
+        try {
+          await sendContactSecurityAlert({
+            toEmail: currentUser.email,
+            username: currentUser.username,
+            changedEmail: emailChanged,
+            changedPhone: phoneChanged,
+            withdrawalLockUntil,
+          });
+        } catch (mailError: any) {
+          console.error("Contact security alert send failed:", mailError?.message || mailError);
+        }
       }
 
       const payload: any = {

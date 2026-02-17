@@ -51,6 +51,7 @@ export default function AuthPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  const magicLinkHandledRef = useRef(false);
 
   const { data: googleConfig } = useQuery<{ clientId: string | null }>({
     queryKey: ["/api/config/google-client-id"],
@@ -110,6 +111,52 @@ export default function AuthPage() {
       document.head.appendChild(script);
     }
   }, [googleConfig?.clientId, handleGoogleCredential]);
+
+  useEffect(() => {
+    if (magicLinkHandledRef.current) return;
+    magicLinkHandledRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const modeParam = params.get("mode");
+    const tokenParam = params.get("token")?.trim() || "";
+    if (!modeParam || !tokenParam) return;
+
+    if (modeParam === "reset-password") {
+      setMode("login");
+      setResetOpen(true);
+      setResetToken(tokenParam);
+      toast({
+        title: "Reset link opened",
+        description: "Enter your new password to complete reset",
+      });
+    }
+
+    if (modeParam === "verify-email") {
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/verify-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: tokenParam }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Email verification failed");
+          toast({
+            title: "Email verified",
+            description: "Your account email is now verified",
+          });
+        } catch (err: any) {
+          toast({
+            title: "Verification failed",
+            description: err.message,
+            variant: "destructive",
+          });
+        }
+      })();
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, [toast]);
 
   async function onLogin(data: LoginForm) {
     setLoading(true);
