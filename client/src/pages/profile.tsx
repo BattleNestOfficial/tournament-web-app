@@ -416,13 +416,15 @@ export default function ProfilePage() {
             >
               {updateContactMutation.isPending ? "Saving..." : "Save Contact"}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => requestEmailVerificationMutation.mutate()}
-              disabled={requestEmailVerificationMutation.isPending}
-            >
-              {requestEmailVerificationMutation.isPending ? "Sending..." : "Send Email OTP"}
-            </Button>
+            {!user.emailVerified && (
+              <Button
+                variant="outline"
+                onClick={() => requestEmailVerificationMutation.mutate()}
+                disabled={requestEmailVerificationMutation.isPending}
+              >
+                {requestEmailVerificationMutation.isPending ? "Sending..." : "Send Email OTP"}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => requestPhoneVerificationMutation.mutate()}
@@ -432,22 +434,24 @@ export default function ProfilePage() {
             </Button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs">Email OTP</Label>
-              <Input
-                value={emailOtp}
-                onChange={(e) => setEmailOtp(e.target.value)}
-                placeholder="Enter OTP from email"
-              />
-              <Button
-                className="mt-2 w-full"
-                onClick={() => verifyEmailMutation.mutate()}
-                disabled={verifyEmailMutation.isPending || !emailOtp.trim()}
-              >
-                {verifyEmailMutation.isPending ? "Verifying..." : "Verify Email"}
-              </Button>
-            </div>
+          <div className={`grid gap-3 ${user.emailVerified ? "grid-cols-1" : "sm:grid-cols-2"}`}>
+            {!user.emailVerified && (
+              <div>
+                <Label className="text-xs">Email OTP</Label>
+                <Input
+                  value={emailOtp}
+                  onChange={(e) => setEmailOtp(e.target.value)}
+                  placeholder="Enter OTP from email"
+                />
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => verifyEmailMutation.mutate()}
+                  disabled={verifyEmailMutation.isPending || !emailOtp.trim()}
+                >
+                  {verifyEmailMutation.isPending ? "Verifying..." : "Verify Email"}
+                </Button>
+              </div>
+            )}
             <div>
               <Label className="text-xs">Phone OTP</Label>
               <Input
