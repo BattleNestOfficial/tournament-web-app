@@ -16,6 +16,13 @@ type LoyaltyBenefits = {
   exclusiveTournaments: boolean;
 };
 
+type LoyaltyRoadmapTier = {
+  key: string;
+  label: string;
+  minMatches: number;
+  rewardAmount: number;
+};
+
 type UserLoyaltyProfile = {
   userId: number;
   tier: LoyaltyTier;
@@ -23,6 +30,12 @@ type UserLoyaltyProfile = {
   totalDeposits: number;
   totalEarnings: number;
   benefits: LoyaltyBenefits;
+  roadmapTiers: LoyaltyRoadmapTier[];
+  currentRoadmapTierKey: string;
+  nextRoadmapTierKey: string | null;
+  matchesToNextTier: number;
+  progressPercent: number;
+  awardedTierKeys: string[];
 };
 
 export interface IStorage {
@@ -210,11 +223,119 @@ export class DatabaseStorage implements IStorage {
     return "bronze";
   }
 
-  private getLoyaltyTier(matchesPlayed: number, totalDeposits: number, totalEarnings: number): LoyaltyTier {
-    if (matchesPlayed >= 100 || totalDeposits >= 2000000 || totalEarnings >= 1000000) return "vip";
-    if (matchesPlayed >= 50 || totalDeposits >= 1000000 || totalEarnings >= 500000) return "gold";
-    if (matchesPlayed >= 20 || totalDeposits >= 300000 || totalEarnings >= 150000) return "silver";
+  private getLoyaltyTier(matchesPlayed: number): LoyaltyTier {
+    if (matchesPlayed >= 100) return "vip";
+    if (matchesPlayed >= 50) return "gold";
+    if (matchesPlayed >= 20) return "silver";
     return "bronze";
+  }
+
+  private getLoyaltyRoadmapTiers(): LoyaltyRoadmapTier[] {
+    return [
+      { key: "bronze", label: "Bronze", minMatches: 0, rewardAmount: 0 },
+      { key: "silver", label: "Silver", minMatches: 20, rewardAmount: 5000 },
+      { key: "gold", label: "Gold", minMatches: 50, rewardAmount: 10000 },
+      { key: "platinum", label: "Platinum", minMatches: 100, rewardAmount: 15000 },
+      { key: "diamond", label: "Diamond", minMatches: 180, rewardAmount: 50000 },
+      { key: "master", label: "Master", minMatches: 260, rewardAmount: 60000 },
+      { key: "champion", label: "Champion", minMatches: 340, rewardAmount: 70000 },
+      { key: "legend", label: "Legend", minMatches: 450, rewardAmount: 80000 },
+    ];
+  }
+
+  private getCurrentRoadmapTier(roadmapTiers: LoyaltyRoadmapTier[], matchesPlayed: number): LoyaltyRoadmapTier {
+    let currentTier = roadmapTiers[0];
+    for (const tier of roadmapTiers) {
+      if (matchesPlayed >= tier.minMatches) {
+        currentTier = tier;
+      }
+    }
+    return currentTier;
+  }
+
+  private getProgressPercent(matchesPlayed: number, currentTier: LoyaltyRoadmapTier, nextTier: LoyaltyRoadmapTier | null): number {
+    if (!nextTier) return 100;
+    const range = Math.max(1, nextTier.minMatches - currentTier.minMatches);
+    const covered = Math.max(0, matchesPlayed - currentTier.minMatches);
+    return Math.max(0, Math.min(100, (covered / range) * 100));
+  }
+
+  private async applyLoyaltyTierBonusesInTx(tx: any, userId: number, matchesPlayed: number): Promise<string[]> {
+    const roadmapTiers = this.getLoyaltyRoadmapTiers();
+    const [existingUser] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!existingUser) return [];
+
+    const rewardedRows: Array<{ tierKey: string }> = await tx
+      .select({
+        tierKey: sql<string>`coalesce(${transactions.metadata} ->> 'tierKey', '')`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, "deposit"),
+          sql`${transactions.metadata} ->> 'source' = 'loyalty_tier_bonus'`,
+        ),
+      );
+    const rewardedSet = new Set<string>(
+      rewardedRows
+        .map((row: { tierKey: string }) => String(row.tierKey || "").trim())
+        .filter((tierKey: string) => tierKey.length > 0),
+    );
+
+    let currentUser = existingUser;
+    for (const tier of roadmapTiers) {
+      if (tier.rewardAmount <= 0 || matchesPlayed < tier.minMatches || rewardedSet.has(tier.key)) {
+        continue;
+      }
+
+      const [walletCredited] = await tx
+        .update(users)
+        .set({
+          bonusWalletBalance: sql`${users.bonusWalletBalance} + ${tier.rewardAmount}`,
+          walletBalance: sql`${users.walletBalance} + ${tier.rewardAmount}`,
+        })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!walletCredited) {
+        continue;
+      }
+
+      await this.createTransactionInTx(tx, {
+        userId,
+        amount: tier.rewardAmount,
+        type: "deposit",
+        walletType: "bonus",
+        mainBalanceBefore: this.getSafeBalance(currentUser.mainWalletBalance),
+        mainBalanceAfter: this.getSafeBalance(walletCredited.mainWalletBalance),
+        bonusBalanceBefore: this.getSafeBalance(currentUser.bonusWalletBalance),
+        bonusBalanceAfter: this.getSafeBalance(walletCredited.bonusWalletBalance),
+        description: `Loyalty bonus (${tier.label})`,
+        metadata: {
+          source: "loyalty_tier_bonus",
+          tierKey: tier.key,
+          tierLabel: tier.label,
+          minMatches: tier.minMatches,
+          rewardAmount: tier.rewardAmount,
+        },
+      });
+
+      await tx.insert(notifications).values({
+        userId,
+        type: "wallet_credit",
+        title: `${tier.label} Tier Reward`,
+        message: `Rs.${(tier.rewardAmount / 100).toFixed(0)} loyalty bonus credited to your bonus wallet.`,
+      });
+
+      rewardedSet.add(tier.key);
+      currentUser = walletCredited;
+    }
+
+    return Array.from(rewardedSet);
   }
 
   private getLoyaltyBenefits(tier: LoyaltyTier): LoyaltyBenefits {
@@ -1266,37 +1387,54 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserLoyaltyProfile(userId: number): Promise<UserLoyaltyProfile> {
-    const [matchesRows, depositsRows, earningsRows] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(registrations)
-        .where(eq(registrations.userId, userId)),
-      db
-        .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
-        .from(transactions)
-        .where(and(eq(transactions.userId, userId), sql`${transactions.type} IN ('deposit', 'razorpay')`)),
-      db
-        .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
-        .from(transactions)
-        .where(and(eq(transactions.userId, userId), eq(transactions.type, "winning"))),
-    ]);
+    return db.transaction(async (tx) => {
+      const [matchesRows, depositsRows, earningsRows] = await Promise.all([
+        tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(registrations)
+          .where(eq(registrations.userId, userId)),
+        tx
+          .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId), sql`${transactions.type} IN ('deposit', 'razorpay')`)),
+        tx
+          .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId), eq(transactions.type, "winning"))),
+      ]);
 
-    const matchesResult = matchesRows[0];
-    const depositsResult = depositsRows[0];
-    const earningsResult = earningsRows[0];
-    const matchesPlayed = Number(matchesResult?.count || 0);
-    const totalDeposits = Number(depositsResult?.sum || 0);
-    const totalEarnings = Number(earningsResult?.sum || 0);
-    const tier = this.getLoyaltyTier(matchesPlayed, totalDeposits, totalEarnings);
+      const matchesResult = matchesRows[0];
+      const depositsResult = depositsRows[0];
+      const earningsResult = earningsRows[0];
+      const matchesPlayed = Number(matchesResult?.count || 0);
+      const totalDeposits = Number(depositsResult?.sum || 0);
+      const totalEarnings = Number(earningsResult?.sum || 0);
+      const tier = this.getLoyaltyTier(matchesPlayed);
+      const roadmapTiers = this.getLoyaltyRoadmapTiers();
+      const awardedTierKeys = await this.applyLoyaltyTierBonusesInTx(tx, userId, matchesPlayed);
+      const currentRoadmapTier = this.getCurrentRoadmapTier(roadmapTiers, matchesPlayed);
+      const nextRoadmapTier =
+        roadmapTiers.find((tierItem) => tierItem.minMatches > matchesPlayed) || null;
+      const matchesToNextTier = nextRoadmapTier
+        ? Math.max(0, nextRoadmapTier.minMatches - matchesPlayed)
+        : 0;
+      const progressPercent = this.getProgressPercent(matchesPlayed, currentRoadmapTier, nextRoadmapTier);
 
-    return {
-      userId,
-      tier,
-      matchesPlayed,
-      totalDeposits,
-      totalEarnings,
-      benefits: this.getLoyaltyBenefits(tier),
-    };
+      return {
+        userId,
+        tier,
+        matchesPlayed,
+        totalDeposits,
+        totalEarnings,
+        benefits: this.getLoyaltyBenefits(tier),
+        roadmapTiers,
+        currentRoadmapTierKey: currentRoadmapTier.key,
+        nextRoadmapTierKey: nextRoadmapTier?.key || null,
+        matchesToNextTier,
+        progressPercent,
+        awardedTierKeys,
+      };
+    });
   }
 
   async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {

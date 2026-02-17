@@ -9,8 +9,27 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, Gift } from "lucide-react";
 import type { Registration, Tournament } from "@shared/schema";
+
+type LoyaltyRoadmapTier = {
+  key: string;
+  label: string;
+  minMatches: number;
+  rewardAmount: number;
+};
+
+type LoyaltyProfile = {
+  tier: string;
+  tierLabel: string;
+  matchesPlayed: number;
+  roadmapTiers: LoyaltyRoadmapTier[];
+  currentRoadmapTierKey: string;
+  nextRoadmapTierKey: string | null;
+  matchesToNextTier: number;
+  progressPercent: number;
+  awardedTierKeys: string[];
+};
 
 export default function ProfilePage() {
   const { user, token, updateUser } = useAuth();
@@ -33,6 +52,11 @@ export default function ProfilePage() {
     (Registration & { tournament?: Tournament })[]
   >({
     queryKey: ["/api/registrations/my"],
+    enabled: !!user,
+  });
+
+  const { data: loyalty } = useQuery<LoyaltyProfile>({
+    queryKey: ["/api/users/loyalty"],
     enabled: !!user,
   });
 
@@ -252,6 +276,16 @@ export default function ProfilePage() {
     });
   }, [user?.email, user?.phone]);
 
+  const roadmapTiers = loyalty?.roadmapTiers || [];
+  const currentRoadmapTier =
+    roadmapTiers.find((tier) => tier.key === loyalty?.currentRoadmapTierKey) ||
+    roadmapTiers[0] ||
+    null;
+  const nextRoadmapTier =
+    roadmapTiers.find((tier) => tier.key === loyalty?.nextRoadmapTierKey) || null;
+  const awardedTierKeys = new Set(loyalty?.awardedTierKeys || []);
+  const progressPercent = Math.max(2, Math.min(100, loyalty?.progressPercent || 0));
+
   if (!user) return null;
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -259,7 +293,7 @@ export default function ProfilePage() {
 
       {/* USER CARD */}
       <div className="grid gap-6 md:grid-cols-3">
-        <Card>
+        <Card className="order-2 md:order-2">
           <CardContent className="p-5 text-center space-y-3">
             <Avatar className="w-20 h-20 mx-auto">
               <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
@@ -283,7 +317,7 @@ export default function ProfilePage() {
               <div className="flex items-center justify-center gap-1.5 text-sm">
                 <Wallet className="w-4 h-4 text-chart-3" />
                 <span className="font-semibold">
-                  ₹{((user.walletBalance || 0) / 100).toFixed(0)}
+                  {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -302,7 +336,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* GAME PROFILE */}
-        <Card className="md:col-span-2">
+        <Card className="order-1 md:order-1 md:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Gamepad2 className="w-4 h-4" /> Game Profile
@@ -477,6 +511,84 @@ export default function ProfilePage() {
               Withdrawals locked until {new Date(user.withdrawalLockUntil).toLocaleString("en-IN")}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Crown className="w-4 h-4" /> Loyalty Roadmap
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-5">
+          <div className="rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Current Tier</p>
+                <p className="text-xl font-semibold">{currentRoadmapTier?.label || "Bronze"}</p>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {nextRoadmapTier
+                  ? `${loyalty?.matchesToNextTier || 0} matches to ${nextRoadmapTier.label}`
+                  : "Top tier unlocked"}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{currentRoadmapTier?.label || "Bronze"}</span>
+                <span>{nextRoadmapTier?.label || "Legend"}</span>
+              </div>
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-chart-2 via-chart-1 to-chart-3 transition-[width] duration-700 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+                <div
+                  className="absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full border-2 border-primary bg-background shadow-[0_0_18px_hsl(var(--primary)/0.6)] transition-[left] duration-700 ease-out animate-[pulse_2s_ease-in-out_infinite]"
+                  style={{ left: `calc(${progressPercent}% - 10px)` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {roadmapTiers.map((tier) => {
+              const unlocked = (loyalty?.matchesPlayed || 0) >= tier.minMatches;
+              const isCurrent = tier.key === loyalty?.currentRoadmapTierKey;
+              const isRewarded = awardedTierKeys.has(tier.key);
+              return (
+                <div
+                  key={tier.key}
+                  className={`rounded-lg border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
+                    isCurrent
+                      ? "border-primary/70 bg-primary/10"
+                      : unlocked
+                      ? "border-primary/35 bg-primary/5"
+                      : "border-border bg-background"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-sm">{tier.label}</p>
+                    {isCurrent && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        Current
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{tier.minMatches} matches</p>
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      <Gift className="w-3.5 h-3.5" /> {"\u20B9"}{(tier.rewardAmount / 100).toFixed(0)}
+                    </span>
+                    <span className={isRewarded ? "text-primary font-medium" : "text-muted-foreground"}>
+                      {tier.rewardAmount <= 0 ? "Base" : isRewarded ? "Credited" : "Locked"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
 
