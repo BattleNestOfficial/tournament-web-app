@@ -191,6 +191,7 @@ export default function TournamentDetailPage() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [ign, setIgn] = useState("");
   const [teamId, setTeamId] = useState<number | null>(null);
+  const [couponCode, setCouponCode] = useState("");
   const [bannerImageFailed, setBannerImageFailed] = useState(false);
   const [copiedField, setCopiedField] = useState<"roomId" | "roomPassword" | null>(null);
 
@@ -252,6 +253,8 @@ export default function TournamentDetailPage() {
   const isDuo = tournament?.matchType === "duo";
   const isSquad = tournament?.matchType === "squad";
   const canJoinTournament = normalizedStatus === "upcoming" || normalizedStatus === "hot";
+  const normalizedCouponCode = couponCode.trim().toUpperCase();
+  const hasCouponCode = normalizedCouponCode.length > 0;
   const walletInsufficient = !!user && !!tournament && tournament.entryFee > 0 && (user.walletBalance || 0) < tournament.entryFee;
   const currentWalletBalance = user?.walletBalance || 0;
   const walletAfterJoin = Math.max(0, currentWalletBalance - (tournament?.entryFee || 0));
@@ -321,15 +324,6 @@ export default function TournamentDetailPage() {
       toast({ title: "Registration closed", description: "This match is no longer accepting entries.", variant: "destructive" });
       return;
     }
-    if (walletInsufficient) {
-      toast({
-        title: "Insufficient wallet balance",
-        description: `You need ${formatMoney(tournament.entryFee)} to join this tournament.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     const latestUser = await refreshLatestUserProfile();
     if (!latestUser) {
       setLocation("/auth");
@@ -392,7 +386,9 @@ export default function TournamentDetailPage() {
       if (!token) throw new Error("Please login to join.");
       if (!tournament) throw new Error("Tournament not found");
       if (!canJoinTournament) throw new Error("Registration is closed for this match.");
-      if (walletInsufficient) throw new Error("Insufficient wallet balance.");
+      if (walletInsufficient && !hasCouponCode) {
+        throw new Error("Insufficient wallet balance. Add funds or use a coupon.");
+      }
 
       if (tournament.matchType === "solo" && !ign.trim()) {
         throw new Error("Please enter your in-game name.");
@@ -405,7 +401,11 @@ export default function TournamentDetailPage() {
         }
       }
 
-      const payload = tournament.matchType === "solo" ? { inGameName: ign.trim() } : { teamId };
+      const payload: Record<string, unknown> =
+        tournament.matchType === "solo" ? { inGameName: ign.trim() } : { teamId };
+      if (hasCouponCode) {
+        payload.couponCode = normalizedCouponCode;
+      }
       const joinData = await fetchJsonOrThrow<any>(`/api/tournaments/${tournamentId}/join`, {
         method: "POST",
         headers: {
@@ -452,6 +452,7 @@ export default function TournamentDetailPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/registrations/my"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId.toString(), "participants"] }),
       ]);
+      setCouponCode("");
       setJoinOpen(false);
     },
     onError: (err: any) => {
@@ -583,7 +584,7 @@ export default function TournamentDetailPage() {
 
               {walletInsufficient && canJoinTournament && (
                 <p className="text-sm text-red-300">
-                  Wallet balance is low. Required: {formatMoney(tournament.entryFee)}.
+                  Wallet balance is low. Add funds or apply a coupon in the join dialog.
                 </p>
               )}
 
@@ -802,15 +803,33 @@ export default function TournamentDetailPage() {
                 <p className="font-medium">{formatMoney(currentWalletBalance)}</p>
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-muted-foreground">Entry Fee Deduction</p>
+                <p className="text-muted-foreground">
+                  {hasCouponCode ? "Entry Fee (before coupon)" : "Entry Fee Deduction"}
+                </p>
                 <p className="font-medium">- {formatMoney(tournament.entryFee)}</p>
               </div>
               <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
                 <p className="text-muted-foreground">Balance After Join</p>
-                <p className={`font-semibold ${walletInsufficient ? "text-red-300" : "text-emerald-300"}`}>
-                  {walletInsufficient ? "Insufficient" : formatMoney(walletAfterJoin)}
+                <p className={`font-semibold ${walletInsufficient && !hasCouponCode ? "text-red-300" : "text-emerald-300"}`}>
+                  {walletInsufficient
+                    ? hasCouponCode
+                      ? "Pending coupon validation"
+                      : "Insufficient"
+                    : formatMoney(walletAfterJoin)}
                 </p>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Coupon Code (optional)</Label>
+              <Input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="Enter coupon code"
+              />
+              <p className="text-xs text-muted-foreground">
+                Coupon discount is validated and applied by the server at join time.
+              </p>
             </div>
 
             {isSolo && (
@@ -853,7 +872,7 @@ export default function TournamentDetailPage() {
               onClick={() => joinMutation.mutate()}
               disabled={
                 joinMutation.isPending ||
-                walletInsufficient ||
+                (walletInsufficient && !hasCouponCode) ||
                 (isSolo && !ign.trim()) ||
                 ((isDuo || isSquad) && !teamId)
               }
@@ -861,7 +880,9 @@ export default function TournamentDetailPage() {
               {joinMutation.isPending
                 ? "Joining..."
                 : tournament.entryFee > 0
-                  ? `Confirm Join - Pay ${formatMoney(tournament.entryFee)}`
+                  ? hasCouponCode
+                    ? "Confirm Join - Apply Coupon"
+                    : `Confirm Join - Pay ${formatMoney(tournament.entryFee)}`
                   : "Confirm Join"}
             </Button>
           </DialogFooter>

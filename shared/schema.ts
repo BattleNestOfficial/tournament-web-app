@@ -9,6 +9,17 @@ export const transactionTypeEnum = pgEnum("transaction_type", ["deposit", "withd
 export const withdrawalStatusEnum = pgEnum("withdrawal_status", ["pending", "approved", "rejected", "paid"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["created", "authorized", "captured", "failed", "refunded"]);
 export const notificationTypeEnum = pgEnum("notification_type", ["tournament_joined", "match_started", "results_declared", "withdrawal_update", "wallet_credit", "wallet_debit", "general"]);
+export const couponTypeValues = [
+  "flat_discount",
+  "percentage_discount",
+  "free_entry",
+  "bonus_credit",
+  "referral_coupon",
+  "login_reward_7day",
+  "tournament_specific",
+] as const;
+
+export const couponContextValues = ["wallet", "tournament_join"] as const;
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -192,7 +203,18 @@ export const banners = pgTable("banners", {
 export const coupons = pgTable("coupons", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   code: varchar("code", { length: 64 }).notNull().unique(),
-  amount: integer("amount").notNull(),
+  amount: integer("amount").notNull().default(0),
+  couponType: text("coupon_type").notNull().default("bonus_credit"),
+  value: integer("value").notNull().default(0),
+  globalUsageLimit: integer("global_usage_limit"),
+  perUserLimit: integer("per_user_limit").notNull().default(1),
+  totalUsageCount: integer("total_usage_count").notNull().default(0),
+  expiresAt: timestamp("expires_at"),
+  minEntryFee: integer("min_entry_fee"),
+  tournamentId: integer("tournament_id"),
+  fraudHookEnabled: boolean("fraud_hook_enabled").notNull().default(false),
+  metadata: jsonb("metadata"),
+  createdBy: integer("created_by"),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -203,11 +225,14 @@ export const couponRedemptions = pgTable(
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     couponId: integer("coupon_id").notNull(),
     userId: integer("user_id").notNull(),
+    context: text("context").notNull().default("wallet"),
+    tournamentId: integer("tournament_id"),
+    couponType: text("coupon_type"),
+    discountAmount: integer("discount_amount").notNull().default(0),
+    bonusAmount: integer("bonus_amount").notNull().default(0),
+    metadata: jsonb("metadata"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (table) => ({
-    couponUserUnique: uniqueIndex("coupon_redemptions_coupon_user_uq").on(table.couponId, table.userId),
-  }),
 );
 
 export const insertUserSchema = z.object({
@@ -261,7 +286,16 @@ export const insertBannerSchema = z.object({
 });
 export const insertCouponSchema = z.object({
   code: z.string().min(3).max(64),
-  amount: z.number().int().positive(),
+  amount: z.number().int().nonnegative().optional(),
+  couponType: z.enum(couponTypeValues).optional(),
+  value: z.number().int().nonnegative().optional(),
+  globalUsageLimit: z.number().int().positive().optional().nullable(),
+  perUserLimit: z.number().int().positive().optional().nullable(),
+  expiresAt: z.union([z.string(), z.date()]).optional().nullable(),
+  minEntryFee: z.number().int().nonnegative().optional().nullable(),
+  tournamentId: z.number().int().positive().optional().nullable(),
+  fraudHookEnabled: z.boolean().optional(),
+  metadata: z.record(z.any()).optional().nullable(),
   enabled: z.boolean().optional(),
 });
 
@@ -285,3 +319,5 @@ export type InsertBanner = z.infer<typeof insertBannerSchema>;
 export type Coupon = typeof coupons.$inferSelect;
 export type CouponRedemption = typeof couponRedemptions.$inferSelect;
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
+export type CouponType = (typeof couponTypeValues)[number];
+export type CouponContext = (typeof couponContextValues)[number];

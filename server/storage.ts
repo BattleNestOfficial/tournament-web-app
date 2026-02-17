@@ -5,7 +5,7 @@ import {
   payments, adminLogs, notifications, banners, coupons, couponRedemptions,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
-  type Payment, type AdminLog, type Notification, type Banner, type Coupon,
+  type Payment, type AdminLog, type Notification, type Banner, type Coupon, type CouponType,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -37,7 +37,7 @@ export interface IStorage {
   incrementSlots(id: number): Promise<void>;
 
   createRegistration(userId: number, tournamentId: number, inGameName?: string, teamId?: number): Promise<Registration>;
-  joinTournament(data: { userId: number; tournamentId: number; inGameName?: string; teamId?: number | null }): Promise<{ user: User; tournament: Tournament }>;
+  joinTournament(data: { userId: number; tournamentId: number; inGameName?: string; teamId?: number | null; couponCode?: string }): Promise<{ user: User; tournament: Tournament }>;
   getRegistrationsByUser(userId: number): Promise<Registration[]>;
   getRegistration(userId: number, tournamentId: number): Promise<Registration | undefined>;
   getRegistrationsByTournament(tournamentId: number): Promise<Registration[]>;
@@ -101,9 +101,44 @@ export interface IStorage {
   getBannerCount(): Promise<number>;
 
   getAllCoupons(): Promise<Coupon[]>;
-  createCoupon(data: { code: string; amount: number; enabled?: boolean }): Promise<Coupon>;
+  createCoupon(data: {
+    code: string;
+    couponType?: CouponType;
+    value?: number;
+    amount?: number;
+    enabled?: boolean;
+    globalUsageLimit?: number | null;
+    perUserLimit?: number | null;
+    expiresAt?: Date | null;
+    minEntryFee?: number | null;
+    tournamentId?: number | null;
+    fraudHookEnabled?: boolean;
+    metadata?: Record<string, unknown> | null;
+    createdBy?: number | null;
+  }): Promise<Coupon>;
   deleteCoupon(id: number): Promise<void>;
-  redeemCoupon(userId: number, code: string): Promise<{ user: User; coupon: Coupon; amount: number }>;
+  redeemCoupon(
+    userId: number,
+    code: string,
+    options?: {
+      context?: "wallet" | "tournament_join";
+      tournamentId?: number;
+      entryFee?: number;
+      fraudContext?: Record<string, unknown> | null;
+    },
+  ): Promise<{ user: User; coupon: Coupon; amount: number; discountAmount: number; bonusAmount: number }>;
+  getCouponAnalytics(): Promise<
+    Array<{
+      couponId: number;
+      code: string;
+      couponType: string;
+      totalUsage: number;
+      uniqueUsers: number;
+      totalDiscountAmount: number;
+      totalBonusAmount: number;
+      lastRedeemedAt: Date | null;
+    }>
+  >;
 
   seedData(): Promise<void>;
 }
@@ -111,6 +146,91 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   private getSafeBalance(value: number | null | undefined): number {
     return Number(value || 0);
+  }
+
+  private normalizeCouponType(value: unknown): CouponType {
+    const raw = String(value || "").toLowerCase().trim();
+    const allowed: CouponType[] = [
+      "flat_discount",
+      "percentage_discount",
+      "free_entry",
+      "bonus_credit",
+      "referral_coupon",
+      "login_reward_7day",
+      "tournament_specific",
+    ];
+    return allowed.includes(raw as CouponType) ? (raw as CouponType) : "bonus_credit";
+  }
+
+  private isWalletCouponType(type: CouponType): boolean {
+    return type === "bonus_credit" || type === "referral_coupon" || type === "login_reward_7day";
+  }
+
+  private isTournamentCouponType(type: CouponType): boolean {
+    return type === "flat_discount" || type === "percentage_discount" || type === "free_entry" || type === "tournament_specific";
+  }
+
+  private computeTournamentCouponDiscount(coupon: Coupon, entryFee: number): number {
+    if (!Number.isFinite(entryFee) || entryFee <= 0) return 0;
+    const type = this.normalizeCouponType(coupon.couponType);
+    const value = Math.max(0, Math.round(Number(coupon.value ?? coupon.amount ?? 0)));
+    if (type === "free_entry") {
+      return entryFee;
+    }
+    if (type === "percentage_discount") {
+      const pct = Math.max(0, Math.min(100, value));
+      return Math.min(entryFee, Math.floor((entryFee * pct) / 100));
+    }
+    if (type === "flat_discount" || type === "tournament_specific") {
+      if (value <= 0) return type === "tournament_specific" ? entryFee : 0;
+      return Math.min(entryFee, value);
+    }
+    return 0;
+  }
+
+  private async runCouponFraudHook(payload: {
+    couponCode: string;
+    couponType: string;
+    context: "wallet" | "tournament_join";
+    userId: number;
+    tournamentId?: number | null;
+    entryFee?: number;
+    amount?: number;
+    metadata?: Record<string, unknown> | null;
+    enabled: boolean;
+  }) {
+    if (!payload.enabled) {
+      return { allowed: true as const };
+    }
+    const hookUrl = process.env.COUPON_FRAUD_HOOK_URL;
+    if (!hookUrl) {
+      return { allowed: true as const };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      const response = await fetch(hookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return { allowed: true as const };
+      }
+
+      const data = (await response.json()) as { allow?: boolean; reason?: string };
+      if (data?.allow === false) {
+        return { allowed: false as const, reason: data.reason || "Coupon blocked by fraud policy" };
+      }
+      return { allowed: true as const };
+    } catch {
+      return { allowed: true as const };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private buildLedgerHash(data: {
@@ -346,7 +466,7 @@ export class DatabaseStorage implements IStorage {
     return reg;
   }
 
-  async joinTournament(data: { userId: number; tournamentId: number; inGameName?: string; teamId?: number | null }): Promise<{ user: User; tournament: Tournament }> {
+  async joinTournament(data: { userId: number; tournamentId: number; inGameName?: string; teamId?: number | null; couponCode?: string }): Promise<{ user: User; tournament: Tournament }> {
     return db.transaction(async (tx) => {
       const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, data.tournamentId));
       if (!tournament) {
@@ -398,17 +518,97 @@ export class DatabaseStorage implements IStorage {
       };
       let walletAfter = walletBefore;
       let walletTypeUsed: "main" | "bonus" | "mixed" = "main";
+      const normalizedCouponCode = typeof data.couponCode === "string" ? data.couponCode.trim().toUpperCase() : "";
+      let coupon: Coupon | null = null;
+      let couponDiscountAmount = 0;
+      let payableEntryFee = Math.max(0, Number(tournament.entryFee || 0));
 
-      if (tournament.entryFee > 0) {
+      if (normalizedCouponCode) {
+        const [couponRow] = await tx
+          .select()
+          .from(coupons)
+          .where(and(eq(coupons.code, normalizedCouponCode), eq(coupons.enabled, true)));
+        if (!couponRow) {
+          const err = new Error("Invalid or inactive coupon code") as Error & { code?: string };
+          err.code = "INVALID_COUPON";
+          throw err;
+        }
+
+        const couponType = this.normalizeCouponType(couponRow.couponType);
+        if (!this.isTournamentCouponType(couponType)) {
+          const err = new Error("Coupon is not valid for tournament entry") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        if (couponRow.expiresAt && couponRow.expiresAt.getTime() <= Date.now()) {
+          const err = new Error("Coupon has expired") as Error & { code?: string };
+          err.code = "COUPON_EXPIRED";
+          throw err;
+        }
+        if (couponRow.tournamentId && Number(couponRow.tournamentId) !== Number(data.tournamentId)) {
+          const err = new Error("Coupon is not valid for this tournament") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        if (couponRow.globalUsageLimit != null && couponRow.totalUsageCount >= couponRow.globalUsageLimit) {
+          const err = new Error("Coupon usage limit reached") as Error & { code?: string };
+          err.code = "COUPON_LIMIT_REACHED";
+          throw err;
+        }
+        const perUserLimit = Math.max(1, Number(couponRow.perUserLimit || 1));
+        const perUserRedemptions = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(couponRedemptions)
+          .where(and(eq(couponRedemptions.couponId, couponRow.id), eq(couponRedemptions.userId, data.userId)));
+        const usedCount = Number(perUserRedemptions?.[0]?.count || 0);
+        if (usedCount >= perUserLimit) {
+          const err = new Error("You have reached the per-user coupon usage limit") as Error & { code?: string };
+          err.code = "COUPON_USER_LIMIT_REACHED";
+          throw err;
+        }
+        if (couponRow.minEntryFee != null && payableEntryFee < couponRow.minEntryFee) {
+          const err = new Error("Coupon min entry condition not met") as Error & { code?: string };
+          err.code = "COUPON_MIN_ENTRY_NOT_MET";
+          throw err;
+        }
+
+        const fraudDecision = await this.runCouponFraudHook({
+          couponCode: couponRow.code,
+          couponType,
+          context: "tournament_join",
+          userId: data.userId,
+          tournamentId: data.tournamentId,
+          entryFee: payableEntryFee,
+          amount: Number(couponRow.value ?? couponRow.amount ?? 0),
+          metadata: (couponRow.metadata as Record<string, unknown> | null) || null,
+          enabled: !!couponRow.fraudHookEnabled,
+        });
+        if (!fraudDecision.allowed) {
+          const err = new Error(fraudDecision.reason || "Coupon blocked by fraud policy") as Error & { code?: string };
+          err.code = "COUPON_FRAUD_BLOCKED";
+          throw err;
+        }
+
+        couponDiscountAmount = this.computeTournamentCouponDiscount(couponRow, payableEntryFee);
+        payableEntryFee = Math.max(0, payableEntryFee - couponDiscountAmount);
+        if (couponDiscountAmount <= 0) {
+          const err = new Error("Coupon is not applicable for this entry fee") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        coupon = couponRow;
+      }
+
+      if (payableEntryFee > 0) {
         const totalAvailable = walletBefore.main + walletBefore.bonus;
-        if (totalAvailable < tournament.entryFee) {
+        if (totalAvailable < payableEntryFee) {
           const err = new Error("Insufficient wallet balance") as Error & { code?: string };
           err.code = "INSUFFICIENT_BALANCE";
           throw err;
         }
 
-        const bonusDeduction = Math.min(walletBefore.bonus, tournament.entryFee);
-        const mainDeduction = tournament.entryFee - bonusDeduction;
+        const bonusDeduction = Math.min(walletBefore.bonus, payableEntryFee);
+        const mainDeduction = payableEntryFee - bonusDeduction;
 
         walletTypeUsed = bonusDeduction > 0 && mainDeduction > 0 ? "mixed" : bonusDeduction > 0 ? "bonus" : "main";
 
@@ -417,14 +617,14 @@ export class DatabaseStorage implements IStorage {
           .set({
             mainWalletBalance: sql`${users.mainWalletBalance} - ${mainDeduction}`,
             bonusWalletBalance: sql`${users.bonusWalletBalance} - ${bonusDeduction}`,
-            walletBalance: sql`${users.walletBalance} - ${tournament.entryFee}`,
+            walletBalance: sql`${users.walletBalance} - ${payableEntryFee}`,
           })
           .where(
             and(
               eq(users.id, data.userId),
               sql`${users.mainWalletBalance} >= ${mainDeduction}`,
               sql`${users.bonusWalletBalance} >= ${bonusDeduction}`,
-              sql`${users.walletBalance} >= ${tournament.entryFee}`,
+              sql`${users.walletBalance} >= ${payableEntryFee}`,
             ),
           )
           .returning();
@@ -485,10 +685,10 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
 
-      if (tournament.entryFee > 0) {
+      if (payableEntryFee > 0) {
         await this.createTransactionInTx(tx, {
           userId: data.userId,
-          amount: tournament.entryFee,
+          amount: payableEntryFee,
           type: "entry_fee",
           description: `Entry fee for ${tournament.title}`,
           tournamentId: data.tournamentId,
@@ -500,6 +700,48 @@ export class DatabaseStorage implements IStorage {
           metadata: {
             source: "tournament_join",
             matchType: tournament.matchType,
+            originalEntryFee: tournament.entryFee,
+            discountAmount: couponDiscountAmount,
+            couponCode: coupon?.code || null,
+            couponType: coupon?.couponType || null,
+          },
+        });
+      }
+
+      if (coupon) {
+        const updatedCouponRows = await tx
+          .update(coupons)
+          .set({
+            totalUsageCount: sql`${coupons.totalUsageCount} + 1`,
+          })
+          .where(
+            and(
+              eq(coupons.id, coupon.id),
+              coupon.globalUsageLimit == null
+                ? sql`true`
+                : sql`${coupons.totalUsageCount} < ${coupon.globalUsageLimit}`,
+            ),
+          )
+          .returning();
+
+        if (updatedCouponRows.length === 0) {
+          const err = new Error("Coupon usage limit reached") as Error & { code?: string };
+          err.code = "COUPON_LIMIT_REACHED";
+          throw err;
+        }
+
+        await tx.insert(couponRedemptions).values({
+          couponId: coupon.id,
+          userId: data.userId,
+          context: "tournament_join",
+          tournamentId: data.tournamentId,
+          couponType: coupon.couponType,
+          discountAmount: couponDiscountAmount,
+          bonusAmount: 0,
+          metadata: {
+            code: coupon.code,
+            originalEntryFee: tournament.entryFee,
+            payableEntryFee,
           },
         });
       }
@@ -508,7 +750,9 @@ export class DatabaseStorage implements IStorage {
         userId: data.userId,
         type: "tournament_joined",
         title: "Tournament Joined",
-        message: `You have joined "${tournament.title}" successfully.`,
+        message: coupon
+          ? `You have joined "${tournament.title}" successfully. Coupon ${coupon.code} saved Rs.${(couponDiscountAmount / 100).toFixed(2)}.`
+          : `You have joined "${tournament.title}" successfully.`,
       });
 
       let finalTournament = updatedTournament;
@@ -955,11 +1199,39 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(coupons).orderBy(desc(coupons.createdAt));
   }
 
-  async createCoupon(data: { code: string; amount: number; enabled?: boolean }): Promise<Coupon> {
+  async createCoupon(data: {
+    code: string;
+    couponType?: CouponType;
+    value?: number;
+    amount?: number;
+    enabled?: boolean;
+    globalUsageLimit?: number | null;
+    perUserLimit?: number | null;
+    expiresAt?: Date | null;
+    minEntryFee?: number | null;
+    tournamentId?: number | null;
+    fraudHookEnabled?: boolean;
+    metadata?: Record<string, unknown> | null;
+    createdBy?: number | null;
+  }): Promise<Coupon> {
     const normalizedCode = data.code.trim().toUpperCase();
+    const couponType = this.normalizeCouponType(data.couponType);
+    const normalizedValue = Math.max(0, Math.round(Number(data.value ?? data.amount ?? 0)));
     const [coupon] = await db.insert(coupons).values({
       code: normalizedCode,
-      amount: data.amount,
+      amount: normalizedValue,
+      couponType,
+      value: normalizedValue,
+      globalUsageLimit:
+        data.globalUsageLimit == null ? null : Math.max(1, Math.round(Number(data.globalUsageLimit))),
+      perUserLimit:
+        data.perUserLimit == null ? 1 : Math.max(1, Math.round(Number(data.perUserLimit))),
+      expiresAt: data.expiresAt ?? null,
+      minEntryFee: data.minEntryFee == null ? null : Math.max(0, Math.round(Number(data.minEntryFee))),
+      tournamentId: data.tournamentId == null ? null : Math.round(Number(data.tournamentId)),
+      fraudHookEnabled: !!data.fraudHookEnabled,
+      metadata: data.metadata || null,
+      createdBy: data.createdBy ?? null,
       enabled: data.enabled ?? true,
     }).returning();
     return coupon;
@@ -969,8 +1241,18 @@ export class DatabaseStorage implements IStorage {
     await db.delete(coupons).where(eq(coupons.id, id));
   }
 
-  async redeemCoupon(userId: number, code: string): Promise<{ user: User; coupon: Coupon; amount: number }> {
+  async redeemCoupon(
+    userId: number,
+    code: string,
+    options?: {
+      context?: "wallet" | "tournament_join";
+      tournamentId?: number;
+      entryFee?: number;
+      fraudContext?: Record<string, unknown> | null;
+    },
+  ): Promise<{ user: User; coupon: Coupon; amount: number; discountAmount: number; bonusAmount: number }> {
     const normalizedCode = code.trim().toUpperCase();
+    const context = options?.context === "tournament_join" ? "tournament_join" : "wallet";
     if (!normalizedCode) {
       const err = new Error("Coupon code is required") as Error & { code?: string };
       err.code = "INVALID_COUPON";
@@ -984,14 +1266,29 @@ export class DatabaseStorage implements IStorage {
         err.code = "INVALID_COUPON";
         throw err;
       }
+      const couponType = this.normalizeCouponType(coupon.couponType);
+      const couponValue = Math.max(0, Math.round(Number(coupon.value ?? coupon.amount ?? 0)));
+      if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now()) {
+        const err = new Error("Coupon has expired") as Error & { code?: string };
+        err.code = "COUPON_EXPIRED";
+        throw err;
+      }
 
-      const [alreadyRedeemed] = await tx
-        .select()
+      if (coupon.globalUsageLimit != null && coupon.totalUsageCount >= coupon.globalUsageLimit) {
+        const err = new Error("Coupon usage limit reached") as Error & { code?: string };
+        err.code = "COUPON_LIMIT_REACHED";
+        throw err;
+      }
+
+      const perUserLimit = Math.max(1, Number(coupon.perUserLimit || 1));
+      const perUserRedemptions = await tx
+        .select({ count: sql<number>`count(*)::int` })
         .from(couponRedemptions)
         .where(and(eq(couponRedemptions.couponId, coupon.id), eq(couponRedemptions.userId, userId)));
-      if (alreadyRedeemed) {
-        const err = new Error("Coupon already redeemed") as Error & { code?: string };
-        err.code = "COUPON_ALREADY_REDEEMED";
+      const usedCount = Number(perUserRedemptions?.[0]?.count || 0);
+      if (usedCount >= perUserLimit) {
+        const err = new Error("Coupon usage limit reached for this user") as Error & { code?: string };
+        err.code = "COUPON_USER_LIMIT_REACHED";
         throw err;
       }
 
@@ -1003,47 +1300,222 @@ export class DatabaseStorage implements IStorage {
         throw err;
       }
 
-      const [updatedUser] = await tx
-        .update(users)
+      const fraudDecision = await this.runCouponFraudHook({
+        couponCode: coupon.code,
+        couponType,
+        context,
+        userId,
+        tournamentId: options?.tournamentId ?? coupon.tournamentId ?? null,
+        entryFee: options?.entryFee,
+        amount: couponValue,
+        metadata: (options?.fraudContext || (coupon.metadata as Record<string, unknown> | null)) ?? null,
+        enabled: !!coupon.fraudHookEnabled,
+      });
+      if (!fraudDecision.allowed) {
+        const err = new Error(fraudDecision.reason || "Coupon blocked by fraud policy") as Error & { code?: string };
+        err.code = "COUPON_FRAUD_BLOCKED";
+        throw err;
+      }
+
+      if (coupon.tournamentId != null && options?.tournamentId != null && Number(coupon.tournamentId) !== Number(options.tournamentId)) {
+        const err = new Error("Coupon is not valid for this tournament") as Error & { code?: string };
+        err.code = "COUPON_NOT_APPLICABLE";
+        throw err;
+      }
+
+      let bonusAmount = 0;
+      let discountAmount = 0;
+      let updatedUser = userBefore;
+
+      if (context === "wallet") {
+        if (!this.isWalletCouponType(couponType)) {
+          const err = new Error("Coupon is not valid for wallet redemption") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        if (couponType === "login_reward_7day") {
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          if (!userBefore.createdAt || Date.now() - new Date(userBefore.createdAt).getTime() < sevenDaysMs) {
+            const err = new Error("7-day account age is required for this reward coupon") as Error & { code?: string };
+            err.code = "COUPON_CONDITION_FAILED";
+            throw err;
+          }
+        }
+        bonusAmount = couponValue;
+        if (bonusAmount <= 0) {
+          const err = new Error("Coupon has no redeemable bonus amount") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        const [walletCredited] = await tx
+          .update(users)
+          .set({
+            bonusWalletBalance: sql`${users.bonusWalletBalance} + ${bonusAmount}`,
+            walletBalance: sql`${users.walletBalance} + ${bonusAmount}`,
+          })
+          .where(eq(users.id, userId))
+          .returning();
+        if (!walletCredited) {
+          const err = new Error("User not found") as Error & { code?: string };
+          err.code = "USER_NOT_FOUND";
+          throw err;
+        }
+        updatedUser = walletCredited;
+      } else {
+        if (!this.isTournamentCouponType(couponType)) {
+          const err = new Error("Coupon is not valid for tournament entry") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+        const entryFee = Math.max(0, Math.round(Number(options?.entryFee || 0)));
+        if (coupon.minEntryFee != null && entryFee < coupon.minEntryFee) {
+          const err = new Error("Coupon min entry condition not met") as Error & { code?: string };
+          err.code = "COUPON_MIN_ENTRY_NOT_MET";
+          throw err;
+        }
+        discountAmount = this.computeTournamentCouponDiscount(coupon, entryFee);
+        if (discountAmount <= 0) {
+          const err = new Error("Coupon is not applicable for this entry fee") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
+          throw err;
+        }
+      }
+
+      const updatedCouponRows = await tx
+        .update(coupons)
         .set({
-          bonusWalletBalance: sql`${users.bonusWalletBalance} + ${coupon.amount}`,
-          walletBalance: sql`${users.walletBalance} + ${coupon.amount}`,
+          totalUsageCount: sql`${coupons.totalUsageCount} + 1`,
         })
-        .where(eq(users.id, userId))
+        .where(
+          and(
+            eq(coupons.id, coupon.id),
+            coupon.globalUsageLimit == null
+              ? sql`true`
+              : sql`${coupons.totalUsageCount} < ${coupon.globalUsageLimit}`,
+          ),
+        )
         .returning();
-      if (!updatedUser) {
-        const err = new Error("User not found") as Error & { code?: string };
-        err.code = "USER_NOT_FOUND";
+      if (updatedCouponRows.length === 0) {
+        const err = new Error("Coupon usage limit reached") as Error & { code?: string };
+        err.code = "COUPON_LIMIT_REACHED";
         throw err;
       }
 
       await tx.insert(couponRedemptions).values({
         couponId: coupon.id,
         userId,
+        context,
+        tournamentId: options?.tournamentId ?? null,
+        couponType,
+        discountAmount,
+        bonusAmount,
+        metadata: {
+          code: coupon.code,
+          context,
+          entryFee: options?.entryFee ?? null,
+        },
       });
 
-      await this.createTransactionInTx(tx, {
-        userId,
-        amount: coupon.amount,
-        type: "deposit",
-        walletType: "bonus",
-        mainBalanceBefore: this.getSafeBalance(userBefore.mainWalletBalance),
-        mainBalanceAfter: this.getSafeBalance(updatedUser.mainWalletBalance),
-        bonusBalanceBefore: this.getSafeBalance(userBefore.bonusWalletBalance),
-        bonusBalanceAfter: this.getSafeBalance(updatedUser.bonusWalletBalance),
-        description: `Coupon redeemed (${coupon.code})`,
-        metadata: { source: "coupon", code: coupon.code },
-      });
+      if (bonusAmount > 0) {
+        await this.createTransactionInTx(tx, {
+          userId,
+          amount: bonusAmount,
+          type: "deposit",
+          walletType: "bonus",
+          mainBalanceBefore: this.getSafeBalance(userBefore.mainWalletBalance),
+          mainBalanceAfter: this.getSafeBalance(updatedUser.mainWalletBalance),
+          bonusBalanceBefore: this.getSafeBalance(userBefore.bonusWalletBalance),
+          bonusBalanceAfter: this.getSafeBalance(updatedUser.bonusWalletBalance),
+          description: `Coupon redeemed (${coupon.code})`,
+          metadata: { source: "coupon", code: coupon.code, couponType },
+        });
 
-      await tx.insert(notifications).values({
-        userId,
-        type: "wallet_credit",
-        title: "Coupon Redeemed",
-        message: `Coupon ${coupon.code} credited Rs.${(coupon.amount / 100).toFixed(2)} to your wallet.`,
-      });
+        await tx.insert(notifications).values({
+          userId,
+          type: "wallet_credit",
+          title: "Coupon Redeemed",
+          message: `Coupon ${coupon.code} credited Rs.${(bonusAmount / 100).toFixed(2)} to your wallet.`,
+        });
+      }
 
-      return { user: updatedUser, coupon, amount: coupon.amount };
+      return {
+        user: updatedUser,
+        coupon,
+        amount: bonusAmount > 0 ? bonusAmount : discountAmount,
+        discountAmount,
+        bonusAmount,
+      };
     });
+  }
+
+  async getCouponAnalytics(): Promise<
+    Array<{
+      couponId: number;
+      code: string;
+      couponType: string;
+      totalUsage: number;
+      uniqueUsers: number;
+      totalDiscountAmount: number;
+      totalBonusAmount: number;
+      lastRedeemedAt: Date | null;
+    }>
+  > {
+    const [allCoupons, redemptions] = await Promise.all([
+      this.getAllCoupons(),
+      db.select().from(couponRedemptions),
+    ]);
+
+    const byCoupon = new Map<number, {
+      couponId: number;
+      code: string;
+      couponType: string;
+      totalUsage: number;
+      uniqueUserSet: Set<number>;
+      totalDiscountAmount: number;
+      totalBonusAmount: number;
+      lastRedeemedAt: Date | null;
+    }>();
+
+    for (const coupon of allCoupons) {
+      byCoupon.set(coupon.id, {
+        couponId: coupon.id,
+        code: coupon.code,
+        couponType: String(coupon.couponType || "bonus_credit"),
+        totalUsage: 0,
+        uniqueUserSet: new Set<number>(),
+        totalDiscountAmount: 0,
+        totalBonusAmount: 0,
+        lastRedeemedAt: null,
+      });
+    }
+
+    for (const row of redemptions) {
+      const item = byCoupon.get(Number(row.couponId));
+      if (!item) continue;
+      item.totalUsage += 1;
+      item.uniqueUserSet.add(Number(row.userId));
+      item.totalDiscountAmount += Number(row.discountAmount || 0);
+      item.totalBonusAmount += Number(row.bonusAmount || 0);
+      if (!item.lastRedeemedAt || new Date(row.createdAt).getTime() > item.lastRedeemedAt.getTime()) {
+        item.lastRedeemedAt = row.createdAt;
+      }
+    }
+
+    return Array.from(byCoupon.values())
+      .map((item) => ({
+        couponId: item.couponId,
+        code: item.code,
+        couponType: item.couponType,
+        totalUsage: item.totalUsage,
+        uniqueUsers: item.uniqueUserSet.size,
+        totalDiscountAmount: item.totalDiscountAmount,
+        totalBonusAmount: item.totalBonusAmount,
+        lastRedeemedAt: item.lastRedeemedAt,
+      }))
+      .sort((a, b) => {
+        if (b.totalUsage !== a.totalUsage) return b.totalUsage - a.totalUsage;
+        return a.code.localeCompare(b.code);
+      });
   }
 }
 

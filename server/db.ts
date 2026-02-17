@@ -85,10 +85,47 @@ export async function ensureCouponsTables() {
     CREATE TABLE IF NOT EXISTS coupons (
       id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       code varchar(64) NOT NULL UNIQUE,
-      amount integer NOT NULL,
+      amount integer NOT NULL DEFAULT 0,
+      coupon_type text NOT NULL DEFAULT 'bonus_credit',
+      value integer NOT NULL DEFAULT 0,
+      global_usage_limit integer,
+      per_user_limit integer NOT NULL DEFAULT 1,
+      total_usage_count integer NOT NULL DEFAULT 0,
+      expires_at timestamp,
+      min_entry_fee integer,
+      tournament_id integer,
+      fraud_hook_enabled boolean NOT NULL DEFAULT false,
+      metadata jsonb,
+      created_by integer,
       enabled boolean NOT NULL DEFAULT true,
       created_at timestamp NOT NULL DEFAULT now()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE coupons
+    ADD COLUMN IF NOT EXISTS amount integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS coupon_type text NOT NULL DEFAULT 'bonus_credit',
+    ADD COLUMN IF NOT EXISTS value integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS global_usage_limit integer,
+    ADD COLUMN IF NOT EXISTS per_user_limit integer NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS total_usage_count integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS expires_at timestamp,
+    ADD COLUMN IF NOT EXISTS min_entry_fee integer,
+    ADD COLUMN IF NOT EXISTS tournament_id integer,
+    ADD COLUMN IF NOT EXISTS fraud_hook_enabled boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS metadata jsonb,
+    ADD COLUMN IF NOT EXISTS created_by integer;
+  `);
+
+  await pool.query(`
+    UPDATE coupons
+    SET value = COALESCE(NULLIF(value, 0), amount, 0),
+        amount = COALESCE(amount, 0),
+        coupon_type = COALESCE(NULLIF(coupon_type, ''), 'bonus_credit'),
+        per_user_limit = CASE WHEN per_user_limit IS NULL OR per_user_limit <= 0 THEN 1 ELSE per_user_limit END,
+        total_usage_count = COALESCE(total_usage_count, 0),
+        fraud_hook_enabled = COALESCE(fraud_hook_enabled, false);
   `);
 
   await pool.query(`
@@ -96,9 +133,33 @@ export async function ensureCouponsTables() {
       id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       coupon_id integer NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
       user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at timestamp NOT NULL DEFAULT now(),
-      CONSTRAINT coupon_redemptions_coupon_user_uq UNIQUE (coupon_id, user_id)
+      context text NOT NULL DEFAULT 'wallet',
+      tournament_id integer,
+      coupon_type text,
+      discount_amount integer NOT NULL DEFAULT 0,
+      bonus_amount integer NOT NULL DEFAULT 0,
+      metadata jsonb,
+      created_at timestamp NOT NULL DEFAULT now()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS context text NOT NULL DEFAULT 'wallet',
+    ADD COLUMN IF NOT EXISTS tournament_id integer,
+    ADD COLUMN IF NOT EXISTS coupon_type text,
+    ADD COLUMN IF NOT EXISTS discount_amount integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS bonus_amount integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS metadata jsonb;
+  `);
+
+  await pool.query(`
+    DROP INDEX IF EXISTS coupon_redemptions_coupon_user_uq;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS coupon_redemptions_coupon_user_idx
+    ON coupon_redemptions (coupon_id, user_id);
   `);
 }
 

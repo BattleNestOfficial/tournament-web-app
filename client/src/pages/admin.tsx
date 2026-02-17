@@ -22,7 +22,7 @@ import {
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
   TicketPercent,
 } from "lucide-react";
-import type { Game, Tournament, User, Withdrawal, Banner, Coupon } from "@shared/schema";
+import { couponTypeValues, type Game, type Tournament, type User, type Withdrawal, type Banner, type Coupon } from "@shared/schema";
 
 export default function AdminPage() {
   const { user, token } = useAuth();
@@ -1018,21 +1018,64 @@ function BannerManager({ token }: { token: string | null }) {
 
 function CouponManager({ token }: { token: string | null }) {
   const { toast } = useToast();
-  const [couponCode, setCouponCode] = useState("");
-  const [couponAmount, setCouponAmount] = useState("");
+  const [form, setForm] = useState({
+    code: "",
+    couponType: "bonus_credit" as (typeof couponTypeValues)[number],
+    value: "",
+    enabled: true,
+    globalUsageLimit: "",
+    perUserLimit: "1",
+    expiresAt: "",
+    minEntryFee: "",
+    tournamentId: "",
+    fraudHookEnabled: false,
+  });
 
   const { data: coupons, isLoading } = useQuery<Coupon[]>({
     queryKey: ["/api/admin/coupons"],
     enabled: !!token,
   });
 
+  const { data: tournaments = [] } = useQuery<Tournament[]>({
+    queryKey: ["/api/tournaments"],
+    enabled: !!token,
+  });
+
+  const { data: analytics = [] } = useQuery<Array<{
+    couponId: number;
+    totalUsage: number;
+    uniqueUsers: number;
+    totalDiscountAmount: number;
+    totalBonusAmount: number;
+    lastRedeemedAt: string | Date | null;
+  }>>({
+    queryKey: ["/api/admin/coupons/analytics"],
+    enabled: !!token,
+  });
+
+  const analyticsByCouponId = new Map(analytics.map((row) => [Number(row.couponId), row]));
+  const tournamentCouponTypes = new Set(["flat_discount", "percentage_discount", "free_entry", "tournament_specific"]);
+  const requiresTournament = form.couponType === "tournament_specific";
+  const valueOptional = form.couponType === "free_entry" || form.couponType === "tournament_specific";
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      const amount = Number(couponAmount);
+      const value = form.value === "" ? 0 : Number(form.value);
       const res = await fetch("/api/admin/coupons", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode.trim().toUpperCase(), amount }),
+        body: JSON.stringify({
+          code: form.code.trim().toUpperCase(),
+          couponType: form.couponType,
+          value,
+          enabled: form.enabled,
+          globalUsageLimit: form.globalUsageLimit ? Number(form.globalUsageLimit) : null,
+          perUserLimit: form.perUserLimit ? Number(form.perUserLimit) : null,
+          expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+          minEntryFee: tournamentCouponTypes.has(form.couponType) && form.minEntryFee ? Number(form.minEntryFee) : null,
+          tournamentId: requiresTournament && form.tournamentId ? Number(form.tournamentId) : null,
+          fraudHookEnabled: form.fraudHookEnabled,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -1040,9 +1083,20 @@ function CouponManager({ token }: { token: string | null }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons/analytics"] });
       toast({ title: "Coupon created" });
-      setCouponCode("");
-      setCouponAmount("");
+      setForm({
+        code: "",
+        couponType: "bonus_credit",
+        value: "",
+        enabled: true,
+        globalUsageLimit: "",
+        perUserLimit: "1",
+        expiresAt: "",
+        minEntryFee: "",
+        tournamentId: "",
+        fraudHookEnabled: false,
+      });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -1059,48 +1113,157 @@ function CouponManager({ token }: { token: string | null }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/coupons/analytics"] });
       toast({ title: "Coupon deleted" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const couponTypeLabel: Record<(typeof couponTypeValues)[number], string> = {
+    flat_discount: "Flat Discount",
+    percentage_discount: "Percentage Discount",
+    free_entry: "Free Entry",
+    bonus_credit: "Bonus Credit",
+    referral_coupon: "Referral Coupon",
+    login_reward_7day: "7-Day Login Reward",
+    tournament_specific: "Tournament Specific",
+  };
+
+  function formatCouponValue(coupon: Coupon) {
+    const type = String(coupon.couponType || "bonus_credit");
+    const value = Number(coupon.value ?? coupon.amount ?? 0);
+    if (type === "free_entry") return "Free Entry";
+    if (type === "percentage_discount") return `${value}%`;
+    if (type === "tournament_specific" && value <= 0) return "Tournament Free Entry";
+    return `\u20B9${(value / 100).toFixed(0)}`;
+  }
+
+  const valueLabel = form.couponType === "percentage_discount" ? "Value (%)" : "Value (\u20B9)";
+  const canCreate =
+    !!form.code.trim() &&
+    (valueOptional || (!!form.value && Number(form.value) > 0)) &&
+    (!requiresTournament || !!form.tournamentId) &&
+    !createMutation.isPending;
+
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold">Coupon Codes</h3>
+        <h3 className="text-lg font-semibold">Coupon Engine</h3>
         <p className="text-sm text-muted-foreground">
-          Create promo coupon codes to credit wallet balance. Users can redeem each code once.
+          Create flat, percentage, free-entry, bonus, referral, 7-day reward, and tournament-specific coupons.
         </p>
       </div>
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <p className="text-sm font-medium">Add Coupon Code</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <p className="text-sm font-medium">Create Coupon</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label>Coupon Code</Label>
               <Input
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="e.g. BATTLE50"
+                value={form.code}
+                onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                placeholder="e.g. JOIN50"
                 data-testid="input-coupon-code-admin"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Amount (₹)</Label>
+              <Label>Coupon Type</Label>
+              <Select value={form.couponType} onValueChange={(value) => setForm((prev) => ({ ...prev, couponType: value as (typeof couponTypeValues)[number] }))}>
+                <SelectTrigger data-testid="select-coupon-type-admin">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {couponTypeValues.map((type) => (
+                    <SelectItem key={type} value={type}>{couponTypeLabel[type]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{valueLabel}</Label>
+              <Input
+                type="number"
+                min="0"
+                max={form.couponType === "percentage_discount" ? "100" : undefined}
+                value={form.value}
+                onChange={(e) => setForm((prev) => ({ ...prev, value: e.target.value }))}
+                placeholder={form.couponType === "percentage_discount" ? "e.g. 20" : "e.g. 50"}
+                data-testid="input-coupon-value-admin"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Global Usage Limit</Label>
               <Input
                 type="number"
                 min="1"
-                value={couponAmount}
-                onChange={(e) => setCouponAmount(e.target.value)}
-                placeholder="e.g. 50"
-                data-testid="input-coupon-amount-admin"
+                value={form.globalUsageLimit}
+                onChange={(e) => setForm((prev) => ({ ...prev, globalUsageLimit: e.target.value }))}
+                placeholder="Leave empty for unlimited"
+                data-testid="input-coupon-global-limit-admin"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Per-User Limit</Label>
+              <Input
+                type="number"
+                min="1"
+                value={form.perUserLimit}
+                onChange={(e) => setForm((prev) => ({ ...prev, perUserLimit: e.target.value }))}
+                data-testid="input-coupon-user-limit-admin"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Expiry</Label>
+              <Input
+                type="datetime-local"
+                value={form.expiresAt}
+                onChange={(e) => setForm((prev) => ({ ...prev, expiresAt: e.target.value }))}
+                data-testid="input-coupon-expiry-admin"
+              />
+            </div>
+            {tournamentCouponTypes.has(form.couponType) && (
+              <div className="space-y-1.5">
+                <Label>Min Entry Fee (\u20B9)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.minEntryFee}
+                  onChange={(e) => setForm((prev) => ({ ...prev, minEntryFee: e.target.value }))}
+                  placeholder="Optional"
+                  data-testid="input-coupon-min-entry-admin"
+                />
+              </div>
+            )}
+            {requiresTournament && (
+              <div className="space-y-1.5">
+                <Label>Tournament</Label>
+                <Select value={form.tournamentId} onValueChange={(value) => setForm((prev) => ({ ...prev, tournamentId: value }))}>
+                  <SelectTrigger data-testid="select-coupon-tournament-admin">
+                    <SelectValue placeholder="Select tournament" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tournaments.map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-4 pt-1">
+            <div className="flex items-center gap-2">
+              <Switch checked={form.enabled} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, enabled: checked }))} />
+              <Label>Enabled</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.fraudHookEnabled} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, fraudHookEnabled: checked }))} />
+              <Label>Fraud Hook</Label>
             </div>
           </div>
           <Button
             onClick={() => createMutation.mutate()}
-            disabled={!couponCode.trim() || !couponAmount || Number(couponAmount) <= 0 || createMutation.isPending}
+            disabled={!canCreate}
             data-testid="button-create-coupon-admin"
           >
             {createMutation.isPending ? "Creating..." : "Create Coupon"}
@@ -1119,7 +1282,25 @@ function CouponManager({ token }: { token: string | null }) {
               <CardContent className="p-3 flex items-center justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-semibold tracking-wide">{coupon.code}</p>
-                  <p className="text-xs text-muted-foreground">Amount: ₹{(coupon.amount / 100).toFixed(0)}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="outline">
+                      {couponTypeLabel[(String(coupon.couponType || "bonus_credit") as (typeof couponTypeValues)[number])] || coupon.couponType}
+                    </Badge>
+                    <span className="text-muted-foreground">Value: {formatCouponValue(coupon)}</span>
+                    <span className="text-muted-foreground">Per-user: {coupon.perUserLimit || 1}</span>
+                    <span className="text-muted-foreground">Global: {coupon.globalUsageLimit ?? "Unlimited"}</span>
+                    <span className="text-muted-foreground">Used: {analyticsByCouponId.get(coupon.id)?.totalUsage ?? coupon.totalUsageCount ?? 0}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>Users: {analyticsByCouponId.get(coupon.id)?.uniqueUsers ?? 0}</span>
+                    {!!analyticsByCouponId.get(coupon.id)?.totalDiscountAmount && (
+                      <span>Discount: \u20B9{((analyticsByCouponId.get(coupon.id)?.totalDiscountAmount || 0) / 100).toFixed(0)}</span>
+                    )}
+                    {!!analyticsByCouponId.get(coupon.id)?.totalBonusAmount && (
+                      <span>Bonus: \u20B9{((analyticsByCouponId.get(coupon.id)?.totalBonusAmount || 0) / 100).toFixed(0)}</span>
+                    )}
+                    {coupon.expiresAt && <span>Expires: {new Date(coupon.expiresAt).toLocaleString()}</span>}
+                  </div>
                 </div>
                 <Button
                   size="icon"
@@ -1276,3 +1457,4 @@ function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; t
     </div>
   );
 }
+

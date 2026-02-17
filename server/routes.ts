@@ -7,7 +7,7 @@ import {
   authOptionalMiddleware,
   adminMiddleware,
 } from "./auth";
-import { loginSchema, signupSchema, type Tournament } from "@shared/schema";
+import { loginSchema, signupSchema, couponTypeValues, type Tournament } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
@@ -227,6 +227,11 @@ function getMetadataSource(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const sourceValue = (value as Record<string, unknown>).source;
   return typeof sourceValue === "string" ? sourceValue : "";
+}
+
+function normalizeCouponTypeForRoute(value: unknown) {
+  const raw = String(value || "").toLowerCase().trim();
+  return couponTypeValues.includes(raw as any) ? (raw as (typeof couponTypeValues)[number]) : null;
 }
 
 export async function registerRoutes(
@@ -1288,6 +1293,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
 
       const inGameName = typeof req.body?.inGameName === "string" ? req.body.inGameName.trim() : undefined;
+      const couponCode = typeof req.body?.couponCode === "string" ? req.body.couponCode.trim().toUpperCase() : "";
       let teamId: number | null = null;
 
       if (tournament.matchType !== "solo") {
@@ -1315,6 +1321,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         tournamentId,
         inGameName,
         teamId,
+        couponCode: couponCode || undefined,
       });
 
       if (getTournamentStatusValue(tournament.status) !== "live" && getTournamentStatusValue(joined.tournament.status) === "live") {
@@ -1332,6 +1339,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (err?.code === "USER_NOT_FOUND") return res.status(404).json({ message: err.message });
       if (err?.code === "USER_BANNED") return res.status(403).json({ message: err.message });
       if (err?.code === "INSUFFICIENT_BALANCE") return res.status(400).json({ message: err.message });
+      if (err?.code === "INVALID_COUPON") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_EXPIRED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_LIMIT_REACHED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_USER_LIMIT_REACHED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_NOT_APPLICABLE") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_MIN_ENTRY_NOT_MET") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_FRAUD_BLOCKED") return res.status(403).json({ message: err.message });
       res.status(500).json({ message: err.message });
     }
   });
@@ -1425,16 +1439,27 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Coupon code is required" });
       }
 
-      const redeemed = await storage.redeemCoupon(userId, code);
+      const redeemed = await storage.redeemCoupon(userId, code, { context: "wallet" });
+      const message =
+        redeemed.bonusAmount > 0
+          ? `Coupon redeemed. Rs.${(redeemed.bonusAmount / 100).toFixed(2)} credited to bonus wallet.`
+          : `Coupon applied successfully.`;
       res.json({
         user: sanitizeUser(redeemed.user),
         coupon: redeemed.coupon,
         amount: redeemed.amount,
-        message: `Coupon redeemed. Rs.${(redeemed.amount / 100).toFixed(2)} credited to bonus wallet.`,
+        discountAmount: redeemed.discountAmount,
+        bonusAmount: redeemed.bonusAmount,
+        message,
       });
     } catch (err: any) {
       if (err?.code === "INVALID_COUPON") return res.status(400).json({ message: err.message });
-      if (err?.code === "COUPON_ALREADY_REDEEMED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_EXPIRED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_LIMIT_REACHED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_USER_LIMIT_REACHED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_NOT_APPLICABLE") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_CONDITION_FAILED") return res.status(400).json({ message: err.message });
+      if (err?.code === "COUPON_FRAUD_BLOCKED") return res.status(403).json({ message: err.message });
       if (err?.code === "USER_NOT_FOUND") return res.status(404).json({ message: err.message });
       res.status(500).json({ message: err.message });
     }
@@ -2438,24 +2463,129 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
+  app.get("/api/admin/coupons/analytics", authMiddleware, adminMiddleware, async (_req, res) => {
+    try {
+      const analytics = await storage.getCouponAnalytics();
+      res.json(analytics);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/admin/coupons", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const rawCode = req.body?.code;
-      const amount = Number(req.body?.amount);
+      const rawType = normalizeCouponTypeForRoute(req.body?.couponType) || "bonus_credit";
+      const rawValue = Number(req.body?.value ?? req.body?.amount ?? 0);
+      const globalUsageLimitRaw = req.body?.globalUsageLimit;
+      const perUserLimitRaw = req.body?.perUserLimit;
       const enabled = req.body?.enabled !== false;
+      const fraudHookEnabled = req.body?.fraudHookEnabled === true;
+      const rawExpiresAt = req.body?.expiresAt;
+      const rawMinEntryFee = req.body?.minEntryFee;
+      const rawTournamentId = req.body?.tournamentId;
+      const rawMetadata = req.body?.metadata;
       const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
 
       if (!code || code.length < 3 || code.length > 64) {
         return res.status(400).json({ message: "Coupon code must be between 3 and 64 characters" });
       }
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ message: "Coupon amount must be greater than 0" });
+
+      let value = 0;
+      if (rawType === "percentage_discount") {
+        if (!Number.isFinite(rawValue) || rawValue <= 0 || rawValue > 100) {
+          return res.status(400).json({ message: "Percentage discount must be between 1 and 100" });
+        }
+        value = Math.round(rawValue);
+      } else if (rawType === "free_entry") {
+        value = 0;
+      } else {
+        if (!Number.isFinite(rawValue) || rawValue < 0) {
+          return res.status(400).json({ message: "Coupon value must be zero or greater" });
+        }
+        value = Math.round(rawValue * 100);
+        if (rawType !== "tournament_specific" && value <= 0) {
+          return res.status(400).json({ message: "Coupon value must be greater than 0" });
+        }
+      }
+
+      const globalUsageLimit =
+        globalUsageLimitRaw == null || globalUsageLimitRaw === ""
+          ? null
+          : Math.max(1, Math.round(Number(globalUsageLimitRaw)));
+      const perUserLimit =
+        perUserLimitRaw == null || perUserLimitRaw === ""
+          ? 1
+          : Math.max(1, Math.round(Number(perUserLimitRaw)));
+      if (globalUsageLimit != null && !Number.isFinite(globalUsageLimit)) {
+        return res.status(400).json({ message: "Invalid global usage limit" });
+      }
+      if (!Number.isFinite(perUserLimit) || perUserLimit <= 0) {
+        return res.status(400).json({ message: "Invalid per-user usage limit" });
+      }
+
+      const expiresAt =
+        rawExpiresAt == null || rawExpiresAt === ""
+          ? null
+          : new Date(rawExpiresAt);
+      if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+        return res.status(400).json({ message: "Invalid expiry date" });
+      }
+
+      const minEntryFee =
+        rawMinEntryFee == null || rawMinEntryFee === ""
+          ? null
+          : Math.max(0, Math.round(Number(rawMinEntryFee) * 100));
+      if (minEntryFee != null && !Number.isFinite(minEntryFee)) {
+        return res.status(400).json({ message: "Invalid min entry condition" });
+      }
+
+      const tournamentId =
+        rawTournamentId == null || rawTournamentId === ""
+          ? null
+          : Math.round(Number(rawTournamentId));
+      if (tournamentId != null && (!Number.isInteger(tournamentId) || tournamentId <= 0)) {
+        return res.status(400).json({ message: "Invalid tournament selection" });
+      }
+      if (rawType === "tournament_specific" && !tournamentId) {
+        return res.status(400).json({ message: "Tournament-specific coupons require a tournament" });
+      }
+      if (tournamentId) {
+        const tournament = await storage.getTournamentById(tournamentId);
+        if (!tournament) {
+          return res.status(404).json({ message: "Tournament not found for coupon" });
+        }
+      }
+
+      const metadata =
+        rawMetadata && typeof rawMetadata === "object"
+          ? (rawMetadata as Record<string, unknown>)
+          : null;
+
+      if (
+        rawType === "flat_discount" ||
+        rawType === "percentage_discount" ||
+        rawType === "free_entry" ||
+        rawType === "tournament_specific"
+      ) {
+        if (minEntryFee != null && minEntryFee < 0) {
+          return res.status(400).json({ message: "Min entry condition must be non-negative" });
+        }
       }
 
       const coupon = await storage.createCoupon({
         code,
-        amount: Math.round(amount * 100),
+        couponType: rawType,
+        value,
         enabled,
+        globalUsageLimit,
+        perUserLimit,
+        expiresAt,
+        minEntryFee,
+        tournamentId,
+        fraudHookEnabled,
+        metadata,
+        createdBy: (req as any).userId,
       });
 
       await storage.createAdminLog({
@@ -2463,6 +2593,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         action: "create_coupon",
         targetType: "coupon",
         targetId: coupon.id,
+        details: `type=${rawType}, value=${value}, perUserLimit=${perUserLimit}, globalUsageLimit=${globalUsageLimit ?? "none"}`,
       });
 
       res.json(coupon);
