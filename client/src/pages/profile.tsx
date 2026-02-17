@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, Gift, TrendingUp, Crosshair, Flame } from "lucide-react";
+import { queryClient } from "@/lib/queryClient";
+import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert, Crown, Gift, TrendingUp, Crosshair, Flame, UserCheck } from "lucide-react";
 import type { Registration, Tournament } from "@shared/schema";
 
 type LoyaltyRoadmapTier = {
@@ -42,6 +44,22 @@ type PlayerAnalytics = {
   };
 };
 
+type HostApplication = {
+  id: number;
+  userId: number;
+  fullName: string;
+  contactNumber: string;
+  platform: string;
+  channelName: string;
+  channelUrl?: string | null;
+  socialFollowers: number;
+  experience: string;
+  status: "pending" | "in_review" | "approved" | "rejected";
+  adminNote?: string | null;
+  reviewedAt?: string | Date | null;
+  createdAt: string | Date;
+};
+
 export default function ProfilePage() {
   const { user, token, updateUser } = useAuth();
   const [, setLocation] = useLocation();
@@ -58,6 +76,15 @@ export default function ProfilePage() {
   });
   const [emailOtp, setEmailOtp] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
+  const [hostForm, setHostForm] = useState({
+    fullName: "",
+    contactNumber: "",
+    platform: "",
+    channelName: "",
+    channelUrl: "",
+    socialFollowers: "",
+    experience: "",
+  });
 
   const { data: registrations } = useQuery<
     (Registration & { tournament?: Tournament })[]
@@ -80,6 +107,11 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(data?.message || "Failed to load player analytics");
       return data;
     },
+  });
+
+  const { data: hostApplication } = useQuery<HostApplication | null>({
+    queryKey: ["/api/host/application/my"],
+    enabled: !!user,
   });
 
   // 🔹 Helper: check if anything actually changed
@@ -287,6 +319,54 @@ export default function ProfilePage() {
     },
   });
 
+  const applyHostMutation = useMutation({
+    mutationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      const res = await fetch("/api/host/application", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: hostForm.fullName.trim(),
+          contactNumber: hostForm.contactNumber.trim(),
+          platform: hostForm.platform.trim(),
+          channelName: hostForm.channelName.trim(),
+          channelUrl: hostForm.channelUrl.trim() || null,
+          socialFollowers: Number(hostForm.socialFollowers || 0),
+          experience: hostForm.experience.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to submit host request");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/host/application/my"] });
+      toast({
+        title: "Application submitted",
+        description: "Your host/youtuber request is now under admin review.",
+      });
+      setHostForm({
+        fullName: "",
+        contactNumber: "",
+        platform: "",
+        channelName: "",
+        channelUrl: "",
+        socialFollowers: "",
+        experience: "",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Submission failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   useEffect(() => {
     if (!user) setLocation("/auth");
   }, [user, setLocation]);
@@ -297,6 +377,14 @@ export default function ProfilePage() {
       phone: user?.phone || "",
     });
   }, [user?.email, user?.phone]);
+
+  useEffect(() => {
+    setHostForm((prev) => ({
+      ...prev,
+      fullName: prev.fullName || user?.username || "",
+      contactNumber: prev.contactNumber || user?.phone || "",
+    }));
+  }, [user?.username, user?.phone]);
 
   const roadmapTiers = loyalty?.roadmapTiers || [];
   const currentRoadmapTier =
@@ -315,6 +403,17 @@ export default function ProfilePage() {
     totalKills: 0,
     totalPrize: 0,
   };
+  const hostStatus = hostApplication?.status || null;
+  const hostRequestActive = hostStatus === "pending" || hostStatus === "in_review";
+  const isAlreadyHost = user?.role === "host" || user?.role === "admin";
+  const canSubmitHostRequest =
+    !isAlreadyHost &&
+    !hostRequestActive &&
+    hostForm.fullName.trim().length >= 2 &&
+    hostForm.contactNumber.trim().length >= 7 &&
+    hostForm.platform.trim().length >= 2 &&
+    hostForm.channelName.trim().length >= 2 &&
+    hostForm.experience.trim().length >= 10;
 
   if (!user) return null;
   return (
@@ -540,6 +639,108 @@ export default function ProfilePage() {
               <ShieldAlert className="w-4 h-4 text-amber-400" />
               Withdrawals locked until {new Date(user.withdrawalLockUntil).toLocaleString("en-IN")}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <UserCheck className="w-4 h-4" /> Host / Youtuber Program
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          {isAlreadyHost ? (
+            <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
+              You are approved as a host. Open the Admin panel to manage tournaments.
+            </div>
+          ) : (
+            <>
+              {hostApplication && (
+                <div className="rounded-md border p-3 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Latest Request #{hostApplication.id}</p>
+                    <Badge variant="outline" className="capitalize">{hostApplication.status.replace("_", " ")}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Submitted on {new Date(hostApplication.createdAt).toLocaleString("en-IN")}
+                  </p>
+                  {hostApplication.adminNote && (
+                    <p className="text-xs text-muted-foreground">Admin note: {hostApplication.adminNote}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label className="text-xs">Full Name *</Label>
+                  <Input
+                    value={hostForm.fullName}
+                    onChange={(e) => setHostForm((p) => ({ ...p, fullName: e.target.value }))}
+                    placeholder="Your full name"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Contact Number *</Label>
+                  <Input
+                    value={hostForm.contactNumber}
+                    onChange={(e) => setHostForm((p) => ({ ...p, contactNumber: e.target.value }))}
+                    placeholder="+91XXXXXXXXXX"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Platform *</Label>
+                  <Input
+                    value={hostForm.platform}
+                    onChange={(e) => setHostForm((p) => ({ ...p, platform: e.target.value }))}
+                    placeholder="YouTube / Instagram / Facebook"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Channel Name *</Label>
+                  <Input
+                    value={hostForm.channelName}
+                    onChange={(e) => setHostForm((p) => ({ ...p, channelName: e.target.value }))}
+                    placeholder="Your channel/page name"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Channel URL</Label>
+                  <Input
+                    value={hostForm.channelUrl}
+                    onChange={(e) => setHostForm((p) => ({ ...p, channelUrl: e.target.value }))}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Followers</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={hostForm.socialFollowers}
+                    onChange={(e) => setHostForm((p) => ({ ...p, socialFollowers: e.target.value }))}
+                    placeholder="Approx audience size"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Experience / Why You Want To Host *</Label>
+                <Textarea
+                  value={hostForm.experience}
+                  onChange={(e) => setHostForm((p) => ({ ...p, experience: e.target.value }))}
+                  rows={4}
+                  placeholder="Share your hosting or esports content experience..."
+                />
+              </div>
+
+              <Button
+                disabled={applyHostMutation.isPending || !canSubmitHostRequest}
+                onClick={() => applyHostMutation.mutate()}
+              >
+                {applyHostMutation.isPending ? "Submitting..." : hostRequestActive ? "Request In Review" : "Apply As Host"}
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>

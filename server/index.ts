@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import {
+  ensureHostApplicationsTable,
+  ensureRoleEnumHasHost,
   ensureCouponsTables,
   ensureDisputesTables,
   ensureRegistrationsTeamColumn,
@@ -106,11 +108,13 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
 
 (async () => {
   await runStartupStep("ensureTournamentStatusEnumHasHot", ensureTournamentStatusEnumHasHot);
+  await runStartupStep("ensureRoleEnumHasHost", ensureRoleEnumHasHost);
   await runStartupStep("ensureRegistrationsTeamColumn", ensureRegistrationsTeamColumn);
   await runStartupStep("ensureUserSecurityColumns", ensureUserSecurityColumns);
   await runStartupStep("ensureCouponsTables", ensureCouponsTables);
   await runStartupStep("ensureWalletEngineColumns", ensureWalletEngineColumns);
   await runStartupStep("ensureDisputesTables", ensureDisputesTables);
+  await runStartupStep("ensureHostApplicationsTable", ensureHostApplicationsTable);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

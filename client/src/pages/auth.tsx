@@ -83,7 +83,7 @@ export default function AuthPage() {
       if (!res.ok) throw new Error(json.message || "Google login failed");
       login(json.token, json.user);
       toast({ title: "Welcome!", description: `Logged in as ${json.user.username}` });
-      setLocation(json.user.role === "admin" ? "/admin" : "/");
+      setLocation(json.user.role === "admin" || json.user.role === "host" ? "/admin" : "/");
     } catch (err: any) {
       toast({ title: "Google login failed", description: err.message, variant: "destructive" });
     } finally {
@@ -196,7 +196,7 @@ export default function AuthPage() {
       if (!res.ok) throw new Error(json.message || "Login failed");
       login(json.token, json.user);
       toast({ title: "Welcome back!", description: `Logged in as ${json.user.username}` });
-      setLocation(json.user.role === "admin" ? "/admin" : "/");
+      setLocation(json.user.role === "admin" || json.user.role === "host" ? "/admin" : "/");
     } catch (err: any) {
       toast({ title: "Login failed", description: err.message, variant: "destructive" });
     } finally {

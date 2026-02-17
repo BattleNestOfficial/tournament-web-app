@@ -6,8 +6,9 @@ import {
   authMiddleware,
   authOptionalMiddleware,
   adminMiddleware,
+  staffMiddleware,
 } from "./auth";
-import { loginSchema, signupSchema, couponTypeValues, insertDisputeSchema, type Tournament, type LoyaltyTier } from "@shared/schema";
+import { loginSchema, signupSchema, couponTypeValues, insertDisputeSchema, insertHostApplicationSchema, type Tournament, type LoyaltyTier } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
@@ -572,6 +573,15 @@ function normalizeDisputeStatus(value: unknown): "open" | "in_review" | "resolve
   return null;
 }
 
+function normalizeHostApplicationStatus(value: unknown): "pending" | "in_review" | "approved" | "rejected" | null {
+  const raw = String(value || "").toLowerCase().trim();
+  if (raw === "pending") return "pending";
+  if (raw === "in_review") return "in_review";
+  if (raw === "approved") return "approved";
+  if (raw === "rejected") return "rejected";
+  return null;
+}
+
 function getTierBadge(tier: LoyaltyTier): string {
   if (tier === "vip") return "VIP";
   if (tier === "gold") return "Gold";
@@ -589,7 +599,7 @@ export async function registerRoutes(
   const express = await import("express");
   app.use("/uploads", express.default.static(uploadDir));
 
-  app.post("/api/admin/upload-image", authMiddleware, adminMiddleware, upload.single("image"), async (req, res) => {
+  app.post("/api/admin/upload-image", authMiddleware, staffMiddleware, upload.single("image"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No image file provided" });
       const imageUrl = `/uploads/${req.file.filename}`;
@@ -828,6 +838,16 @@ export async function registerRoutes(
   }
 
   // Auth routes
+  app.get("/api/auth/me", authMiddleware, async (req, res) => {
+    try {
+      const user = await storage.getUserById(Number((req as any).userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+      res.json({ user: sanitizeUser(user) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
     const parsed = signupSchema.safeParse(req.body);
@@ -1459,6 +1479,7 @@ app.get(
           const normalizedStatus = validStatuses.has(rawStatus) ? rawStatus : "upcoming";
           const canSeeRoom =
             userRole === "admin" ||
+            userRole === "host" ||
             (isJoined && normalizedStatus === "live");
 
           return {
@@ -1522,6 +1543,7 @@ app.get(
 
       const canSeeRoom =
         userRole === "admin" ||
+        userRole === "host" ||
         (isJoined && normalizedStatus === "live");
 
       res.json({
@@ -1586,7 +1608,7 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
 app.post(
   "/api/admin/tournaments/:id/results/extract",
   authMiddleware,
-  adminMiddleware,
+  staffMiddleware,
   uploadMemory.single("screenshot"),
   async (req, res) => {
     try {
@@ -2018,6 +2040,75 @@ app.get("/api/stats/total-users", async (_req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+  app.get("/api/host/application/my", authMiddleware, async (req, res) => {
+    try {
+      const userId = Number((req as any).userId);
+      const application = await storage.getLatestHostApplicationByUser(userId);
+      res.json(application || null);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/host/application", authMiddleware, async (req, res) => {
+    try {
+      const userId = Number((req as any).userId);
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.role === "host" || user.role === "admin") {
+        return res.status(400).json({ message: "You already have elevated access." });
+      }
+
+      const latest = await storage.getLatestHostApplicationByUser(userId);
+      if (latest && (latest.status === "pending" || latest.status === "in_review")) {
+        return res.status(400).json({ message: "You already have an active host application." });
+      }
+
+      const payload = {
+        fullName: typeof req.body?.fullName === "string" ? req.body.fullName.trim() : "",
+        contactNumber: typeof req.body?.contactNumber === "string" ? req.body.contactNumber.trim() : "",
+        platform: typeof req.body?.platform === "string" ? req.body.platform.trim() : "",
+        channelName: typeof req.body?.channelName === "string" ? req.body.channelName.trim() : "",
+        channelUrl:
+          typeof req.body?.channelUrl === "string" && req.body.channelUrl.trim().length > 0
+            ? req.body.channelUrl.trim()
+            : null,
+        socialFollowers: Number.isFinite(Number(req.body?.socialFollowers))
+          ? Math.max(0, Math.round(Number(req.body?.socialFollowers)))
+          : 0,
+        experience: typeof req.body?.experience === "string" ? req.body.experience.trim() : "",
+      };
+
+      const parsed = insertHostApplicationSchema.safeParse(payload);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.errors[0]?.message || "Invalid host application payload",
+        });
+      }
+
+      const created = await storage.createHostApplication({
+        userId,
+        ...parsed.data,
+      });
+
+      await storage.createNotification({
+        userId,
+        type: "general",
+        title: "Host Application Submitted",
+        message: "Your host/youtuber request was submitted and is now under review.",
+      });
+
+      broadcastAdminUpdate({
+        entity: "host_application",
+        action: "create",
+        targetId: Number(created.id),
+      });
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   // Wallet
   app.post("/api/wallet/add", authMiddleware, async (req, res) => {
@@ -2571,6 +2662,96 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
+  app.get("/api/admin/host-applications", authMiddleware, adminMiddleware, async (_req, res) => {
+    try {
+      const applications = await storage.getHostApplications();
+      res.json(applications);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/admin/host-applications/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const applicationId = Number(req.params.id);
+      if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({ message: "Invalid application id" });
+      }
+      const status = normalizeHostApplicationStatus(req.body?.status);
+      if (!status) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const adminNote = typeof req.body?.adminNote === "string" ? req.body.adminNote.trim() : "";
+      const existing = await storage.getHostApplicationById(applicationId);
+      if (!existing) {
+        return res.status(404).json({ message: "Host application not found" });
+      }
+
+      const adminId = Number((req as any).userId);
+      const updates: any = {
+        status,
+        adminNote: adminNote || null,
+      };
+      if (status === "pending") {
+        updates.reviewedBy = null;
+        updates.reviewedAt = null;
+      } else {
+        updates.reviewedBy = adminId;
+        updates.reviewedAt = new Date();
+      }
+
+      const updated = await storage.updateHostApplication(applicationId, updates);
+      if (!updated) {
+        return res.status(404).json({ message: "Host application not found" });
+      }
+
+      if (status === "approved") {
+        const applicant = await storage.getUserById(existing.userId);
+        if (applicant && applicant.role !== "admin" && applicant.role !== "host") {
+          await storage.updateUserProfile(applicant.id, { role: "host" as any });
+        }
+      }
+
+      await storage.createNotification({
+        userId: existing.userId,
+        type: "general",
+        title: "Host Application Update",
+        message:
+          status === "approved"
+            ? "Your host request was approved. You now have host tournament panel access."
+            : status === "rejected"
+              ? "Your host request was rejected. You can update details and re-apply."
+              : "Your host request is now in review.",
+      });
+
+      await storage.createAdminLog({
+        adminId,
+        action: `host_application_${status}`,
+        targetType: "host_application",
+        targetId: applicationId,
+        details: `userId=${existing.userId}${adminNote ? `, note=${adminNote}` : ""}`,
+      });
+
+      broadcastAdminUpdate({
+        entity: "host_application",
+        action: status,
+        targetId: applicationId,
+        metadata: { userId: existing.userId },
+      });
+      if (status === "approved") {
+        broadcastAdminUpdate({
+          entity: "user",
+          action: "promote_host",
+          targetId: existing.userId,
+        });
+      }
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/admin/users/:id/ban", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const { banned } = req.body;
@@ -2728,7 +2909,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
   });
 
   // Admin Tournaments
-  app.post("/api/admin/tournaments", authMiddleware, adminMiddleware, async (req, res) => {
+  app.post("/api/admin/tournaments", authMiddleware, staffMiddleware, async (req, res) => {
   try {
     const data = { ...req.body };
 
@@ -2790,7 +2971,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
   }
 });
 
-  app.patch("/api/admin/tournaments/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  app.patch("/api/admin/tournaments/:id", authMiddleware, staffMiddleware, async (req, res) => {
     try {
       const data = { ...req.body };
       if (data.startTime) {
@@ -2853,7 +3034,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
-  app.patch("/api/admin/tournaments/:id/status", authMiddleware, adminMiddleware, async (req, res) => {
+  app.patch("/api/admin/tournaments/:id/status", authMiddleware, staffMiddleware, async (req, res) => {
     try {
       const { status } = req.body;
       if (!["hot", "upcoming", "live", "completed", "cancelled"].includes(String(status))) {
@@ -2897,7 +3078,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
-  app.patch("/api/admin/tournaments/:id/room", authMiddleware, adminMiddleware, async (req, res) => {
+  app.patch("/api/admin/tournaments/:id/room", authMiddleware, staffMiddleware, async (req, res) => {
     try {
       const { roomId, roomPassword } = req.body;
       const tournamentId = Number(req.params.id);
@@ -2933,7 +3114,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
-  app.delete("/api/admin/tournaments/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  app.delete("/api/admin/tournaments/:id", authMiddleware, staffMiddleware, async (req, res) => {
     try {
       const tournamentId = Number(req.params.id);
       const t = await storage.getTournamentById(tournamentId);
@@ -2961,7 +3142,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
   });
 
   // Admin: Declare results with auto prize distribution
-  app.post("/api/admin/tournaments/:id/results", authMiddleware, adminMiddleware, async (req, res) => {
+  app.post("/api/admin/tournaments/:id/results", authMiddleware, staffMiddleware, async (req, res) => {
     try {
       const tournamentId = Number(req.params.id);
       const tournament = await storage.getTournamentById(tournamentId);

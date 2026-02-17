@@ -52,6 +52,26 @@ export async function ensureTournamentStatusEnumHasHot() {
   `);
 }
 
+export async function ensureRoleEnumHasHost() {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'role'
+          AND e.enumlabel = 'host'
+      ) THEN
+        ALTER TYPE role ADD VALUE 'host';
+      END IF;
+    EXCEPTION
+      WHEN duplicate_object THEN
+        NULL;
+    END $$;
+  `);
+}
+
 export async function ensureRegistrationsTeamColumn() {
   await pool.query(`
     ALTER TABLE registrations
@@ -308,6 +328,66 @@ export async function ensureDisputesTables() {
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS dispute_logs_dispute_created_idx ON dispute_logs(dispute_id, created_at DESC);
+  `);
+}
+
+export async function ensureHostApplicationsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS host_applications (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      full_name text NOT NULL,
+      contact_number text NOT NULL,
+      platform text NOT NULL,
+      channel_name text NOT NULL,
+      channel_url text,
+      social_followers integer NOT NULL DEFAULT 0,
+      experience text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      admin_note text,
+      reviewed_by integer,
+      reviewed_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE host_applications
+    ADD COLUMN IF NOT EXISTS full_name text,
+    ADD COLUMN IF NOT EXISTS contact_number text,
+    ADD COLUMN IF NOT EXISTS platform text,
+    ADD COLUMN IF NOT EXISTS channel_name text,
+    ADD COLUMN IF NOT EXISTS channel_url text,
+    ADD COLUMN IF NOT EXISTS social_followers integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS experience text,
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS admin_note text,
+    ADD COLUMN IF NOT EXISTS reviewed_by integer,
+    ADD COLUMN IF NOT EXISTS reviewed_at timestamp,
+    ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
+  `);
+
+  await pool.query(`
+    UPDATE host_applications
+    SET
+      status = CASE
+        WHEN status IN ('pending', 'in_review', 'approved', 'rejected') THEN status
+        ELSE 'pending'
+      END,
+      social_followers = COALESCE(social_followers, 0),
+      updated_at = COALESCE(updated_at, now())
+    WHERE status IS NULL OR social_followers IS NULL OR updated_at IS NULL
+      OR status NOT IN ('pending', 'in_review', 'approved', 'rejected');
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS host_applications_user_created_idx
+    ON host_applications(user_id, created_at DESC);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS host_applications_status_created_idx
+    ON host_applications(status, created_at DESC);
   `);
 }
 

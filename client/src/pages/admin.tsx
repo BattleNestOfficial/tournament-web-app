@@ -18,20 +18,21 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Trophy, Users, Gamepad2, Wallet, Shield, Plus, Edit, Ban, CheckCircle, Clock,
+  Trophy, Users, Gamepad2, Wallet, Shield, Plus, Minus, Edit, Ban, CheckCircle, Clock,
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
   TicketPercent, Flag,
 } from "lucide-react";
-import { couponTypeValues, type Game, type Tournament, type User, type Withdrawal, type Banner, type Coupon, type Dispute } from "@shared/schema";
+import { couponTypeValues, type Game, type Tournament, type User, type Withdrawal, type Banner, type Coupon, type Dispute, type HostApplication } from "@shared/schema";
 
 export default function AdminPage() {
   const { user, token } = useAuth();
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
+  const isAdmin = user?.role === "admin";
+  const isHost = user?.role === "host";
 
   useEffect(() => {
   if (user === undefined) return; // still loading
-  if (!user || user.role !== "admin") {
+  if (!user || (user.role !== "admin" && user.role !== "host")) {
     setLocation("/");
   }
 }, [user, setLocation]);
@@ -52,46 +53,67 @@ export default function AdminPage() {
           <Shield className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground">Manage games, tournaments, users and withdrawals</p>
+          <h1 className="text-2xl font-bold">{isHost ? "Host Panel" : "Admin Panel"}</h1>
+          <p className="text-sm text-muted-foreground">
+            {isHost ? "Tournament operations access for approved hosts" : "Manage games, tournaments, users and withdrawals"}
+          </p>
         </div>
       </div>
 
-      <AdminStats token={token} />
+      {isAdmin && <AdminStats token={token} />}
 
+      {isHost ? (
         <Tabs defaultValue="tournaments" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7 max-w-4xl">
-          <TabsTrigger value="tournaments" data-testid="tab-admin-tournaments">
-            <Trophy className="w-3.5 h-3.5 mr-1.5" /> Tournaments
-          </TabsTrigger>
-          <TabsTrigger value="games" data-testid="tab-admin-games">
-            <Gamepad2 className="w-3.5 h-3.5 mr-1.5" /> Games
-          </TabsTrigger>
-          <TabsTrigger value="users" data-testid="tab-admin-users">
-            <Users className="w-3.5 h-3.5 mr-1.5" /> Users
-          </TabsTrigger>
-          <TabsTrigger value="withdrawals" data-testid="tab-admin-withdrawals">
-            <Wallet className="w-3.5 h-3.5 mr-1.5" /> Withdrawals
-          </TabsTrigger>
-          <TabsTrigger value="support" data-testid="tab-admin-support">
-            <Flag className="w-3.5 h-3.5 mr-1.5" /> Support
-          </TabsTrigger>
-          <TabsTrigger value="banners" data-testid="tab-admin-banners">
-            <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Banners
-          </TabsTrigger>
-          <TabsTrigger value="coupons" data-testid="tab-admin-coupons">
-            <TicketPercent className="w-3.5 h-3.5 mr-1.5" /> Coupons
-          </TabsTrigger>
-        </TabsList>
+          <TabsList className="grid w-full grid-cols-1 max-w-sm">
+            <TabsTrigger value="tournaments" data-testid="tab-host-tournaments">
+              <Trophy className="w-3.5 h-3.5 mr-1.5" /> Tournaments
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="tournaments"><TournamentManager token={token} /></TabsContent>
+        </Tabs>
+      ) : (
+        <Tabs defaultValue="tournaments" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-9 max-w-6xl">
+            <TabsTrigger value="tournaments" data-testid="tab-admin-tournaments">
+              <Trophy className="w-3.5 h-3.5 mr-1.5" /> Tournaments
+            </TabsTrigger>
+            <TabsTrigger value="games" data-testid="tab-admin-games">
+              <Gamepad2 className="w-3.5 h-3.5 mr-1.5" /> Games
+            </TabsTrigger>
+            <TabsTrigger value="users" data-testid="tab-admin-users">
+              <Users className="w-3.5 h-3.5 mr-1.5" /> Users
+            </TabsTrigger>
+            <TabsTrigger value="hostRequests" data-testid="tab-admin-host-requests">
+              <UserCheck className="w-3.5 h-3.5 mr-1.5" /> Host Requests
+            </TabsTrigger>
+            <TabsTrigger value="hostWallet" data-testid="tab-admin-host-wallet">
+              <Wallet className="w-3.5 h-3.5 mr-1.5" /> Host Wallet
+            </TabsTrigger>
+            <TabsTrigger value="withdrawals" data-testid="tab-admin-withdrawals">
+              <Wallet className="w-3.5 h-3.5 mr-1.5" /> Withdrawals
+            </TabsTrigger>
+            <TabsTrigger value="support" data-testid="tab-admin-support">
+              <Flag className="w-3.5 h-3.5 mr-1.5" /> Support
+            </TabsTrigger>
+            <TabsTrigger value="banners" data-testid="tab-admin-banners">
+              <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Banners
+            </TabsTrigger>
+            <TabsTrigger value="coupons" data-testid="tab-admin-coupons">
+              <TicketPercent className="w-3.5 h-3.5 mr-1.5" /> Coupons
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="tournaments"><TournamentManager token={token} /></TabsContent>
-        <TabsContent value="games"><GameManager token={token} /></TabsContent>
-        <TabsContent value="users"><UserManager token={token} /></TabsContent>
-        <TabsContent value="withdrawals"><WithdrawalManager token={token} /></TabsContent>
-        <TabsContent value="support"><SupportTicketManager token={token} /></TabsContent>
-        <TabsContent value="banners"><BannerManager token={token} /></TabsContent>
-        <TabsContent value="coupons"><CouponManager token={token} /></TabsContent>
-      </Tabs>
+          <TabsContent value="tournaments"><TournamentManager token={token} /></TabsContent>
+          <TabsContent value="games"><GameManager token={token} /></TabsContent>
+          <TabsContent value="users"><UserManager token={token} /></TabsContent>
+          <TabsContent value="hostRequests"><HostRequestManager token={token} /></TabsContent>
+          <TabsContent value="hostWallet"><HostWalletManager token={token} /></TabsContent>
+          <TabsContent value="withdrawals"><WithdrawalManager token={token} /></TabsContent>
+          <TabsContent value="support"><SupportTicketManager token={token} /></TabsContent>
+          <TabsContent value="banners"><BannerManager token={token} /></TabsContent>
+          <TabsContent value="coupons"><CouponManager token={token} /></TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
@@ -708,6 +730,7 @@ function UserManager({ token }: { token: string | null }) {
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+  const hostUsers = (users || []).filter((u) => u.role === "host");
 
   return (
     <div className="space-y-4">
@@ -754,6 +777,34 @@ function UserManager({ token }: { token: string | null }) {
           )}
         </div>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <UserCheck className="w-4 h-4" /> Hosts / Youtubers
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-2">
+          {hostUsers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No approved hosts yet.</p>
+          ) : (
+            hostUsers.map((u) => (
+              <div key={u.id} className="rounded-md border p-3 flex items-center justify-between gap-3" data-testid={`admin-host-user-${u.id}`}>
+                <div>
+                  <p className="font-medium text-sm">{u.username}</p>
+                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                </div>
+                <div className="text-right">
+                  <Badge variant="outline" className="text-[10px]">Host</Badge>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Wallet: {"\u20B9"}{((u.walletBalance || 0) / 100).toFixed(0)}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -991,6 +1042,302 @@ function SupportTicketManager({ token }: { token: string | null }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+type AdminHostApplicationRow = HostApplication & { username?: string; reviewerUsername?: string };
+
+function HostRequestManager({ token }: { token: string | null }) {
+  const { toast } = useToast();
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [adminNotes, setAdminNotes] = useState<Record<number, string>>({});
+
+  const { data: applications, isLoading } = useQuery<AdminHostApplicationRow[]>({
+    queryKey: ["/api/admin/host-applications"],
+    enabled: !!token,
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      adminNote,
+    }: {
+      id: number;
+      status: "pending" | "in_review" | "approved" | "rejected";
+      adminNote?: string;
+    }) => {
+      const res = await fetch(`/api/admin/host-applications/${id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status, adminNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update host request");
+      return data;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/host-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Host request updated", description: `Request #${vars.id} moved to ${vars.status.replace("_", " ")}.` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const filtered = (applications || []).filter((row) => statusFilter === "all" || row.status === statusFilter);
+  const counts = {
+    pending: (applications || []).filter((row) => row.status === "pending").length,
+    inReview: (applications || []).filter((row) => row.status === "in_review").length,
+    approved: (applications || []).filter((row) => row.status === "approved").length,
+    rejected: (applications || []).filter((row) => row.status === "rejected").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-lg font-semibold">Host / Youtuber Requests</h3>
+          <p className="text-sm text-muted-foreground">Review creator applications and grant host panel access.</p>
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]" data-testid="select-admin-host-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="in_review">In Review</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pending</p><p className="text-xl font-bold">{counts.pending}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">In Review</p><p className="text-xl font-bold">{counts.inReview}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Approved</p><p className="text-xl font-bold">{counts.approved}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Rejected</p><p className="text-xl font-bold">{counts.rejected}</p></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+            </div>
+          ) : filtered.length > 0 ? (
+            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+              {filtered.map((item) => (
+                <div key={item.id} className="rounded-md border p-3 space-y-2" data-testid={`admin-host-request-${item.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-sm">Request #{item.id} - {item.username || `User #${item.userId}`}</p>
+                    <Badge variant="outline" className="text-[10px] capitalize">{item.status.replace("_", " ")}</Badge>
+                  </div>
+                  <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                    <p>Full Name: {item.fullName}</p>
+                    <p>Contact: {item.contactNumber}</p>
+                    <p>Platform: {item.platform}</p>
+                    <p>Channel: {item.channelName}</p>
+                    <p>Followers: {Number(item.socialFollowers || 0).toLocaleString("en-IN")}</p>
+                    <p>Created: {new Date(item.createdAt).toLocaleString("en-IN")}</p>
+                  </div>
+                  {item.channelUrl && (
+                    <a href={item.channelUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+                      Open channel/profile link
+                    </a>
+                  )}
+                  <p className="text-sm">{item.experience}</p>
+                  <Input
+                    value={adminNotes[item.id] ?? item.adminNote ?? ""}
+                    onChange={(e) => setAdminNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    placeholder="Admin note (optional)"
+                    data-testid={`input-host-note-${item.id}`}
+                  />
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => reviewMutation.mutate({ id: item.id, status: "in_review", adminNote: adminNotes[item.id] })}
+                      disabled={reviewMutation.isPending}
+                      data-testid={`button-host-review-${item.id}`}
+                    >
+                      In Review
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-chart-3"
+                      onClick={() => reviewMutation.mutate({ id: item.id, status: "approved", adminNote: adminNotes[item.id] })}
+                      disabled={reviewMutation.isPending}
+                      data-testid={`button-host-approve-${item.id}`}
+                    >
+                      Approve Host
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive"
+                      onClick={() => reviewMutation.mutate({ id: item.id, status: "rejected", adminNote: adminNotes[item.id] })}
+                      disabled={reviewMutation.isPending}
+                      data-testid={`button-host-reject-${item.id}`}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No host applications found for this filter.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function HostWalletManager({ token }: { token: string | null }) {
+  const { toast } = useToast();
+  const [amountByHost, setAmountByHost] = useState<Record<number, string>>({});
+  const [noteByHost, setNoteByHost] = useState<Record<number, string>>({});
+
+  const { data: users, isLoading } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: !!token,
+  });
+
+  const hosts = (users || []).filter((row) => row.role === "host");
+
+  const walletMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      type,
+      amountRupees,
+      description,
+    }: {
+      userId: number;
+      type: "admin_credit" | "admin_debit";
+      amountRupees: number;
+      description?: string;
+    }) => {
+      const res = await fetch(`/api/admin/users/${userId}/wallet`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: Math.round(amountRupees * 100),
+          type,
+          description: description || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Wallet update failed");
+      return data;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/my"] });
+      toast({
+        title: vars.type === "admin_credit" ? "Host wallet credited" : "Host wallet debited",
+      });
+      setAmountByHost((prev) => ({ ...prev, [vars.userId]: "" }));
+      setNoteByHost((prev) => ({ ...prev, [vars.userId]: "" }));
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold">Host Wallet Settlement</h3>
+        <p className="text-sm text-muted-foreground">
+          Credit host earnings after tournament completion (for example: gross profit minus your platform deduction).
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+      ) : hosts.length > 0 ? (
+        <div className="space-y-2">
+          {hosts.map((host) => {
+            const amount = Number(amountByHost[host.id] || 0);
+            return (
+              <Card key={host.id} data-testid={`admin-host-wallet-${host.id}`}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-sm">{host.username}</p>
+                      <p className="text-xs text-muted-foreground">{host.email}</p>
+                    </div>
+                    <Badge variant="outline">Wallet {"\u20B9"}{((host.walletBalance || 0) / 100).toFixed(0)}</Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Input
+                      type="number"
+                      min="1"
+                      value={amountByHost[host.id] || ""}
+                      onChange={(e) => setAmountByHost((prev) => ({ ...prev, [host.id]: e.target.value }))}
+                      placeholder="Amount in ₹"
+                      data-testid={`input-host-amount-${host.id}`}
+                    />
+                    <Input
+                      className="sm:col-span-2"
+                      value={noteByHost[host.id] || ""}
+                      onChange={(e) => setNoteByHost((prev) => ({ ...prev, [host.id]: e.target.value }))}
+                      placeholder="Reason / settlement note (optional)"
+                      data-testid={`input-host-note-wallet-${host.id}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={walletMutation.isPending || !Number.isFinite(amount) || amount <= 0}
+                      onClick={() =>
+                        walletMutation.mutate({
+                          userId: host.id,
+                          type: "admin_credit",
+                          amountRupees: amount,
+                          description: noteByHost[host.id] || "Host tournament settlement credit",
+                        })
+                      }
+                      data-testid={`button-host-credit-${host.id}`}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Credit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={walletMutation.isPending || !Number.isFinite(amount) || amount <= 0}
+                      onClick={() =>
+                        walletMutation.mutate({
+                          userId: host.id,
+                          type: "admin_debit",
+                          amountRupees: amount,
+                          description: noteByHost[host.id] || "Host wallet adjustment debit",
+                        })
+                      }
+                      data-testid={`button-host-debit-${host.id}`}
+                    >
+                      <Minus className="w-3.5 h-3.5 mr-1" /> Debit
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground text-sm">
+            No approved hosts found yet.
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

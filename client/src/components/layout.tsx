@@ -15,12 +15,14 @@ import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X,
 import { useEffect, useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, token, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAdmin = user?.role === "admin";
+  const isHost = user?.role === "host";
+  const canAccessAdminPanel = isAdmin || isHost;
 
   useEffect(() => {
     const stream = new EventSource("/api/tournaments/stream");
@@ -72,7 +74,21 @@ export default function Layout({ children }: { children: ReactNode }) {
           support_ticket: ["/api/admin/disputes", "/api/disputes/my"],
           banner: ["/api/admin/banners", "/api/banners"],
           coupon: ["/api/admin/coupons", "/api/admin/coupons/analytics"],
+          host_application: ["/api/admin/host-applications", "/api/host/application/my", "/api/admin/users"],
         };
+
+        if (payload.entity === "user" && token) {
+          fetch("/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.user) updateUser(data.user);
+            })
+            .catch(() => {
+              // Ignore soft refresh failures from background sync.
+            });
+        }
 
         invalidateKeys(keyMap[payload.entity || ""] || fallbackKeys);
       } catch {
@@ -91,14 +107,14 @@ export default function Layout({ children }: { children: ReactNode }) {
       stream.removeEventListener("admin_update", refreshAdminViews as EventListener);
       stream.close();
     };
-  }, []);
+  }, [token, updateUser]);
 
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/tournaments", label: "Tournaments", icon: Trophy },
     ...(!isAdmin ? [{ href: "/teams", label: "Teams", icon: Users }] : []),
     ...(!isAdmin ? [{ href: "/leaderboard", label: "Leaderboard", icon: BarChart3 }] : []),
-    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
+    ...(canAccessAdminPanel ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   return (
@@ -182,7 +198,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                       <Headset className="w-4 h-4 mr-2" /> Support
                     </DropdownMenuItem>
                   )}
-                  {isAdmin && (
+                  {canAccessAdminPanel && (
                     <DropdownMenuItem onClick={() => setLocation("/admin")} data-testid="menu-admin">
                       <Shield className="w-4 h-4 mr-2" /> Admin Panel
                     </DropdownMenuItem>

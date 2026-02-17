@@ -84,3 +84,15 @@ export function adminMiddleware(
   }
   next();
 }
+
+export function staffMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const role = String((req as any).userRole || "");
+  if (role !== "admin" && role !== "host") {
+    return res.status(403).json({ message: "Staff access required" });
+  }
+  next();
+}

@@ -2,10 +2,10 @@ import { db } from "./db";
 import { eq, desc, sql, and, or } from "drizzle-orm";
 import {
   users, games, tournaments, registrations, transactions, withdrawals, results, teams, teamMembers,
-  payments, adminLogs, notifications, banners, coupons, couponRedemptions, disputes, disputeLogs,
+  payments, adminLogs, notifications, banners, coupons, couponRedemptions, disputes, disputeLogs, hostApplications,
   type User, type InsertUser, type Game, type InsertGame, type Tournament, type InsertTournament,
   type Registration, type Transaction, type Withdrawal, type Result, type Team, type TeamMember,
-  type Payment, type AdminLog, type Notification, type Banner, type Coupon, type CouponType, type Dispute, type DisputeLog, type LoyaltyTier,
+  type Payment, type AdminLog, type Notification, type Banner, type Coupon, type CouponType, type Dispute, type DisputeLog, type HostApplication, type LoyaltyTier,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -123,6 +123,21 @@ export interface IStorage {
     note?: string | null;
   }): Promise<DisputeLog>;
   getDisputeLogs(disputeId: number): Promise<(DisputeLog & { actorUsername?: string })[]>;
+
+  createHostApplication(data: {
+    userId: number;
+    fullName: string;
+    contactNumber: string;
+    platform: string;
+    channelName: string;
+    channelUrl?: string | null;
+    socialFollowers?: number;
+    experience: string;
+  }): Promise<HostApplication>;
+  getHostApplicationById(id: number): Promise<HostApplication | undefined>;
+  getLatestHostApplicationByUser(userId: number): Promise<HostApplication | undefined>;
+  getHostApplications(): Promise<(HostApplication & { username?: string; reviewerUsername?: string })[]>;
+  updateHostApplication(id: number, data: Partial<HostApplication>): Promise<HostApplication | undefined>;
 
   getResultsByTournament(tournamentId: number): Promise<Result[]>;
   createResult(data: { tournamentId: number; userId: number; position: number; kills: number; prize: number }): Promise<Result>;
@@ -1241,6 +1256,85 @@ export class DatabaseStorage implements IStorage {
       }),
     );
     return enriched;
+  }
+
+  async createHostApplication(data: {
+    userId: number;
+    fullName: string;
+    contactNumber: string;
+    platform: string;
+    channelName: string;
+    channelUrl?: string | null;
+    socialFollowers?: number;
+    experience: string;
+  }): Promise<HostApplication> {
+    const [created] = await db
+      .insert(hostApplications)
+      .values({
+        userId: data.userId,
+        fullName: data.fullName,
+        contactNumber: data.contactNumber,
+        platform: data.platform,
+        channelName: data.channelName,
+        channelUrl: data.channelUrl || null,
+        socialFollowers: Math.max(0, Math.round(Number(data.socialFollowers || 0))),
+        experience: data.experience,
+        status: "pending",
+      })
+      .returning();
+    return created;
+  }
+
+  async getLatestHostApplicationByUser(userId: number): Promise<HostApplication | undefined> {
+    const [application] = await db
+      .select()
+      .from(hostApplications)
+      .where(eq(hostApplications.userId, userId))
+      .orderBy(desc(hostApplications.createdAt))
+      .limit(1);
+    return application;
+  }
+
+  async getHostApplicationById(id: number): Promise<HostApplication | undefined> {
+    const [application] = await db
+      .select()
+      .from(hostApplications)
+      .where(eq(hostApplications.id, id))
+      .limit(1);
+    return application;
+  }
+
+  async getHostApplications(): Promise<(HostApplication & { username?: string; reviewerUsername?: string })[]> {
+    const all = await db
+      .select()
+      .from(hostApplications)
+      .orderBy(desc(hostApplications.createdAt));
+    const enriched = await Promise.all(
+      all.map(async (item) => {
+        const [applicant, reviewer] = await Promise.all([
+          this.getUserById(item.userId),
+          item.reviewedBy ? this.getUserById(item.reviewedBy) : Promise.resolve(undefined),
+        ]);
+        return {
+          ...item,
+          username: applicant?.username,
+          reviewerUsername: reviewer?.username,
+        };
+      }),
+    );
+    return enriched;
+  }
+
+  async updateHostApplication(id: number, data: Partial<HostApplication>): Promise<HostApplication | undefined> {
+    const [updated] = await db
+      .update(hostApplications)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(hostApplications.id, id))
+      .returning();
+    return updated;
   }
 
   async getResultsByTournament(tournamentId: number): Promise<Result[]> {

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-export const roleEnum = pgEnum("role", ["user", "admin"]);
+export const roleEnum = pgEnum("role", ["user", "host", "admin"]);
 export const tournamentStatusEnum = pgEnum("tournament_status", ["hot", "upcoming", "live", "completed", "cancelled"]);
 export const matchTypeEnum = pgEnum("match_type", ["solo", "duo", "squad"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["deposit", "withdrawal", "entry_fee", "winning", "admin_credit", "admin_debit", "razorpay"]);
@@ -18,6 +18,7 @@ export const couponTypeValues = [
 export const couponContextValues = ["wallet", "tournament_join"] as const;
 export const loyaltyTierValues = ["bronze", "silver", "gold", "vip"] as const;
 export const disputeStatusValues = ["open", "in_review", "resolved"] as const;
+export const hostApplicationStatusValues = ["pending", "in_review", "approved", "rejected"] as const;
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -265,6 +266,24 @@ export const disputeLogs = pgTable("dispute_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const hostApplications = pgTable("host_applications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull(),
+  fullName: text("full_name").notNull(),
+  contactNumber: text("contact_number").notNull(),
+  platform: text("platform").notNull(),
+  channelName: text("channel_name").notNull(),
+  channelUrl: text("channel_url"),
+  socialFollowers: integer("social_followers").notNull().default(0),
+  experience: text("experience").notNull(),
+  status: text("status").notNull().default("pending"),
+  adminNote: text("admin_note"),
+  reviewedBy: integer("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = z.object({
   username: z.string().min(3).max(30),
   email: z.string().email(),
@@ -335,6 +354,15 @@ export const insertDisputeSchema = z.object({
   tournamentId: z.number().int().positive().optional().nullable(),
   description: z.string().min(10).max(2000),
 });
+export const insertHostApplicationSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  contactNumber: z.string().min(7).max(30),
+  platform: z.string().min(2).max(50),
+  channelName: z.string().min(2).max(120),
+  channelUrl: z.string().max(500).optional().nullable(),
+  socialFollowers: z.number().int().nonnegative().optional(),
+  experience: z.string().min(10).max(2000),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -363,3 +391,5 @@ export type DisputeStatus = (typeof disputeStatusValues)[number];
 export type Dispute = typeof disputes.$inferSelect;
 export type DisputeLog = typeof disputeLogs.$inferSelect;
 export type InsertDispute = z.infer<typeof insertDisputeSchema>;
+export type HostApplication = typeof hostApplications.$inferSelect;
+export type InsertHostApplication = z.infer<typeof insertHostApplicationSchema>;
