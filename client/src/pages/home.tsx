@@ -525,7 +525,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-black text-white overflow-hidden">
+    <div className="esports-theme relative min-h-screen bg-black text-white overflow-hidden">
       <ParticleField />
       <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
       <motion.div

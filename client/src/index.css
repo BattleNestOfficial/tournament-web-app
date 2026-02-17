@@ -9,40 +9,40 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
-  --background: 0 0% 4%;
-  --foreground: 120 100% 94%;
-  --border: 120 30% 18%;
-  --card: 0 0% 7%;
-  --card-foreground: 120 95% 92%;
-  --card-border: 120 28% 16%;
-  --sidebar: 0 0% 6%;
-  --sidebar-foreground: 120 90% 92%;
-  --sidebar-border: 120 28% 16%;
-  --sidebar-primary: 120 100% 50%;
-  --sidebar-primary-foreground: 0 0% 6%;
-  --sidebar-accent: 120 22% 12%;
-  --sidebar-accent-foreground: 120 90% 92%;
-  --sidebar-ring: 120 100% 50%;
-  --popover: 0 0% 6%;
-  --popover-foreground: 120 95% 92%;
-  --popover-border: 120 26% 16%;
-  --primary: 120 100% 50%;
-  --primary-foreground: 0 0% 6%;
-  --secondary: 120 22% 12%;
-  --secondary-foreground: 120 90% 92%;
-  --muted: 120 16% 10%;
-  --muted-foreground: 120 18% 65%;
-  --accent: 120 30% 14%;
-  --accent-foreground: 120 100% 92%;
+  --background: 0 0% 98%;
+  --foreground: 220 26% 12%;
+  --border: 220 18% 84%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 26% 12%;
+  --card-border: 220 18% 84%;
+  --sidebar: 0 0% 99%;
+  --sidebar-foreground: 220 26% 12%;
+  --sidebar-border: 220 18% 84%;
+  --sidebar-primary: 120 100% 38%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 120 28% 92%;
+  --sidebar-accent-foreground: 220 26% 12%;
+  --sidebar-ring: 120 100% 38%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 26% 12%;
+  --popover-border: 220 18% 84%;
+  --primary: 120 100% 38%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 20% 94%;
+  --secondary-foreground: 220 26% 12%;
+  --muted: 220 16% 95%;
+  --muted-foreground: 220 14% 40%;
+  --accent: 120 36% 92%;
+  --accent-foreground: 220 26% 12%;
   --destructive: 0 84% 45%;
   --destructive-foreground: 0 0% 98%;
-  --input: 120 24% 24%;
-  --ring: 120 100% 50%;
-  --chart-1: 120 100% 50%;
-  --chart-2: 138 100% 46%;
-  --chart-3: 102 100% 45%;
-  --chart-4: 155 96% 42%;
-  --chart-5: 88 95% 48%;
+  --input: 220 18% 84%;
+  --ring: 120 100% 38%;
+  --chart-1: 120 100% 36%;
+  --chart-2: 138 90% 34%;
+  --chart-3: 102 95% 34%;
+  --chart-4: 155 85% 32%;
+  --chart-5: 88 90% 35%;
   --font-sans: 'Inter', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
@@ -57,6 +57,7 @@
   --shadow-2xl: 0px 2px 0px 0px hsl(240 5% 64% / 0.00);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  color-scheme: light;
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
@@ -135,6 +136,7 @@
   --shadow-lg: 0px 2px 0px 0px hsl(240 6% 8% / 0.00), 0px 4px 6px -1px hsl(240 6% 8% / 0.00);
   --shadow-xl: 0px 2px 0px 0px hsl(240 6% 8% / 0.00), 0px 8px 10px -1px hsl(240 6% 8% / 0.00);
   --shadow-2xl: 0px 2px 0px 0px hsl(240 6% 8% / 0.00);
+  color-scheme: dark;
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
@@ -173,6 +175,30 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  html:not(.dark) .esports-theme .text-white { color: hsl(var(--foreground)); }
+  html:not(.dark) .esports-theme .text-white\/85 { color: hsl(var(--foreground) / 0.85); }
+  html:not(.dark) .esports-theme .text-white\/80 { color: hsl(var(--foreground) / 0.8); }
+  html:not(.dark) .esports-theme .text-white\/75 { color: hsl(var(--foreground) / 0.75); }
+  html:not(.dark) .esports-theme .text-white\/70 { color: hsl(var(--foreground) / 0.7); }
+  html:not(.dark) .esports-theme .text-white\/65 { color: hsl(var(--foreground) / 0.65); }
+  html:not(.dark) .esports-theme .text-white\/60 { color: hsl(var(--foreground) / 0.6); }
+  html:not(.dark) .esports-theme .text-white\/55 { color: hsl(var(--foreground) / 0.55); }
+
+  html:not(.dark) .esports-theme .bg-black { background-color: hsl(var(--background)); }
+  html:not(.dark) .esports-theme .bg-black\/85 { background-color: hsl(var(--card) / 0.85); }
+  html:not(.dark) .esports-theme .bg-black\/80 { background-color: hsl(var(--card) / 0.8); }
+  html:not(.dark) .esports-theme .bg-black\/45 { background-color: hsl(var(--card) / 0.9); }
+  html:not(.dark) .esports-theme .bg-black\/40 { background-color: hsl(var(--card) / 0.88); }
+  html:not(.dark) .esports-theme .bg-black\/35 { background-color: hsl(var(--card) / 0.86); }
+  html:not(.dark) .esports-theme .bg-black\/30 { background-color: hsl(var(--card) / 0.84); }
+  html:not(.dark) .esports-theme .bg-black\/25 { background-color: hsl(var(--card) / 0.82); }
+  html:not(.dark) .esports-theme .bg-black\/20 { background-color: hsl(var(--card) / 0.8); }
+  html:not(.dark) .esports-theme .bg-slate-950 { background-color: hsl(var(--card)); }
+
+  html:not(.dark) .esports-theme .border-white\/20 { border-color: hsl(var(--border) / 0.75); }
+  html:not(.dark) .esports-theme .border-white\/15 { border-color: hsl(var(--border) / 0.65); }
+  html:not(.dark) .esports-theme .border-white\/10 { border-color: hsl(var(--border) / 0.55); }
 }
 
 /**

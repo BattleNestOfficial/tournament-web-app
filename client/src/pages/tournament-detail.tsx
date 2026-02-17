@@ -495,7 +495,7 @@ export default function TournamentDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-6">
+    <div className="esports-theme max-w-6xl mx-auto p-4 space-y-6">
       <Button variant="ghost" onClick={() => setLocation("/tournaments")}>
         <ArrowLeft className="w-4 h-4 mr-2" /> Back
       </Button>

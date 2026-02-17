@@ -492,7 +492,7 @@ export default function TournamentsPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-white">
+    <div className="esports-theme relative min-h-screen overflow-hidden text-white">
       <div className="absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
       <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,#39ff7a33,transparent_58%)]" />
       <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,#22c55e26,transparent_64%)]" />
@@ -577,7 +577,6 @@ export default function TournamentsPage() {
                 >
                   <Users className="w-3.5 h-3.5" />
                   Joined Only
-                  {token && <span className="text-[11px] opacity-80">({joinedTournamentIds.size})</span>}
                 </Button>
                 <Button
                   type="button"
