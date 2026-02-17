@@ -98,6 +98,19 @@ function getIGNForGame(slug: string, user: any) {
   }
 }
 
+function getIgnProfileFieldForGame(slug: string): "bgmiIgn" | "freeFireIgn" | "codIgn" | null {
+  switch (slug) {
+    case "bgmi":
+      return "bgmiIgn";
+    case "free-fire":
+      return "freeFireIgn";
+    case "cod-mobile":
+      return "codIgn";
+    default:
+      return null;
+  }
+}
+
 function parsePrizeDistribution(input: unknown): PrizeRow[] {
   if (Array.isArray(input)) {
     return input
@@ -306,8 +319,24 @@ export default function TournamentDetailPage() {
 
     if (isSolo && game?.slug) {
       setIgn(getIGNForGame(game.slug, user));
+      setTeamId(null);
+    } else if (isDuo || isSquad) {
+      if (eligibleTeams.length === 0) {
+        toast({
+          title: `No ${isDuo ? "duo" : "squad"} team found`,
+          description: `Create a ${isDuo ? "duo" : "squad"} team first to join this match.`,
+          variant: "destructive",
+        });
+        setLocation("/teams");
+        return;
+      }
+      const ownedEligibleTeam = eligibleTeams.find((team: any) => Number(team.ownerId) === Number(user.id));
+      const defaultTeam = ownedEligibleTeam || eligibleTeams[0];
+      setTeamId(defaultTeam?.id ? Number(defaultTeam.id) : null);
+    } else {
+      setTeamId(null);
     }
-    setTeamId(null);
+
     setJoinOpen(true);
   }
 
@@ -326,6 +355,18 @@ export default function TournamentDetailPage() {
       setIgn(profileIgn);
     }
   }, [joinOpen, isSolo, user, game?.slug, ign]);
+
+  useEffect(() => {
+    if (!joinOpen || isSolo) return;
+    if (teamId) return;
+    if (eligibleTeams.length === 0) return;
+
+    const ownedEligibleTeam = eligibleTeams.find((team: any) => Number(team.ownerId) === Number(user?.id));
+    const defaultTeam = ownedEligibleTeam || eligibleTeams[0];
+    if (defaultTeam?.id) {
+      setTeamId(Number(defaultTeam.id));
+    }
+  }, [joinOpen, isSolo, teamId, eligibleTeams, user?.id]);
 
   const joinMutation = useMutation({
     mutationFn: async () => {
@@ -346,7 +387,7 @@ export default function TournamentDetailPage() {
       }
 
       const payload = tournament.matchType === "solo" ? { inGameName: ign.trim() } : { teamId };
-      return fetchJsonOrThrow<any>(`/api/tournaments/${tournamentId}/join`, {
+      const joinData = await fetchJsonOrThrow<any>(`/api/tournaments/${tournamentId}/join`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -354,10 +395,36 @@ export default function TournamentDetailPage() {
         },
         body: JSON.stringify(payload),
       });
+
+      let profileUser: any = null;
+      if (tournament.matchType === "solo" && game?.slug) {
+        const nextIgn = ign.trim();
+        const currentIgn = getIGNForGame(game.slug, user);
+        const ignField = getIgnProfileFieldForGame(game.slug);
+
+        if (ignField && nextIgn && nextIgn !== currentIgn) {
+          try {
+            const profileUpdate = await fetchJsonOrThrow<{ user: any }>("/api/users/profile", {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ [ignField]: nextIgn }),
+            });
+            profileUser = profileUpdate?.user || null;
+          } catch {
+            profileUser = null;
+          }
+        }
+      }
+
+      return { joinData, profileUser };
     },
     onSuccess: async (data) => {
-      if (data?.user && typeof updateUser === "function") {
-        updateUser(data.user);
+      const nextUser = data?.profileUser || data?.joinData?.user;
+      if (nextUser && typeof updateUser === "function") {
+        updateUser(nextUser);
       }
       toast({ title: "Successfully joined tournament" });
       await Promise.all([
