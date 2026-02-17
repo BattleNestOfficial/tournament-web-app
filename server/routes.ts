@@ -48,6 +48,19 @@ const upload = multer({
   },
 });
 
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -232,6 +245,296 @@ function getAutoScaledPrizePoolValue(input: {
 
   const ratio = Math.max(0, Math.min(1, filledSlots / maxSlots));
   return Math.max(0, Math.round(basePrizePool * ratio));
+}
+
+type OcrParsedRow = {
+  slNo: number;
+  detectedName: string;
+  rank: number;
+  kills: number;
+};
+
+function normalizePlayerKey(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
+    Array.from({ length: b.length + 1 }, () => 0),
+  );
+
+  for (let i = 0; i <= a.length; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function computeNameSimilarityScore(aRaw: unknown, bRaw: unknown): number {
+  const a = normalizePlayerKey(aRaw);
+  const b = normalizePlayerKey(bRaw);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.9;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 0;
+  const distance = levenshteinDistance(a, b);
+  return Math.max(0, 1 - distance / maxLen);
+}
+
+async function extractTextFromImageWithOcrSpace(file: {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+}): Promise<string> {
+  const apiKey = String(process.env.OCR_SPACE_API_KEY || "helloworld").trim();
+  if (!apiKey) {
+    throw new Error("OCR provider key missing");
+  }
+
+  const formData = new FormData();
+  formData.append("apikey", apiKey);
+  formData.append("language", "eng");
+  formData.append("isOverlayRequired", "false");
+  formData.append("detectOrientation", "true");
+  formData.append("scale", "true");
+  formData.append("OCREngine", String(process.env.OCR_SPACE_ENGINE || "2"));
+  const fileBytes = Uint8Array.from(file.buffer);
+  formData.append(
+    "file",
+    new Blob([fileBytes], { type: file.mimetype || "image/png" }),
+    file.originalname || "bgmi-result.png",
+  );
+
+  const response = await fetch("https://api.ocr.space/parse/image", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(`OCR request failed (${response.status})`);
+  }
+
+  const payload = (await response.json()) as {
+    IsErroredOnProcessing?: boolean;
+    ErrorMessage?: string | string[];
+    ParsedResults?: Array<{ ParsedText?: string }>;
+  };
+
+  if (payload?.IsErroredOnProcessing) {
+    const errorMessage = Array.isArray(payload.ErrorMessage)
+      ? payload.ErrorMessage.join(", ")
+      : payload.ErrorMessage || "OCR processing failed";
+    throw new Error(errorMessage);
+  }
+
+  const text = (payload?.ParsedResults || [])
+    .map((item) => String(item?.ParsedText || "").trim())
+    .filter(Boolean)
+    .join("\n");
+
+  if (!text.trim()) {
+    throw new Error("No readable text found in screenshot");
+  }
+
+  return text;
+}
+
+function collectTextCandidates(value: unknown, out: string[], depth = 0) {
+  if (depth > 8 || value == null) return;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length >= 2 && /[a-z0-9]/i.test(trimmed)) {
+      out.push(trimmed);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTextCandidates(item, out, depth + 1);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        typeof nested === "string" &&
+        (lowerKey.includes("text") || lowerKey.includes("word") || lowerKey.includes("line") || lowerKey.includes("content"))
+      ) {
+        const trimmed = nested.trim();
+        if (trimmed.length >= 2 && /[a-z0-9]/i.test(trimmed)) {
+          out.push(trimmed);
+        }
+      }
+      collectTextCandidates(nested, out, depth + 1);
+    }
+  }
+}
+
+async function extractTextFromImageWithApi4Ai(file: {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+}): Promise<string> {
+  const configuredEndpoint = String(process.env.API4AI_OCR_ENDPOINT || "").trim();
+  const endpoints = [
+    configuredEndpoint,
+    "https://demo.api4.ai/ocr/v1/results",
+    "https://demo.api4ai.cloud/ocr/v1/results",
+  ].filter((value, index, arr) => !!value && arr.indexOf(value) === index);
+
+  if (endpoints.length === 0) {
+    throw new Error("API4AI endpoint is not configured");
+  }
+
+  const apiKey = String(process.env.API4AI_OCR_KEY || process.env.API4AI_API_KEY || "").trim();
+  const appId = String(process.env.API4AI_APP_ID || "").trim();
+  const appSecret = String(process.env.API4AI_APP_SECRET || "").trim();
+
+  let lastError = "";
+  for (const endpoint of endpoints) {
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers["A4A-KEY"] = apiKey;
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["x-api-key"] = apiKey;
+    }
+    if (appId) headers["A4A-CLIENT-APP-ID"] = appId;
+    if (appSecret) headers["A4A-CLIENT-APP-KEY"] = appSecret;
+
+    const formData = new FormData();
+    const fileBytes = Uint8Array.from(file.buffer);
+    const blob = new Blob([fileBytes], { type: file.mimetype || "image/png" });
+    formData.append("image", blob, file.originalname || "bgmi-result.png");
+    formData.append("file", blob, file.originalname || "bgmi-result.png");
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (!response.ok) {
+        const text = (await response.text()).slice(0, 300);
+        lastError = `API4AI request failed (${response.status}) ${text}`;
+        continue;
+      }
+
+      const payload = (await response.json()) as unknown;
+      const candidates: string[] = [];
+      collectTextCandidates(payload, candidates);
+      const mergedText = Array.from(new Set(candidates))
+        .join("\n")
+        .trim();
+      if (!mergedText) {
+        lastError = "API4AI response did not contain OCR text";
+        continue;
+      }
+      return mergedText;
+    } catch (err: any) {
+      lastError = err?.message || "API4AI OCR request failed";
+    }
+  }
+
+  throw new Error(lastError || "API4AI OCR request failed");
+}
+
+async function extractTextFromImage(file: {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+}): Promise<string> {
+  const provider = String(process.env.OCR_PROVIDER || "auto").toLowerCase().trim();
+
+  if (provider === "api4ai") {
+    return extractTextFromImageWithApi4Ai(file);
+  }
+  if (provider === "ocrspace") {
+    return extractTextFromImageWithOcrSpace(file);
+  }
+
+  try {
+    return await extractTextFromImageWithApi4Ai(file);
+  } catch {
+    return extractTextFromImageWithOcrSpace(file);
+  }
+}
+
+function parseBgmiRowsFromText(rawText: string): OcrParsedRow[] {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const parsedRows: OcrParsedRow[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const line of lines) {
+    if (/^(rank|name|kills?|finishes?|finish|total|result|match)\b/i.test(line)) {
+      continue;
+    }
+
+    const numericMatches = line.match(/\d+/g) || [];
+    if (numericMatches.length < 2) continue;
+
+    const numbers = numericMatches.map((n) => Math.max(0, Number(n)));
+    let slNo = 0;
+    let rank = 0;
+    let kills = 0;
+
+    if (numbers.length >= 3) {
+      slNo = numbers[0];
+      rank = numbers[1];
+      kills = numbers[2];
+    } else {
+      rank = numbers[0];
+      kills = numbers[1];
+    }
+
+    if (!Number.isFinite(rank) || rank <= 0 || rank > 100) continue;
+    if (!Number.isFinite(kills) || kills < 0 || kills > 80) {
+      kills = Math.max(0, Math.min(80, kills || 0));
+    }
+
+    const detectedName = line
+      .replace(/\b\d+\b/g, " ")
+      .replace(/\b(rank|kills?|finishes?|finish|sl|no|name)\b/gi, " ")
+      .replace(/[|:;,_]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (detectedName.length < 2 || !/[a-z]/i.test(detectedName)) continue;
+
+    const dedupeKey = `${normalizePlayerKey(detectedName)}|${rank}|${kills}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+
+    parsedRows.push({
+      slNo: slNo > 0 ? slNo : parsedRows.length + 1,
+      detectedName,
+      rank,
+      kills,
+    });
+  }
+
+  return parsedRows
+    .sort((a, b) => a.rank - b.rank || a.slNo - b.slNo)
+    .slice(0, 100);
 }
 
 function parsePrizeDistributionMap(raw: unknown): Map<number, number> {
@@ -1261,6 +1564,89 @@ app.get("/api/tournaments/:id/participants", async (req, res) => {
 });
 
   // 🔓 Public: Total registered users (email + Google)
+app.post(
+  "/api/admin/tournaments/:id/results/extract",
+  authMiddleware,
+  adminMiddleware,
+  uploadMemory.single("screenshot"),
+  async (req, res) => {
+    try {
+      const tournamentId = Number(req.params.id);
+      if (!Number.isInteger(tournamentId) || tournamentId <= 0) {
+        return res.status(400).json({ message: "Invalid tournament id" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ message: "Result screenshot is required" });
+      }
+
+      const tournament = await storage.getTournamentById(tournamentId);
+      if (!tournament) {
+        return res.status(404).json({ message: "Tournament not found" });
+      }
+
+      const regs = await storage.getRegistrationsByTournament(tournamentId);
+      const participants = await Promise.all(
+        regs.map(async (reg) => {
+          const user = await storage.getUserById(reg.userId);
+          return {
+            userId: Number(reg.userId),
+            displayName: String(reg.inGameName || user?.username || `Player #${reg.userId}`),
+            username: String(user?.username || ""),
+          };
+        }),
+      );
+
+      const rawText = await extractTextFromImage({
+        buffer: req.file.buffer,
+        mimetype: req.file.mimetype,
+        originalname: req.file.originalname,
+      });
+      const parsedRows = parseBgmiRowsFromText(rawText);
+      if (parsedRows.length === 0) {
+        return res.status(422).json({
+          message: "Could not detect rank/name/kills from screenshot. Try a clearer image.",
+          rawText: rawText.slice(0, 4000),
+        });
+      }
+
+      const rows = parsedRows.map((row) => {
+        let bestMatch: { userId: number; displayName: string; score: number } | null = null;
+        for (const participant of participants) {
+          const scoreByDisplayName = computeNameSimilarityScore(row.detectedName, participant.displayName);
+          const scoreByUsername = computeNameSimilarityScore(row.detectedName, participant.username);
+          const score = Math.max(scoreByDisplayName, scoreByUsername);
+          if (!bestMatch || score > bestMatch.score) {
+            bestMatch = {
+              userId: participant.userId,
+              displayName: participant.displayName,
+              score,
+            };
+          }
+        }
+
+        const matched = bestMatch && bestMatch.score >= 0.52 ? bestMatch : null;
+        return {
+          slNo: row.slNo,
+          detectedName: row.detectedName,
+          rank: row.rank,
+          kills: row.kills,
+          matchedUserId: matched?.userId || null,
+          matchedDisplayName: matched?.displayName || null,
+          confidence: matched ? Number((matched.score * 100).toFixed(1)) : 0,
+        };
+      });
+
+      res.json({
+        rows,
+        rawText: rawText.slice(0, 4000),
+        participantsCount: participants.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to extract results from screenshot" });
+    }
+  },
+);
+
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const limitRaw = Number(req.query.limit);

@@ -1446,15 +1446,74 @@ function CouponManager({ token }: { token: string | null }) {
 }
 
 type ParticipantData = { id: number; userId: number; username?: string; displayName?: string; inGameName?: string };
+type ExtractedResultRow = {
+  slNo: number;
+  detectedName: string;
+  rank: number;
+  kills: number;
+  matchedUserId: number | null;
+  matchedDisplayName: string | null;
+  confidence: number;
+};
 
 function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; token: string | null; onClose: () => void }) {
   const { toast } = useToast();
   const [winners, setWinners] = useState<{ userId: string; position: number; kills: string; prize: string }[]>([
     { userId: "", position: 1, kills: "0", prize: "" },
   ]);
+  const [resultScreenshot, setResultScreenshot] = useState<File | null>(null);
+  const [ocrRows, setOcrRows] = useState<Array<{
+    id: string;
+    detectedName: string;
+    matchedUserId: string;
+    rank: string;
+    kills: string;
+    confidence: number;
+  }>>([]);
+  const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
+  const [ocrRawText, setOcrRawText] = useState("");
 
   const { data: participants } = useQuery<ParticipantData[]>({
     queryKey: ["/api/tournaments", tournament.id.toString(), "participants"],
+  });
+
+  const extractMutation = useMutation({
+    mutationFn: async () => {
+      if (!resultScreenshot) throw new Error("Please select a screenshot first");
+      const formData = new FormData();
+      formData.append("screenshot", resultScreenshot);
+      const res = await fetch(`/api/admin/tournaments/${tournament.id}/results/extract`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to extract results");
+      return data as { rows: ExtractedResultRow[]; rawText?: string };
+    },
+    onSuccess: (data) => {
+      const nextRows = (data.rows || []).map((row, index) => ({
+        id: `${row.slNo}-${index}`,
+        detectedName: row.detectedName || `Row ${index + 1}`,
+        matchedUserId: row.matchedUserId ? String(row.matchedUserId) : "",
+        rank: String(row.rank || index + 1),
+        kills: String(row.kills || 0),
+        confidence: Number(row.confidence || 0),
+      }));
+      if (nextRows.length === 0) {
+        throw new Error("No rows detected from screenshot");
+      }
+      setOcrRows(nextRows);
+      setOcrRawText(data.rawText || "");
+      setOcrDialogOpen(true);
+      toast({
+        title: "Results extracted",
+        description: "Review the detected rows and confirm to apply.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "OCR failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const declareMutation = useMutation({
@@ -1499,11 +1558,163 @@ function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; t
     setWinners(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: value } : w));
   }
 
+  function updateOcrRow(id: string, field: "matchedUserId" | "rank" | "kills", value: string) {
+    setOcrRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+    );
+  }
+
+  function getPrizeForPosition(position: number): string {
+    const distribution = Array.isArray(tournament.prizeDistribution)
+      ? (tournament.prizeDistribution as Array<{ position?: number; prize?: number }>)
+      : [];
+    const match = distribution.find((entry) => Number(entry?.position) === position);
+    const paise = Number(match?.prize || 0);
+    if (!Number.isFinite(paise) || paise <= 0) return "";
+    return String(paise / 100);
+  }
+
+  function applyOcrRowsToWinners() {
+    const rows = ocrRows
+      .map((row) => ({
+        userId: row.matchedUserId,
+        position: Math.max(1, Number(row.rank) || 1),
+        kills: Math.max(0, Number(row.kills) || 0),
+      }))
+      .filter((row) => !!row.userId)
+      .sort((a, b) => a.position - b.position)
+      .map((row, index) => ({
+        userId: row.userId,
+        position: row.position || index + 1,
+        kills: String(row.kills),
+        prize: getPrizeForPosition(row.position || index + 1),
+      }));
+
+    if (rows.length === 0) {
+      toast({
+        title: "No valid rows",
+        description: "Map at least one detected name to a participant before applying.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setWinners(rows);
+    setOcrDialogOpen(false);
+    toast({
+      title: "Applied",
+      description: "Detected results were applied. You can still edit before declaring.",
+    });
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Select winners from the participant list. Prizes are in Rupees and will be credited to winner wallets.
       </p>
+
+      <Card>
+        <CardContent className="p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Result Screenshot Upload</p>
+            <Badge variant="outline" className="text-[10px]">Auto Extract</Badge>
+          </div>
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setResultScreenshot(e.target.files?.[0] || null)}
+            data-testid="input-result-screenshot"
+          />
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{resultScreenshot ? resultScreenshot.name : "No screenshot selected"}</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="gap-1.5"
+              onClick={() => extractMutation.mutate()}
+              disabled={!resultScreenshot || extractMutation.isPending}
+              data-testid="button-extract-results-screenshot"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {extractMutation.isPending ? "Extracting..." : "Extract Results"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={ocrDialogOpen} onOpenChange={setOcrDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Confirm Extracted Results</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Verify detected rows, map participants, then apply to final results form.
+            </p>
+
+            <div className="space-y-2">
+              {ocrRows.map((row) => (
+                <Card key={row.id}>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        Detected: <span className="font-medium text-foreground">{row.detectedName}</span>
+                      </p>
+                      <Badge variant="outline" className="text-[10px]">
+                        Match {row.confidence.toFixed(0)}%
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <Select value={row.matchedUserId} onValueChange={(value) => updateOcrRow(row.id, "matchedUserId", value)}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue placeholder="Map participant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {participants?.map((p) => (
+                            <SelectItem key={p.userId} value={String(p.userId)}>
+                              {p.displayName || p.username || `Player #${p.userId}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={row.rank}
+                        onChange={(e) => updateOcrRow(row.id, "rank", e.target.value)}
+                        placeholder="Rank"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        value={row.kills}
+                        onChange={(e) => updateOcrRow(row.id, "kills", e.target.value)}
+                        placeholder="Kills"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {ocrRawText && (
+              <div className="rounded-md border p-2">
+                <p className="text-[11px] text-muted-foreground mb-1">OCR Raw Text (debug)</p>
+                <p className="text-[11px] whitespace-pre-wrap break-words max-h-28 overflow-auto">{ocrRawText}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setOcrDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={applyOcrRowsToWinners} data-testid="button-apply-ocr-results">
+                Apply to Results Form
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="space-y-3">
         {winners.map((w, i) => (
