@@ -86,29 +86,21 @@ function getTournamentImage(t: Tournament, g?: Game) {
 
 function getIGNForGame(slug: string, user: any) {
   if (!user) return "";
-  switch (slug) {
-    case "bgmi":
-      return user.bgmiIgn || user.bgmiId || "";
-    case "free-fire":
-      return user.freeFireIgn || user.freeFireId || "";
-    case "cod-mobile":
-      return user.codIgn || user.codMobileId || "";
-    default:
-      return "";
+  const normalizedSlug = String(slug || "").toLowerCase().trim();
+  if (normalizedSlug.includes("bgmi")) return user.bgmiIgn || user.bgmiId || "";
+  if (normalizedSlug.includes("free-fire") || normalizedSlug.includes("freefire") || normalizedSlug.includes("free_fire")) {
+    return user.freeFireIgn || user.freeFireId || "";
   }
+  if (normalizedSlug.includes("cod")) return user.codIgn || user.codMobileId || "";
+  return "";
 }
 
 function getIgnProfileFieldForGame(slug: string): "bgmiIgn" | "freeFireIgn" | "codIgn" | null {
-  switch (slug) {
-    case "bgmi":
-      return "bgmiIgn";
-    case "free-fire":
-      return "freeFireIgn";
-    case "cod-mobile":
-      return "codIgn";
-    default:
-      return null;
-  }
+  const normalizedSlug = String(slug || "").toLowerCase().trim();
+  if (normalizedSlug.includes("bgmi")) return "bgmiIgn";
+  if (normalizedSlug.includes("free-fire") || normalizedSlug.includes("freefire") || normalizedSlug.includes("free_fire")) return "freeFireIgn";
+  if (normalizedSlug.includes("cod")) return "codIgn";
+  return null;
 }
 
 function parsePrizeDistribution(input: unknown): PrizeRow[] {
@@ -294,7 +286,27 @@ export default function TournamentDetailPage() {
     }
   }
 
-  function openJoinModal() {
+  async function refreshLatestUserProfile() {
+    if (!token) return user;
+    try {
+      const data = await fetchJsonOrThrow<{ user: any }>("/api/users/profile", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      });
+      if (data?.user && typeof updateUser === "function") {
+        updateUser(data.user);
+      }
+      return data?.user || user;
+    } catch {
+      return user;
+    }
+  }
+
+  async function openJoinModal() {
     if (!tournament) return;
     if (!user) {
       setLocation("/auth");
@@ -317,8 +329,14 @@ export default function TournamentDetailPage() {
       return;
     }
 
+    const latestUser = await refreshLatestUserProfile();
+    if (!latestUser) {
+      setLocation("/auth");
+      return;
+    }
+
     if (isSolo && game?.slug) {
-      setIgn(getIGNForGame(game.slug, user));
+      setIgn(getIGNForGame(game.slug, latestUser));
       setTeamId(null);
     } else if (isDuo || isSquad) {
       if (eligibleTeams.length === 0) {
@@ -344,7 +362,7 @@ export default function TournamentDetailPage() {
     const params = new URLSearchParams(searchString);
     if (params.get("action") !== "join") return;
     if (!tournament || joinOpen || joined) return;
-    openJoinModal();
+    void openJoinModal();
   }, [searchString, tournament, joinOpen, joined]);
 
   useEffect(() => {
