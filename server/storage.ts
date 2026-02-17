@@ -15,6 +15,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserById(id: number): Promise<User | undefined>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
+  getUserByEmailVerificationToken(token: string): Promise<User | undefined>;
+  getUserByPasswordResetToken(token: string): Promise<User | undefined>;
   updateUserProfile(id: number, data: Partial<User>): Promise<User | undefined>;
   updateWalletBalance(id: number, amount: number): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
@@ -108,6 +110,7 @@ export class DatabaseStorage implements IStorage {
       username: data.username,
       email: data.email,
       password: "",
+      emailVerified: true,
       googleId: data.googleId,
       avatarUrl: data.avatarUrl || null,
     }).returning();
@@ -126,6 +129,16 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
+    return user;
+  }
+
+  async getUserByEmailVerificationToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.emailVerificationToken, token));
+    return user;
+  }
+
+  async getUserByPasswordResetToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.passwordResetToken, token));
     return user;
   }
 

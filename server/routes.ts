@@ -58,6 +58,52 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
+const PHONE_VERIFICATION_TTL_MS = 10 * 60 * 1000;
+const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function createSecureToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function createPhoneOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(normalized) ? normalized : null;
+}
+
+function normalizePhone(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/[^\d+]/g, "");
+  const phoneRegex = /^\+?[1-9]\d{7,14}$/;
+  return phoneRegex.test(normalized) ? normalized : null;
+}
+
+function sanitizeUser(user: any) {
+  if (!user) return user;
+  const {
+    password,
+    emailVerificationToken,
+    emailVerificationExpires,
+    passwordResetToken,
+    passwordResetExpires,
+    phoneVerificationCode,
+    phoneVerificationExpires,
+    ...safeUser
+  } = user;
+  return safeUser;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -78,6 +124,42 @@ export async function registerRoutes(
     }
   });
 
+  async function requireVerifiedEmail(userId: number, res: any) {
+    const user = await storage.getUserById(userId);
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return null;
+    }
+    if (!user.emailVerified) {
+      res.status(403).json({ message: "Email verification required" });
+      return null;
+    }
+    return user;
+  }
+
+  async function requireWithdrawalEligibility(userId: number, res: any) {
+    const user = await storage.getUserById(userId);
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return null;
+    }
+    if (!user.emailVerified) {
+      res.status(403).json({ message: "Verify your email before withdrawing" });
+      return null;
+    }
+    if (!user.phone || !user.phoneVerified) {
+      res.status(403).json({ message: "Phone verification required before withdrawal" });
+      return null;
+    }
+    if (user.withdrawalLockUntil && user.withdrawalLockUntil.getTime() > Date.now()) {
+      res.status(403).json({
+        message: `Withdrawals are locked until ${user.withdrawalLockUntil.toLocaleString("en-IN")}`,
+      });
+      return null;
+    }
+    return user;
+  }
+
   // Auth routes
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
@@ -96,18 +178,34 @@ export async function registerRoutes(
     }
 
     const user = await storage.createUser({
-  username,
-  email,
-  password, // plain password
-});
+      username,
+      email,
+      password,
+    });
+
+    const verificationToken = createSecureToken();
+    const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+    const updatedUser = await storage.updateUserProfile(user.id, {
+      emailVerificationToken: verificationToken,
+      emailVerificationExpires: verificationExpires,
+      emailVerified: false,
+    });
+
+    // TODO: Integrate email provider to deliver this token as verification link.
+    console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
 
     const token = generateToken(user.id, user.role);
-    const { password: _pw, ...safeUser } = user;
-
-    return res.status(201).json({
+    const safeUser = sanitizeUser(updatedUser || user);
+    const payload: any = {
       token,
       user: safeUser,
-    });
+      message: "Signup successful. Please verify your email.",
+    };
+    if (process.env.NODE_ENV !== "production") {
+      payload.devEmailVerificationToken = verificationToken;
+    }
+
+    return res.status(201).json(payload);
   } catch (err: any) {
     console.error("Signup error:", err);
 
@@ -142,7 +240,7 @@ export async function registerRoutes(
       if (user.banned) return res.status(403).json({ message: "Account is banned" });
 
       const token = generateToken(user.id, user.role);
-      const { password, ...safeUser } = user;
+      const safeUser = sanitizeUser(user);
       res.json({ token, user: safeUser });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Server error" });
@@ -180,7 +278,7 @@ export async function registerRoutes(
       if (!user) {
         user = await storage.getUserByEmail(email);
         if (user) {
-          await storage.updateUserProfile(user.id, { googleId, avatarUrl: picture || null });
+          await storage.updateUserProfile(user.id, { googleId, avatarUrl: picture || null, emailVerified: true });
           user = await storage.getUserById(user.id);
         } else {
           const username = (name || email.split("@")[0]).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 30) || `user_${Date.now()}`;
@@ -202,11 +300,257 @@ export async function registerRoutes(
       if (user.banned) return res.status(403).json({ message: "Account is banned" });
 
       const token = generateToken(user.id, user.role);
-      const { password, ...safeUser } = user;
+      const safeUser = sanitizeUser(user);
       res.json({ token, user: safeUser });
     } catch (err: any) {
       console.error("Google auth error:", err);
       res.status(500).json({ message: "Google authentication failed" });
+    }
+  });
+
+  app.post("/api/auth/request-email-verification", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.emailVerified) return res.json({ message: "Email already verified" });
+
+      const verificationToken = createSecureToken();
+      const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+      await storage.updateUserProfile(userId, {
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: verificationExpires,
+      });
+
+      // TODO: Integrate email provider to deliver this token as verification link.
+      console.log(`[EMAIL_VERIFY] user=${user.email} token=${verificationToken}`);
+
+      const payload: any = { message: "Verification email sent" };
+      if (process.env.NODE_ENV !== "production") {
+        payload.devEmailVerificationToken = verificationToken;
+      }
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/verify-email", authLimiter, async (req, res) => {
+    try {
+      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+      if (!token) return res.status(400).json({ message: "Verification token is required" });
+
+      const user = await storage.getUserByEmailVerificationToken(token);
+      if (!user) return res.status(400).json({ message: "Invalid verification token" });
+      if (!user.emailVerificationExpires || user.emailVerificationExpires.getTime() < Date.now()) {
+        return res.status(400).json({ message: "Verification token expired" });
+      }
+
+      const updated = await storage.updateUserProfile(user.id, {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      });
+
+      res.json({ message: "Email verified successfully", user: sanitizeUser(updated || user) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/request-password-reset", authLimiter, async (req, res) => {
+    try {
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      if (!email) return res.status(400).json({ message: "Email is required" });
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) return res.json({ message: "If this email exists, a reset link has been sent." });
+
+      const resetToken = createSecureToken();
+      const resetExpires = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+      await storage.updateUserProfile(user.id, {
+        passwordResetToken: resetToken,
+        passwordResetExpires: resetExpires,
+      });
+
+      // TODO: Integrate email provider to deliver this token as reset link.
+      console.log(`[PASSWORD_RESET] user=${email} token=${resetToken}`);
+
+      const payload: any = { message: "If this email exists, a reset link has been sent." };
+      if (process.env.NODE_ENV !== "production") {
+        payload.devPasswordResetToken = resetToken;
+      }
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
+    try {
+      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+      const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+      if (!token) return res.status(400).json({ message: "Reset token is required" });
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ message: "New password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUserByPasswordResetToken(token);
+      if (!user) return res.status(400).json({ message: "Invalid reset token" });
+      if (!user.passwordResetExpires || user.passwordResetExpires.getTime() < Date.now()) {
+        return res.status(400).json({ message: "Reset token expired" });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await storage.updateUserProfile(user.id, {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      });
+
+      res.json({ message: "Password reset successful" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/request-phone-verification", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user.phone) return res.status(400).json({ message: "Add phone number before verification" });
+      if (user.phoneVerified) return res.json({ message: "Phone already verified" });
+
+      const otp = createPhoneOtp();
+      const expires = new Date(Date.now() + PHONE_VERIFICATION_TTL_MS);
+      await storage.updateUserProfile(userId, {
+        phoneVerificationCode: otp,
+        phoneVerificationExpires: expires,
+      });
+
+      // TODO: Integrate SMS provider to deliver OTP.
+      console.log(`[PHONE_VERIFY] user=${user.id} phone=${user.phone} otp=${otp}`);
+
+      const payload: any = { message: "Phone verification code sent" };
+      if (process.env.NODE_ENV !== "production") {
+        payload.devPhoneOtp = otp;
+      }
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/verify-phone", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+      if (!code) return res.status(400).json({ message: "Verification code is required" });
+
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user.phone) return res.status(400).json({ message: "Phone number is missing" });
+      if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
+        return res.status(400).json({ message: "Invalid verification code" });
+      }
+      if (!user.phoneVerificationExpires || user.phoneVerificationExpires.getTime() < Date.now()) {
+        return res.status(400).json({ message: "Verification code expired" });
+      }
+
+      const updated = await storage.updateUserProfile(userId, {
+        phoneVerified: true,
+        phoneVerificationCode: null,
+        phoneVerificationExpires: null,
+      });
+
+      res.json({ message: "Phone verified successfully", user: sanitizeUser(updated || user) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/users/contact", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const currentUser = await storage.getUserById(userId);
+      if (!currentUser) return res.status(404).json({ message: "User not found" });
+
+      const hasEmailInput = Object.prototype.hasOwnProperty.call(req.body ?? {}, "email");
+      const hasPhoneInput = Object.prototype.hasOwnProperty.call(req.body ?? {}, "phone");
+      if (!hasEmailInput && !hasPhoneInput) {
+        return res.status(400).json({ message: "Provide email and/or phone to update" });
+      }
+
+      const updates: any = {};
+      let emailChanged = false;
+      let phoneChanged = false;
+      let verificationToken: string | null = null;
+
+      if (hasEmailInput) {
+        const nextEmail = normalizeEmail(req.body?.email);
+        if (!nextEmail) {
+          return res.status(400).json({ message: "Enter a valid email address" });
+        }
+        if (nextEmail !== currentUser.email.toLowerCase()) {
+          const existing = await storage.getUserByEmail(nextEmail);
+          if (existing && existing.id !== userId) {
+            return res.status(400).json({ message: "Email already registered" });
+          }
+          verificationToken = createSecureToken();
+          updates.email = nextEmail;
+          updates.emailVerified = false;
+          updates.emailVerificationToken = verificationToken;
+          updates.emailVerificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+          updates.emailChangedAt = new Date();
+          emailChanged = true;
+        }
+      }
+
+      if (hasPhoneInput) {
+        const rawPhone = req.body?.phone;
+        const nextPhone = rawPhone === null || (typeof rawPhone === "string" && !rawPhone.trim())
+          ? null
+          : normalizePhone(rawPhone);
+        if (rawPhone !== null && !(typeof rawPhone === "string" && !rawPhone.trim()) && !nextPhone) {
+          return res.status(400).json({ message: "Enter a valid phone number" });
+        }
+
+        const currentPhone = currentUser.phone ?? null;
+        if (nextPhone !== currentPhone) {
+          updates.phone = nextPhone;
+          updates.phoneVerified = false;
+          updates.phoneVerificationCode = null;
+          updates.phoneVerificationExpires = null;
+          updates.phoneChangedAt = new Date();
+          phoneChanged = true;
+        }
+      }
+
+      if (!emailChanged && !phoneChanged) {
+        return res.json({ message: "No contact changes detected", user: sanitizeUser(currentUser) });
+      }
+
+      updates.withdrawalLockUntil = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
+      const updated = await storage.updateUserProfile(userId, updates);
+      if (!updated) return res.status(404).json({ message: "User not found" });
+
+      if (verificationToken) {
+        // TODO: Integrate email provider to deliver this token as verification link.
+        console.log(`[EMAIL_VERIFY] user=${updated.email} token=${verificationToken}`);
+      }
+
+      const payload: any = {
+        message: "Contact details updated. Withdrawals are temporarily locked for security.",
+        user: sanitizeUser(updated),
+      };
+      if (verificationToken && process.env.NODE_ENV !== "production") {
+        payload.devEmailVerificationToken = verificationToken;
+      }
+
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -401,6 +745,8 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Invalid tournament id" });
       }
 
+      if (!(await requireVerifiedEmail(userId, res))) return;
+
       const tournament = await storage.getTournamentById(tournamentId);
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
 
@@ -434,8 +780,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         teamId,
       });
 
-      const { password, ...safeUser } = joined.user;
-      res.json({ message: "Joined successfully", user: safeUser });
+      res.json({ message: "Joined successfully", user: sanitizeUser(joined.user) });
     } catch (err: any) {
       if (err?.code === "TOURNAMENT_NOT_FOUND") return res.status(404).json({ message: err.message });
       if (err?.code === "TOURNAMENT_CLOSED") return res.status(400).json({ message: err.message });
@@ -480,15 +825,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const user = await storage.getUserById(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      const { password, ...safeUser } = user;
-      return res.json({ user: safeUser });
+      return res.json({ user: sanitizeUser(user) });
     }
 
     const updated = await storage.updateUserProfile(userId, updates);
     if (!updated) return res.status(404).json({ message: "User not found" });
 
-    const { password, ...safeUser } = updated;
-    res.json({ user: safeUser });
+    res.json({ user: sanitizeUser(updated) });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -516,8 +859,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
 
       const user = await storage.getUserById(userId);
-      const { password, ...safeUser } = user!;
-      res.json({ user: safeUser, message: "Money added successfully" });
+      res.json({ user: sanitizeUser(user), message: "Money added successfully" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -533,9 +875,8 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       const redeemed = await storage.redeemCoupon(userId, code);
-      const { password, ...safeUser } = redeemed.user;
       res.json({
-        user: safeUser,
+        user: sanitizeUser(redeemed.user),
         coupon: redeemed.coupon,
         amount: redeemed.amount,
         message: `Coupon redeemed. Rs.${(redeemed.amount / 100).toFixed(2)} credited to wallet.`,
@@ -639,8 +980,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
 
       const user = await storage.getUserById(userId);
-      const { password, ...safeUser } = user!;
-      res.json({ message: "Payment verified successfully", user: safeUser });
+      res.json({ message: "Payment verified successfully", user: sanitizeUser(user) });
     } catch (err: any) {
       console.error("Payment verify error:", err);
       res.status(500).json({ message: "Payment verification failed" });
@@ -719,8 +1059,8 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const { amount, upiId, bankDetails } = req.body;
       if (!amount || typeof amount !== "number" || amount < 5000) return res.status(400).json({ message: "Minimum withdrawal is \u20B950" });
 
-      const user = await storage.getUserById(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
+      const user = await requireWithdrawalEligibility(userId, res);
+      if (!user) return;
       if (user.walletBalance < amount) return res.status(400).json({ message: "Insufficient balance" });
 
       await storage.updateWalletBalance(userId, -amount);
@@ -873,7 +1213,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
   app.get("/api/admin/users", authMiddleware, adminMiddleware, async (_req, res) => {
     try {
       const all = await storage.getAllUsers();
-      const safe = all.map(({ password, ...rest }) => rest);
+      const safe = all.map((item) => sanitizeUser(item));
       res.json(safe);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -886,7 +1226,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const targetId = Number(req.params.id);
       const user = await storage.banUser(targetId, banned);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const { password, ...safeUser } = user;
 
       await storage.createAdminLog({
         adminId: (req as any).userId,
@@ -895,7 +1234,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId,
       });
 
-      res.json(safeUser);
+      res.json(sanitizeUser(user));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -945,8 +1284,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       });
 
       const updated = await storage.getUserById(targetId);
-      const { password, ...safeUser } = updated!;
-      res.json(safeUser);
+      res.json(sanitizeUser(updated));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

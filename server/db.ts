@@ -56,6 +56,24 @@ export async function ensureRegistrationsTeamColumn() {
   `);
 }
 
+export async function ensureUserSecurityColumns() {
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS email_verification_token text,
+    ADD COLUMN IF NOT EXISTS email_verification_expires timestamp,
+    ADD COLUMN IF NOT EXISTS phone text,
+    ADD COLUMN IF NOT EXISTS phone_verified boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS phone_verification_code text,
+    ADD COLUMN IF NOT EXISTS phone_verification_expires timestamp,
+    ADD COLUMN IF NOT EXISTS password_reset_token text,
+    ADD COLUMN IF NOT EXISTS password_reset_expires timestamp,
+    ADD COLUMN IF NOT EXISTS withdrawal_lock_until timestamp,
+    ADD COLUMN IF NOT EXISTS email_changed_at timestamp,
+    ADD COLUMN IF NOT EXISTS phone_changed_at timestamp;
+  `);
+}
+
 export async function ensureCouponsTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS coupons (

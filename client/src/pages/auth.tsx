@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Swords, Eye, EyeOff, ArrowRight, Gamepad2 } from "lucide-react";
 
@@ -41,6 +42,11 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -136,12 +142,72 @@ export default function AuthPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Signup failed");
       login(json.token, json.user);
-      toast({ title: "Account created!", description: "Welcome to BATTLE NEST" });
+      toast({
+        title: "Account created!",
+        description: json.message || "Please verify your email to unlock all features",
+      });
       setLocation("/");
     } catch (err: any) {
       toast({ title: "Signup failed", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function requestPasswordReset() {
+    if (!resetEmail.trim()) {
+      toast({ title: "Email required", description: "Enter your account email", variant: "destructive" });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send reset link");
+      if (data.devPasswordResetToken) {
+        setResetToken(data.devPasswordResetToken);
+      }
+      toast({
+        title: "Reset link sent",
+        description: data.devPasswordResetToken ? "Dev token auto-filled below" : "Check your email",
+      });
+    } catch (err: any) {
+      toast({ title: "Reset request failed", description: err.message, variant: "destructive" });
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
+  async function submitPasswordReset() {
+    if (!resetToken.trim() || !resetPassword.trim()) {
+      toast({ title: "Missing fields", description: "Token and new password are required", variant: "destructive" });
+      return;
+    }
+    if (resetPassword.length < 6) {
+      toast({ title: "Weak password", description: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken.trim(), newPassword: resetPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Reset failed");
+      toast({ title: "Password updated", description: "You can now sign in with your new password" });
+      setResetOpen(false);
+      setResetToken("");
+      setResetPassword("");
+    } catch (err: any) {
+      toast({ title: "Password reset failed", description: err.message, variant: "destructive" });
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -223,6 +289,16 @@ export default function AuthPage() {
                     <p className="text-xs text-destructive">{loginForm.formState.errors.password.message}</p>
                   )}
                 </div>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => {
+                    setResetEmail(loginForm.getValues("email") || "");
+                    setResetOpen(true);
+                  }}
+                >
+                  Forgot password?
+                </button>
                 <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
                   {loading ? "Signing in..." : "Sign In"}
                   {!loading && <ArrowRight className="w-4 h-4 ml-2" />}
@@ -319,6 +395,53 @@ export default function AuthPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset Password</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={requestPasswordReset}
+                disabled={resetLoading}
+              >
+                {resetLoading ? "Sending..." : "Send Reset Link"}
+              </Button>
+              <div className="space-y-1">
+                <Label>Reset Token</Label>
+                <Input
+                  placeholder="Paste token from email/dev response"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>New Password</Label>
+                <Input
+                  type="password"
+                  placeholder="Minimum 6 characters"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                />
+              </div>
+              <Button className="w-full" onClick={submitPasswordReset} disabled={resetLoading}>
+                {resetLoading ? "Updating..." : "Update Password"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           By continuing, you agree to the BATTLE NEST Terms of Service.

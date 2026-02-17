@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Gamepad2, Save, Trophy, Clock, Wallet } from "lucide-react";
+import { Gamepad2, Save, Trophy, Wallet, Mail, Phone, ShieldCheck, ShieldAlert } from "lucide-react";
 import type { Registration, Tournament } from "@shared/schema";
 
 export default function ProfilePage() {
@@ -22,6 +22,12 @@ export default function ProfilePage() {
     freeFireIgn: user?.freeFireIgn || "",
     codIgn: user?.codIgn || "",
   });
+  const [contact, setContact] = useState({
+    email: user?.email || "",
+    phone: user?.phone || "",
+  });
+  const [emailToken, setEmailToken] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
 
   const { data: registrations } = useQuery<
     (Registration & { tournament?: Tournament })[]
@@ -36,6 +42,13 @@ export default function ProfilePage() {
       (user?.bgmiIgn || "") !== gameIGNs.bgmiIgn.trim() ||
       (user?.freeFireIgn || "") !== gameIGNs.freeFireIgn.trim() ||
       (user?.codIgn || "") !== gameIGNs.codIgn.trim()
+    );
+  }
+
+  function hasContactChanges() {
+    return (
+      (user?.email || "") !== contact.email.trim() ||
+      (user?.phone || "") !== contact.phone.trim()
     );
   }
 
@@ -93,9 +106,146 @@ export default function ProfilePage() {
     },
   });
 
+  async function authRequest(url: string, body?: any) {
+    if (!token) throw new Error("Not authenticated");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Request failed");
+    return data;
+  }
+
+  const updateContactMutation = useMutation({
+    mutationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      const res = await fetch("/api/users/contact", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: contact.email.trim(),
+          phone: contact.phone.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Contact update failed");
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data.user) updateUser(data.user);
+      toast({
+        title: "Contact updated",
+        description: data.message || "Contact details saved",
+      });
+      if (data.devEmailVerificationToken) {
+        setEmailToken(data.devEmailVerificationToken);
+      }
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Contact update failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const requestEmailVerificationMutation = useMutation({
+    mutationFn: async () => authRequest("/api/auth/request-email-verification"),
+    onSuccess: (data) => {
+      if (data.devEmailVerificationToken) {
+        setEmailToken(data.devEmailVerificationToken);
+      }
+      toast({
+        title: "Verification email sent",
+        description: data.devEmailVerificationToken ? "Dev token auto-filled below" : "Check your inbox",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Failed to send verification email",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const verifyEmailMutation = useMutation({
+    mutationFn: async () => authRequest("/api/auth/verify-email", { token: emailToken.trim() }),
+    onSuccess: (data) => {
+      if (data.user) updateUser(data.user);
+      setEmailToken("");
+      toast({
+        title: "Email verified",
+        description: "Your email is now verified",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Email verification failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const requestPhoneVerificationMutation = useMutation({
+    mutationFn: async () => authRequest("/api/auth/request-phone-verification"),
+    onSuccess: (data) => {
+      if (data.devPhoneOtp) {
+        setPhoneCode(data.devPhoneOtp);
+      }
+      toast({
+        title: "Phone OTP sent",
+        description: data.devPhoneOtp ? "Dev OTP auto-filled below" : "Check SMS",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Failed to send OTP",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const verifyPhoneMutation = useMutation({
+    mutationFn: async () => authRequest("/api/auth/verify-phone", { code: phoneCode.trim() }),
+    onSuccess: (data) => {
+      if (data.user) updateUser(data.user);
+      setPhoneCode("");
+      toast({
+        title: "Phone verified",
+        description: "Withdrawals are now enabled after cooldown",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Phone verification failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   useEffect(() => {
     if (!user) setLocation("/auth");
   }, [user, setLocation]);
+
+  useEffect(() => {
+    setContact({
+      email: user?.email || "",
+      phone: user?.phone || "",
+    });
+  }, [user?.email, user?.phone]);
 
   if (!user) return null;
 
@@ -213,6 +363,114 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" /> Account Security
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-xs">Email</Label>
+              <Input
+                value={contact.email}
+                onChange={(e) => setContact((p) => ({ ...p, email: e.target.value }))}
+                placeholder="your@email.com"
+              />
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <Mail className="w-3.5 h-3.5" />
+                {user.emailVerified ? (
+                  <Badge variant="outline">Email Verified</Badge>
+                ) : (
+                  <Badge variant="destructive">Email Not Verified</Badge>
+                )}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Phone (required for withdrawals)</Label>
+              <Input
+                value={contact.phone}
+                onChange={(e) => setContact((p) => ({ ...p, phone: e.target.value }))}
+                placeholder="+91XXXXXXXXXX"
+              />
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <Phone className="w-3.5 h-3.5" />
+                {user.phoneVerified ? (
+                  <Badge variant="outline">Phone Verified</Badge>
+                ) : (
+                  <Badge variant="destructive">Phone Not Verified</Badge>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => updateContactMutation.mutate()}
+              disabled={updateContactMutation.isPending || !hasContactChanges()}
+            >
+              {updateContactMutation.isPending ? "Saving..." : "Save Contact"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => requestEmailVerificationMutation.mutate()}
+              disabled={requestEmailVerificationMutation.isPending}
+            >
+              {requestEmailVerificationMutation.isPending ? "Sending..." : "Send Email Verify Link"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => requestPhoneVerificationMutation.mutate()}
+              disabled={requestPhoneVerificationMutation.isPending || !contact.phone.trim()}
+            >
+              {requestPhoneVerificationMutation.isPending ? "Sending..." : "Send Phone OTP"}
+            </Button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-xs">Email Verification Token</Label>
+              <Input
+                value={emailToken}
+                onChange={(e) => setEmailToken(e.target.value)}
+                placeholder="Paste token from email/dev response"
+              />
+              <Button
+                className="mt-2 w-full"
+                onClick={() => verifyEmailMutation.mutate()}
+                disabled={verifyEmailMutation.isPending || !emailToken.trim()}
+              >
+                {verifyEmailMutation.isPending ? "Verifying..." : "Verify Email"}
+              </Button>
+            </div>
+            <div>
+              <Label className="text-xs">Phone OTP</Label>
+              <Input
+                value={phoneCode}
+                onChange={(e) => setPhoneCode(e.target.value)}
+                placeholder="Enter OTP"
+              />
+              <Button
+                className="mt-2 w-full"
+                onClick={() => verifyPhoneMutation.mutate()}
+                disabled={verifyPhoneMutation.isPending || !phoneCode.trim()}
+              >
+                {verifyPhoneMutation.isPending ? "Verifying..." : "Verify Phone"}
+              </Button>
+            </div>
+          </div>
+
+          {user.withdrawalLockUntil && new Date(user.withdrawalLockUntil).getTime() > Date.now() && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              Withdrawals locked until {new Date(user.withdrawalLockUntil).toLocaleString("en-IN")}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* MATCH HISTORY */}
       <Card>
