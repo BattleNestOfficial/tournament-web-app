@@ -1269,6 +1269,174 @@ app.get("/api/leaderboard", async (req, res) => {
   }
 });
 
+app.get("/api/leaderboard/:userId/analytics", async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    const [allUsers, allTournaments] = await Promise.all([
+      storage.getAllUsers(),
+      storage.getAllTournaments(),
+    ]);
+
+    const usernameById = new Map<number, string>(
+      allUsers.map((user) => [Number(user.id), user.username || `User #${user.id}`]),
+    );
+
+    const completedTournaments = allTournaments
+      .filter((tournament) => getTournamentStatusValue(tournament.status) === "completed")
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    const bucketLabels = ["00-03", "04-07", "08-11", "12-15", "16-19", "20-23"];
+    const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    const playedMatches: Array<{
+      tournamentId: number;
+      title: string;
+      startTime: string;
+      kills: number;
+      position: number;
+      prize: number;
+    }> = [];
+    const heatmapBuckets = new Map<string, { day: number; bucket: number; matches: number; wins: number; kills: number; score: number }>();
+
+    for (const tournament of completedTournaments) {
+      const rows = await storage.getResultsByTournament(Number(tournament.id));
+      const row = rows.find((entry) => Number(entry.userId) === userId);
+      if (!row) continue;
+
+      const kills = Math.max(0, Number(row.kills || 0));
+      const position = Math.max(1, Number(row.position || 0));
+      const prize = Math.max(0, Number(row.prize || 0));
+      const start = new Date(tournament.startTime);
+      const isValidDate = !Number.isNaN(start.getTime());
+      const day = isValidDate ? start.getDay() : 0;
+      const bucket = isValidDate ? Math.max(0, Math.min(5, Math.floor(start.getHours() / 4))) : 0;
+      const winBonus = position === 1 ? 5 : position <= 3 ? 2 : 0;
+      const score = kills + winBonus;
+      const key = `${day}-${bucket}`;
+
+      const existing = heatmapBuckets.get(key) || {
+        day,
+        bucket,
+        matches: 0,
+        wins: 0,
+        kills: 0,
+        score: 0,
+      };
+      existing.matches += 1;
+      existing.kills += kills;
+      existing.score += score;
+      if (position === 1) existing.wins += 1;
+      heatmapBuckets.set(key, existing);
+
+      playedMatches.push({
+        tournamentId: Number(tournament.id),
+        title: tournament.title,
+        startTime: isValidDate ? start.toISOString() : new Date(0).toISOString(),
+        kills,
+        position,
+        prize,
+      });
+    }
+
+    playedMatches.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    const matchesPlayed = playedMatches.length;
+    const wins = playedMatches.filter((match) => match.position === 1).length;
+    const podiums = playedMatches.filter((match) => match.position > 0 && match.position <= 3).length;
+    const totalKills = playedMatches.reduce((sum, match) => sum + match.kills, 0);
+    const totalPrize = playedMatches.reduce((sum, match) => sum + match.prize, 0);
+    const winRate = matchesPlayed > 0 ? (wins / matchesPlayed) * 100 : 0;
+    const avgKills = matchesPlayed > 0 ? totalKills / matchesPlayed : 0;
+
+    let runningWins = 0;
+    let runningKills = 0;
+
+    const winTrend = playedMatches.map((match, index) => {
+      if (match.position === 1) runningWins += 1;
+      const played = index + 1;
+      return {
+        match: played,
+        label: `M${played}`,
+        date: match.startTime,
+        winRate: Number(((runningWins / played) * 100).toFixed(2)),
+        won: match.position === 1 ? 1 : 0,
+      };
+    });
+
+    const killsTrend = playedMatches.map((match, index) => {
+      runningKills += match.kills;
+      const played = index + 1;
+      return {
+        match: played,
+        label: `M${played}`,
+        date: match.startTime,
+        kills: match.kills,
+        avgKills: Number((runningKills / played).toFixed(2)),
+      };
+    });
+
+    let maxScore = 0;
+    heatmapBuckets.forEach((bucket) => {
+      if (bucket.score > maxScore) maxScore = bucket.score;
+    });
+
+    const heatmap: Array<{
+      day: number;
+      dayLabel: string;
+      bucket: number;
+      bucketLabel: string;
+      matches: number;
+      wins: number;
+      kills: number;
+      score: number;
+      intensity: number;
+    }> = [];
+
+    for (let day = 0; day < dayLabels.length; day += 1) {
+      for (let bucket = 0; bucket < bucketLabels.length; bucket += 1) {
+        const value = heatmapBuckets.get(`${day}-${bucket}`);
+        const score = value?.score || 0;
+        heatmap.push({
+          day,
+          dayLabel: dayLabels[day],
+          bucket,
+          bucketLabel: bucketLabels[bucket],
+          matches: value?.matches || 0,
+          wins: value?.wins || 0,
+          kills: value?.kills || 0,
+          score,
+          intensity: maxScore > 0 ? Number((score / maxScore).toFixed(4)) : 0,
+        });
+      }
+    }
+
+    res.json({
+      userId,
+      username: usernameById.get(userId) || `User #${userId}`,
+      summary: {
+        matchesPlayed,
+        wins,
+        podiums,
+        totalKills,
+        totalPrize,
+        winRate: Number(winRate.toFixed(2)),
+        avgKills: Number(avgKills.toFixed(2)),
+      },
+      dayLabels,
+      bucketLabels,
+      winTrend,
+      killsTrend,
+      heatmap,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.get("/api/stats/total-users", async (_req, res) => {
   try {
     const users = await storage.getAllUsers();

@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users } from "lucide-react";
+import { Swords, Trophy, Wallet, User, LogOut, Moon, Sun, Shield, Home, Menu, X, Users, BarChart3 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -45,7 +45,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { href: "/", label: "Home", icon: Home },
     { href: "/tournaments", label: "Tournaments", icon: Trophy },
     ...(!isAdmin ? [{ href: "/teams", label: "Teams", icon: Users }] : []),
-    ...(!isAdmin ? [{ href: "/wallet", label: "Wallet", icon: Wallet }] : []),
+    ...(!isAdmin ? [{ href: "/leaderboard", label: "Leaderboard", icon: BarChart3 }] : []),
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
@@ -82,12 +82,14 @@ export default function Layout({ children }: { children: ReactNode }) {
 
           <div className="flex items-center gap-2">
             {user && !isAdmin && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-card rounded-md border border-card-border text-sm">
-                <Wallet className="w-3.5 h-3.5 text-chart-3" />
-                <span className="font-medium" data-testid="text-wallet-balance">
-                  {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
-                </span>
-              </div>
+              <Link href="/wallet" data-testid="link-wallet-balance">
+                <Button variant="outline" size="sm" className="hidden sm:flex items-center gap-1.5 border-primary/30">
+                  <Wallet className="w-3.5 h-3.5 text-chart-3" />
+                  <span className="font-medium" data-testid="text-wallet-balance">
+                    {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
+                  </span>
+                </Button>
+              </Link>
             )}
             <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -167,10 +169,16 @@ export default function Layout({ children }: { children: ReactNode }) {
               );
             })}
             {user && !isAdmin && (
-              <div className="sm:hidden flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
-                <Wallet className="w-4 h-4 text-chart-3" />
-                Wallet: {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
-              </div>
+              <Link href="/wallet">
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="sm:hidden flex items-center gap-2 w-full px-3 py-2.5 text-sm text-muted-foreground rounded-md hover:bg-muted/40"
+                  data-testid="mobile-link-wallet-balance"
+                >
+                  <Wallet className="w-4 h-4 text-chart-3" />
+                  Wallet: {"\u20B9"}{((user.walletBalance || 0) / 100).toFixed(0)}
+                </button>
+              </Link>
             )}
           </div>
         )}
