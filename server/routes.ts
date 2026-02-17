@@ -2483,7 +2483,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const fraudHookEnabled = req.body?.fraudHookEnabled === true;
       const rawExpiresAt = req.body?.expiresAt;
       const rawMinEntryFee = req.body?.minEntryFee;
-      const rawTournamentId = req.body?.tournamentId;
       const rawMetadata = req.body?.metadata;
       const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
 
@@ -2492,19 +2491,14 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       let value = 0;
-      if (rawType === "percentage_discount") {
-        if (!Number.isFinite(rawValue) || rawValue <= 0 || rawValue > 100) {
-          return res.status(400).json({ message: "Percentage discount must be between 1 and 100" });
-        }
-        value = Math.round(rawValue);
-      } else if (rawType === "free_entry") {
+      if (rawType === "free_entry") {
         value = 0;
       } else {
         if (!Number.isFinite(rawValue) || rawValue < 0) {
           return res.status(400).json({ message: "Coupon value must be zero or greater" });
         }
         value = Math.round(rawValue * 100);
-        if (rawType !== "tournament_specific" && value <= 0) {
+        if (value <= 0) {
           return res.status(400).json({ message: "Coupon value must be greater than 0" });
         }
       }
@@ -2540,22 +2534,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: "Invalid min entry condition" });
       }
 
-      const tournamentId =
-        rawTournamentId == null || rawTournamentId === ""
-          ? null
-          : Math.round(Number(rawTournamentId));
-      if (tournamentId != null && (!Number.isInteger(tournamentId) || tournamentId <= 0)) {
-        return res.status(400).json({ message: "Invalid tournament selection" });
-      }
-      if (rawType === "tournament_specific" && !tournamentId) {
-        return res.status(400).json({ message: "Tournament-specific coupons require a tournament" });
-      }
-      if (tournamentId) {
-        const tournament = await storage.getTournamentById(tournamentId);
-        if (!tournament) {
-          return res.status(404).json({ message: "Tournament not found for coupon" });
-        }
-      }
+      const tournamentId = null;
 
       const metadata =
         rawMetadata && typeof rawMetadata === "object"
@@ -2564,9 +2543,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
 
       if (
         rawType === "flat_discount" ||
-        rawType === "percentage_discount" ||
-        rawType === "free_entry" ||
-        rawType === "tournament_specific"
+        rawType === "free_entry"
       ) {
         if (minEntryFee != null && minEntryFee < 0) {
           return res.status(400).json({ message: "Min entry condition must be non-negative" });

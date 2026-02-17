@@ -148,26 +148,27 @@ export class DatabaseStorage implements IStorage {
     return Number(value || 0);
   }
 
+  private isSupportedCouponType(value: unknown): value is CouponType {
+    const raw = String(value || "").toLowerCase().trim();
+    return raw === "flat_discount" || raw === "free_entry" || raw === "bonus_credit";
+  }
+
   private normalizeCouponType(value: unknown): CouponType {
     const raw = String(value || "").toLowerCase().trim();
     const allowed: CouponType[] = [
       "flat_discount",
-      "percentage_discount",
       "free_entry",
       "bonus_credit",
-      "referral_coupon",
-      "login_reward_7day",
-      "tournament_specific",
     ];
     return allowed.includes(raw as CouponType) ? (raw as CouponType) : "bonus_credit";
   }
 
   private isWalletCouponType(type: CouponType): boolean {
-    return type === "bonus_credit" || type === "referral_coupon" || type === "login_reward_7day";
+    return type === "bonus_credit";
   }
 
   private isTournamentCouponType(type: CouponType): boolean {
-    return type === "flat_discount" || type === "percentage_discount" || type === "free_entry" || type === "tournament_specific";
+    return type === "flat_discount" || type === "free_entry";
   }
 
   private computeTournamentCouponDiscount(coupon: Coupon, entryFee: number): number {
@@ -177,12 +178,8 @@ export class DatabaseStorage implements IStorage {
     if (type === "free_entry") {
       return entryFee;
     }
-    if (type === "percentage_discount") {
-      const pct = Math.max(0, Math.min(100, value));
-      return Math.min(entryFee, Math.floor((entryFee * pct) / 100));
-    }
-    if (type === "flat_discount" || type === "tournament_specific") {
-      if (value <= 0) return type === "tournament_specific" ? entryFee : 0;
+    if (type === "flat_discount") {
+      if (value <= 0) return 0;
       return Math.min(entryFee, value);
     }
     return 0;
@@ -531,6 +528,11 @@ export class DatabaseStorage implements IStorage {
         if (!couponRow) {
           const err = new Error("Invalid or inactive coupon code") as Error & { code?: string };
           err.code = "INVALID_COUPON";
+          throw err;
+        }
+        if (!this.isSupportedCouponType(couponRow.couponType)) {
+          const err = new Error("Coupon type is no longer supported") as Error & { code?: string };
+          err.code = "COUPON_NOT_APPLICABLE";
           throw err;
         }
 
@@ -1266,6 +1268,11 @@ export class DatabaseStorage implements IStorage {
         err.code = "INVALID_COUPON";
         throw err;
       }
+      if (!this.isSupportedCouponType(coupon.couponType)) {
+        const err = new Error("Coupon type is no longer supported") as Error & { code?: string };
+        err.code = "COUPON_NOT_APPLICABLE";
+        throw err;
+      }
       const couponType = this.normalizeCouponType(coupon.couponType);
       const couponValue = Math.max(0, Math.round(Number(coupon.value ?? coupon.amount ?? 0)));
       if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now()) {
@@ -1332,14 +1339,6 @@ export class DatabaseStorage implements IStorage {
           const err = new Error("Coupon is not valid for wallet redemption") as Error & { code?: string };
           err.code = "COUPON_NOT_APPLICABLE";
           throw err;
-        }
-        if (couponType === "login_reward_7day") {
-          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-          if (!userBefore.createdAt || Date.now() - new Date(userBefore.createdAt).getTime() < sevenDaysMs) {
-            const err = new Error("7-day account age is required for this reward coupon") as Error & { code?: string };
-            err.code = "COUPON_CONDITION_FAILED";
-            throw err;
-          }
         }
         bonusAmount = couponValue;
         if (bonusAmount <= 0) {

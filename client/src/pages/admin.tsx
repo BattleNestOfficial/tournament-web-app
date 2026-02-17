@@ -1027,17 +1027,11 @@ function CouponManager({ token }: { token: string | null }) {
     perUserLimit: "1",
     expiresAt: "",
     minEntryFee: "",
-    tournamentId: "",
     fraudHookEnabled: false,
   });
 
   const { data: coupons, isLoading } = useQuery<Coupon[]>({
     queryKey: ["/api/admin/coupons"],
-    enabled: !!token,
-  });
-
-  const { data: tournaments = [] } = useQuery<Tournament[]>({
-    queryKey: ["/api/tournaments"],
     enabled: !!token,
   });
 
@@ -1054,9 +1048,8 @@ function CouponManager({ token }: { token: string | null }) {
   });
 
   const analyticsByCouponId = new Map(analytics.map((row) => [Number(row.couponId), row]));
-  const tournamentCouponTypes = new Set(["flat_discount", "percentage_discount", "free_entry", "tournament_specific"]);
-  const requiresTournament = form.couponType === "tournament_specific";
-  const valueOptional = form.couponType === "free_entry" || form.couponType === "tournament_specific";
+  const tournamentCouponTypes = new Set(["flat_discount", "free_entry"]);
+  const valueOptional = form.couponType === "free_entry";
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -1073,7 +1066,6 @@ function CouponManager({ token }: { token: string | null }) {
           perUserLimit: form.perUserLimit ? Number(form.perUserLimit) : null,
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
           minEntryFee: tournamentCouponTypes.has(form.couponType) && form.minEntryFee ? Number(form.minEntryFee) : null,
-          tournamentId: requiresTournament && form.tournamentId ? Number(form.tournamentId) : null,
           fraudHookEnabled: form.fraudHookEnabled,
         }),
       });
@@ -1094,7 +1086,6 @@ function CouponManager({ token }: { token: string | null }) {
         perUserLimit: "1",
         expiresAt: "",
         minEntryFee: "",
-        tournamentId: "",
         fraudHookEnabled: false,
       });
     },
@@ -1121,28 +1112,21 @@ function CouponManager({ token }: { token: string | null }) {
 
   const couponTypeLabel: Record<(typeof couponTypeValues)[number], string> = {
     flat_discount: "Flat Discount",
-    percentage_discount: "Percentage Discount",
     free_entry: "Free Entry",
     bonus_credit: "Bonus Credit",
-    referral_coupon: "Referral Coupon",
-    login_reward_7day: "7-Day Login Reward",
-    tournament_specific: "Tournament Specific",
   };
 
   function formatCouponValue(coupon: Coupon) {
     const type = String(coupon.couponType || "bonus_credit");
     const value = Number(coupon.value ?? coupon.amount ?? 0);
     if (type === "free_entry") return "Free Entry";
-    if (type === "percentage_discount") return `${value}%`;
-    if (type === "tournament_specific" && value <= 0) return "Tournament Free Entry";
     return `\u20B9${(value / 100).toFixed(0)}`;
   }
 
-  const valueLabel = form.couponType === "percentage_discount" ? "Value (%)" : "Value (\u20B9)";
+  const valueLabel = "Value (\u20B9)";
   const canCreate =
     !!form.code.trim() &&
     (valueOptional || (!!form.value && Number(form.value) > 0)) &&
-    (!requiresTournament || !!form.tournamentId) &&
     !createMutation.isPending;
 
   return (
@@ -1150,7 +1134,7 @@ function CouponManager({ token }: { token: string | null }) {
       <div>
         <h3 className="text-lg font-semibold">Coupon Engine</h3>
         <p className="text-sm text-muted-foreground">
-          Create flat, percentage, free-entry, bonus, referral, 7-day reward, and tournament-specific coupons.
+          Create flat discount, free entry, and bonus credit coupons.
         </p>
       </div>
 
@@ -1185,10 +1169,9 @@ function CouponManager({ token }: { token: string | null }) {
               <Input
                 type="number"
                 min="0"
-                max={form.couponType === "percentage_discount" ? "100" : undefined}
                 value={form.value}
                 onChange={(e) => setForm((prev) => ({ ...prev, value: e.target.value }))}
-                placeholder={form.couponType === "percentage_discount" ? "e.g. 20" : "e.g. 50"}
+                placeholder={form.couponType === "free_entry" ? "Optional for free entry" : "e.g. 50"}
                 data-testid="input-coupon-value-admin"
               />
             </div>
@@ -1233,21 +1216,6 @@ function CouponManager({ token }: { token: string | null }) {
                   placeholder="Optional"
                   data-testid="input-coupon-min-entry-admin"
                 />
-              </div>
-            )}
-            {requiresTournament && (
-              <div className="space-y-1.5">
-                <Label>Tournament</Label>
-                <Select value={form.tournamentId} onValueChange={(value) => setForm((prev) => ({ ...prev, tournamentId: value }))}>
-                  <SelectTrigger data-testid="select-coupon-tournament-admin">
-                    <SelectValue placeholder="Select tournament" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tournaments.map((t) => (
-                      <SelectItem key={t.id} value={String(t.id)}>{t.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             )}
           </div>

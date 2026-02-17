@@ -11,12 +11,8 @@ export const paymentStatusEnum = pgEnum("payment_status", ["created", "authorize
 export const notificationTypeEnum = pgEnum("notification_type", ["tournament_joined", "match_started", "results_declared", "withdrawal_update", "wallet_credit", "wallet_debit", "general"]);
 export const couponTypeValues = [
   "flat_discount",
-  "percentage_discount",
   "free_entry",
   "bonus_credit",
-  "referral_coupon",
-  "login_reward_7day",
-  "tournament_specific",
 ] as const;
 
 export const couponContextValues = ["wallet", "tournament_join"] as const;
