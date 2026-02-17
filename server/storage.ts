@@ -92,11 +92,11 @@ export interface IStorage {
   createDispute(data: {
     userId: number;
     reportType?: string;
-    accusedUsername?: string | null;
+    accusedGameName: string;
+    tournamentRef: string;
     tournamentId?: number | null;
     description: string;
-    screenshotUrl?: string | null;
-    priorityLevel?: "standard" | "priority";
+    screenshotUrl: string;
   }): Promise<Dispute>;
   getDisputeById(id: number): Promise<Dispute | undefined>;
   getDisputesByUser(userId: number): Promise<Dispute[]>;
@@ -193,6 +193,13 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   private getSafeBalance(value: number | null | undefined): number {
     return Number(value || 0);
+  }
+
+  private normalizeSupportStatus(value: unknown): "open" | "in_review" | "resolved" {
+    const raw = String(value || "").toLowerCase().trim();
+    if (raw === "in_review") return "in_review";
+    if (raw === "resolved" || raw === "rejected") return "resolved";
+    return "open";
   }
 
   private normalizeLoyaltyTier(value: unknown): LoyaltyTier {
@@ -1003,23 +1010,23 @@ export class DatabaseStorage implements IStorage {
   async createDispute(data: {
     userId: number;
     reportType?: string;
-    accusedUsername?: string | null;
+    accusedGameName: string;
+    tournamentRef: string;
     tournamentId?: number | null;
     description: string;
-    screenshotUrl?: string | null;
-    priorityLevel?: "standard" | "priority";
+    screenshotUrl: string;
   }): Promise<Dispute> {
     const [created] = await db
       .insert(disputes)
       .values({
         userId: data.userId,
         reportType: data.reportType || "hacker",
-        accusedUsername: data.accusedUsername || null,
+        accusedGameName: data.accusedGameName,
+        tournamentRef: data.tournamentRef,
         tournamentId: data.tournamentId ?? null,
         description: data.description,
-        screenshotUrl: data.screenshotUrl || null,
-        priorityLevel: data.priorityLevel || "standard",
-        status: "submitted",
+        screenshotUrl: data.screenshotUrl,
+        status: "open",
       })
       .returning();
     return created;
@@ -1027,11 +1034,19 @@ export class DatabaseStorage implements IStorage {
 
   async getDisputeById(id: number): Promise<Dispute | undefined> {
     const [item] = await db.select().from(disputes).where(eq(disputes.id, id));
-    return item;
+    if (!item) return undefined;
+    return {
+      ...item,
+      status: this.normalizeSupportStatus(item.status),
+    };
   }
 
   async getDisputesByUser(userId: number): Promise<Dispute[]> {
-    return db.select().from(disputes).where(eq(disputes.userId, userId)).orderBy(desc(disputes.createdAt));
+    const items = await db.select().from(disputes).where(eq(disputes.userId, userId)).orderBy(desc(disputes.createdAt));
+    return items.map((item) => ({
+      ...item,
+      status: this.normalizeSupportStatus(item.status),
+    }));
   }
 
   async getAllDisputes(): Promise<(Dispute & { username?: string; resolvedByUsername?: string })[]> {
@@ -1044,6 +1059,7 @@ export class DatabaseStorage implements IStorage {
         ]);
         return {
           ...item,
+          status: this.normalizeSupportStatus(item.status),
           username: reportedBy?.username,
           resolvedByUsername: resolvedBy?.username,
         };
@@ -1061,7 +1077,11 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(disputes.id, id))
       .returning();
-    return updated;
+    if (!updated) return undefined;
+    return {
+      ...updated,
+      status: this.normalizeSupportStatus(updated.status),
+    };
   }
 
   async createDisputeLog(data: {

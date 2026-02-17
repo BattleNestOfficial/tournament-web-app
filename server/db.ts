@@ -230,10 +230,11 @@ export async function ensureDisputesTables() {
       user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       report_type text NOT NULL DEFAULT 'hacker',
       accused_username text,
+      tournament_ref text NOT NULL DEFAULT '',
       tournament_id integer,
       description text NOT NULL,
       screenshot_url text,
-      status text NOT NULL DEFAULT 'submitted',
+      status text NOT NULL DEFAULT 'open',
       resolution_note text,
       priority_level text NOT NULL DEFAULT 'standard',
       resolved_by integer,
@@ -247,10 +248,11 @@ export async function ensureDisputesTables() {
     ALTER TABLE disputes
     ADD COLUMN IF NOT EXISTS report_type text NOT NULL DEFAULT 'hacker',
     ADD COLUMN IF NOT EXISTS accused_username text,
+    ADD COLUMN IF NOT EXISTS tournament_ref text NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS tournament_id integer,
     ADD COLUMN IF NOT EXISTS description text,
     ADD COLUMN IF NOT EXISTS screenshot_url text,
-    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'submitted',
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'open',
     ADD COLUMN IF NOT EXISTS resolution_note text,
     ADD COLUMN IF NOT EXISTS priority_level text NOT NULL DEFAULT 'standard',
     ADD COLUMN IF NOT EXISTS resolved_by integer,
@@ -262,10 +264,20 @@ export async function ensureDisputesTables() {
     UPDATE disputes
     SET
       report_type = COALESCE(NULLIF(report_type, ''), 'hacker'),
-      status = COALESCE(NULLIF(status, ''), 'submitted'),
+      tournament_ref = COALESCE(NULLIF(tournament_ref, ''), CASE WHEN tournament_id IS NOT NULL THEN CAST(tournament_id AS text) ELSE 'N/A' END),
+      status = CASE
+        WHEN status = 'submitted' THEN 'open'
+        WHEN status = 'rejected' THEN 'resolved'
+        ELSE COALESCE(NULLIF(status, ''), 'open')
+      END,
       priority_level = COALESCE(NULLIF(priority_level, ''), 'standard'),
       updated_at = COALESCE(updated_at, now())
-    WHERE report_type IS NULL OR status IS NULL OR priority_level IS NULL OR updated_at IS NULL;
+    WHERE report_type IS NULL OR tournament_ref IS NULL OR status IS NULL OR priority_level IS NULL OR updated_at IS NULL OR status IN ('submitted', 'rejected');
+  `);
+
+  await pool.query(`
+    ALTER TABLE disputes
+    ALTER COLUMN status SET DEFAULT 'open';
   `);
 
   await pool.query(`

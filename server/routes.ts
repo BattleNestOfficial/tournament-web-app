@@ -234,12 +234,11 @@ function normalizeCouponTypeForRoute(value: unknown) {
   return couponTypeValues.includes(raw as any) ? (raw as (typeof couponTypeValues)[number]) : null;
 }
 
-function normalizeDisputeStatus(value: unknown): "submitted" | "in_review" | "resolved" | "rejected" | null {
+function normalizeDisputeStatus(value: unknown): "open" | "in_review" | "resolved" | null {
   const raw = String(value || "").toLowerCase().trim();
-  if (raw === "submitted") return "submitted";
+  if (raw === "open" || raw === "submitted") return "open";
   if (raw === "in_review") return "in_review";
-  if (raw === "resolved") return "resolved";
-  if (raw === "rejected") return "rejected";
+  if (raw === "resolved" || raw === "rejected") return "resolved";
   return null;
 }
 
@@ -1943,13 +1942,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
   app.post("/api/disputes", authMiddleware, upload.single("screenshot"), async (req, res) => {
     try {
       const userId = (req as any).userId;
-      const rawTournamentId =
-        req.body?.tournamentId == null || req.body?.tournamentId === ""
-          ? null
-          : Number(req.body.tournamentId);
+      if (!req.file) {
+        return res.status(400).json({ message: "Evidence screenshot is required" });
+      }
+
+      const tournamentRef =
+        typeof req.body?.tournamentRef === "string" ? req.body.tournamentRef.trim() : "";
+      const rawTournamentId = /^\d+$/.test(tournamentRef) ? Number(tournamentRef) : null;
       const payload = {
         reportType: typeof req.body?.reportType === "string" ? req.body.reportType.trim().toLowerCase() : "hacker",
-        accusedUsername: typeof req.body?.accusedUsername === "string" ? req.body.accusedUsername.trim() : null,
+        accusedGameName: typeof req.body?.accusedGameName === "string" ? req.body.accusedGameName.trim() : "",
+        tournamentRef,
         tournamentId: Number.isInteger(rawTournamentId) && rawTournamentId! > 0 ? rawTournamentId : null,
         description: typeof req.body?.description === "string" ? req.body.description.trim() : "",
       };
@@ -1958,16 +1961,15 @@ app.get("/api/stats/total-users", async (_req, res) => {
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid dispute payload" });
       }
 
-      const loyalty = await storage.getUserLoyaltyProfile(userId);
-      const screenshotUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      const screenshotUrl = `/uploads/${req.file.filename}`;
       const dispute = await storage.createDispute({
         userId,
         reportType: parsed.data.reportType || "hacker",
-        accusedUsername: parsed.data.accusedUsername || null,
+        accusedGameName: parsed.data.accusedGameName,
+        tournamentRef: parsed.data.tournamentRef,
         tournamentId: parsed.data.tournamentId ?? null,
         description: parsed.data.description,
         screenshotUrl,
-        priorityLevel: loyalty.benefits.prioritySupport ? "priority" : "standard",
       });
 
       await storage.createDisputeLog({
@@ -1975,14 +1977,10 @@ app.get("/api/stats/total-users", async (_req, res) => {
         actorUserId: userId,
         actorRole: "user",
         action: "created",
-        note: `Dispute submitted (${dispute.reportType})`,
+        note: `Ticket opened (${dispute.reportType})`,
       });
 
-      res.status(201).json({
-        ...dispute,
-        loyaltyTier: loyalty.tier,
-        loyaltyTierLabel: getTierBadge(loyalty.tier),
-      });
+      res.status(201).json(dispute);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1993,28 +1991,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const userId = (req as any).userId;
       const myDisputes = await storage.getDisputesByUser(userId);
       res.json(myDisputes);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.get("/api/disputes/:id/logs", authMiddleware, async (req, res) => {
-    try {
-      const disputeId = Number(req.params.id);
-      if (!Number.isInteger(disputeId) || disputeId <= 0) {
-        return res.status(400).json({ message: "Invalid dispute id" });
-      }
-      const dispute = await storage.getDisputeById(disputeId);
-      if (!dispute) return res.status(404).json({ message: "Dispute not found" });
-
-      const requesterId = (req as any).userId;
-      const requesterRole = String((req as any).userRole || "user");
-      if (requesterRole !== "admin" && Number(dispute.userId) !== Number(requesterId)) {
-        return res.status(403).json({ message: "Not allowed to view this dispute log" });
-      }
-
-      const logs = await storage.getDisputeLogs(disputeId);
-      res.json(logs);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2687,22 +2663,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
     }
   });
 
-  app.get("/api/admin/disputes/:id/logs", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const disputeId = Number(req.params.id);
-      if (!Number.isInteger(disputeId) || disputeId <= 0) {
-        return res.status(400).json({ message: "Invalid dispute id" });
-      }
-      const dispute = await storage.getDisputeById(disputeId);
-      if (!dispute) return res.status(404).json({ message: "Dispute not found" });
-
-      const logs = await storage.getDisputeLogs(disputeId);
-      res.json(logs);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
   app.patch("/api/admin/disputes/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const disputeId = Number(req.params.id);
@@ -2713,12 +2673,6 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const status = normalizeDisputeStatus(req.body?.status);
       if (!status) return res.status(400).json({ message: "Invalid dispute status" });
 
-      const resolutionNote =
-        typeof req.body?.resolutionNote === "string" ? req.body.resolutionNote.trim() : "";
-      if (resolutionNote.length > 2000) {
-        return res.status(400).json({ message: "Resolution note is too long" });
-      }
-
       const existing = await storage.getDisputeById(disputeId);
       if (!existing) return res.status(404).json({ message: "Dispute not found" });
 
@@ -2727,14 +2681,10 @@ app.get("/api/stats/total-users", async (_req, res) => {
         status,
       };
 
-      if (resolutionNote) {
-        updatePayload.resolutionNote = resolutionNote;
-      }
-
-      if (status === "resolved" || status === "rejected") {
+      if (status === "resolved") {
         updatePayload.resolvedBy = adminId;
         updatePayload.resolvedAt = new Date();
-      } else if (status === "submitted" || status === "in_review") {
+      } else if (status === "open" || status === "in_review") {
         updatePayload.resolvedBy = null;
         updatePayload.resolvedAt = null;
       }
@@ -2747,14 +2697,14 @@ app.get("/api/stats/total-users", async (_req, res) => {
         actorUserId: adminId,
         actorRole: "admin",
         action: `status_${status}`,
-        note: resolutionNote || `Status updated to ${status}`,
+        note: `Status updated to ${status}`,
       });
 
       await storage.createNotification({
         userId: updated.userId,
         type: "general",
-        title: "Dispute Update",
-        message: `Your dispute #${updated.id} is now ${status.replace("_", " ")}.${resolutionNote ? ` Note: ${resolutionNote}` : ""}`,
+        title: "Support Ticket Update",
+        message: `Your ticket #${updated.id} is now ${status.replace("_", " ")}.`,
       });
 
       await storage.createAdminLog({
@@ -2762,7 +2712,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         action: "update_dispute_status",
         targetType: "dispute",
         targetId: disputeId,
-        details: `status=${status}${resolutionNote ? `, note=${resolutionNote}` : ""}`,
+        details: `status=${status}`,
       });
 
       res.json(updated);

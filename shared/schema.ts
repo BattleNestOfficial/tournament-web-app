@@ -17,7 +17,7 @@ export const couponTypeValues = [
 
 export const couponContextValues = ["wallet", "tournament_join"] as const;
 export const loyaltyTierValues = ["bronze", "silver", "gold", "vip"] as const;
-export const disputeStatusValues = ["submitted", "in_review", "resolved", "rejected"] as const;
+export const disputeStatusValues = ["open", "in_review", "resolved"] as const;
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -241,11 +241,12 @@ export const disputes = pgTable("disputes", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull(),
   reportType: text("report_type").notNull().default("hacker"),
-  accusedUsername: text("accused_username"),
+  accusedGameName: text("accused_username"),
+  tournamentRef: text("tournament_ref").notNull().default(""),
   tournamentId: integer("tournament_id"),
   description: text("description").notNull(),
   screenshotUrl: text("screenshot_url"),
-  status: text("status").notNull().default("submitted"),
+  status: text("status").notNull().default("open"),
   resolutionNote: text("resolution_note"),
   priorityLevel: text("priority_level").notNull().default("standard"),
   resolvedBy: integer("resolved_by"),
@@ -329,7 +330,8 @@ export const insertCouponSchema = z.object({
 });
 export const insertDisputeSchema = z.object({
   reportType: z.string().min(2).max(50).optional(),
-  accusedUsername: z.string().min(2).max(60).optional().nullable(),
+  accusedGameName: z.string().min(2).max(100),
+  tournamentRef: z.string().min(2).max(160),
   tournamentId: z.number().int().positive().optional().nullable(),
   description: z.string().min(10).max(2000),
 });

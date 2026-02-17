@@ -22,7 +22,7 @@ import {
   BarChart3, TrendingUp, DollarSign, UserCheck, X, Upload, ImageIcon, Trash2, Award,
   TicketPercent, Flag,
 } from "lucide-react";
-import { couponTypeValues, type Game, type Tournament, type User, type Withdrawal, type Banner, type Coupon, type Dispute, type DisputeLog } from "@shared/schema";
+import { couponTypeValues, type Game, type Tournament, type User, type Withdrawal, type Banner, type Coupon, type Dispute } from "@shared/schema";
 
 export default function AdminPage() {
   const { user, token } = useAuth();
@@ -73,8 +73,8 @@ export default function AdminPage() {
           <TabsTrigger value="withdrawals" data-testid="tab-admin-withdrawals">
             <Wallet className="w-3.5 h-3.5 mr-1.5" /> Withdrawals
           </TabsTrigger>
-          <TabsTrigger value="disputes" data-testid="tab-admin-disputes">
-            <Flag className="w-3.5 h-3.5 mr-1.5" /> Disputes
+          <TabsTrigger value="support" data-testid="tab-admin-support">
+            <Flag className="w-3.5 h-3.5 mr-1.5" /> Support
           </TabsTrigger>
           <TabsTrigger value="banners" data-testid="tab-admin-banners">
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Banners
@@ -88,7 +88,7 @@ export default function AdminPage() {
         <TabsContent value="games"><GameManager token={token} /></TabsContent>
         <TabsContent value="users"><UserManager token={token} /></TabsContent>
         <TabsContent value="withdrawals"><WithdrawalManager token={token} /></TabsContent>
-        <TabsContent value="disputes"><DisputeManager token={token} /></TabsContent>
+        <TabsContent value="support"><SupportTicketManager token={token} /></TabsContent>
         <TabsContent value="banners"><BannerManager token={token} /></TabsContent>
         <TabsContent value="coupons"><CouponManager token={token} /></TabsContent>
       </Tabs>
@@ -850,215 +850,147 @@ function WithdrawalManager({ token }: { token: string | null }) {
 }
 
 type AdminDisputeRow = Dispute & { username?: string; resolvedByUsername?: string };
-type AdminDisputeLogRow = DisputeLog & { actorUsername?: string };
 
-function DisputeManager({ token }: { token: string | null }) {
+function SupportTicketManager({ token }: { token: string | null }) {
   const { toast } = useToast();
-  const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [notes, setNotes] = useState<Record<number, string>>({});
 
   const { data: disputes, isLoading } = useQuery<AdminDisputeRow[]>({
     queryKey: ["/api/admin/disputes"],
     enabled: !!token,
   });
 
-  useEffect(() => {
-    if (!disputes?.length) {
-      setSelectedDisputeId(null);
-      return;
-    }
-    if (!selectedDisputeId || !disputes.some((item) => item.id === selectedDisputeId)) {
-      setSelectedDisputeId(disputes[0].id);
-    }
-  }, [disputes, selectedDisputeId]);
-
-  const { data: logs, isLoading: logsLoading } = useQuery<AdminDisputeLogRow[]>({
-    queryKey: ["/api/admin/disputes", selectedDisputeId, "logs"],
-    enabled: !!token && !!selectedDisputeId,
-  });
-
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: "submitted" | "in_review" | "resolved" | "rejected" }) => {
-      const resolutionNote = (notes[id] || "").trim();
+    mutationFn: async ({ id, status }: { id: number; status: "open" | "in_review" | "resolved" }) => {
       const res = await fetch(`/api/admin/disputes/${id}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          resolutionNote: resolutionNote || undefined,
-        }),
+        body: JSON.stringify({ status }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to update dispute");
+      if (!res.ok) throw new Error(data.message || "Failed to update ticket");
       return data;
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes", vars.id, "logs"] });
-      toast({ title: "Dispute updated", description: `Ticket #${vars.id} moved to ${vars.status}.` });
+      toast({ title: "Ticket updated", description: `Ticket #${vars.id} moved to ${vars.status.replace("_", " ")}.` });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const filtered = (disputes || []).filter((item) => statusFilter === "all" || item.status === statusFilter);
-  const selected = (disputes || []).find((item) => item.id === selectedDisputeId);
+  const normalized = (disputes || []).map((item) => {
+    const status = item.status === "in_review" ? "in_review" : item.status === "resolved" ? "resolved" : "open";
+    return { ...item, status };
+  });
+  const filtered = normalized.filter((item) => statusFilter === "all" || item.status === statusFilter);
 
   const statusClass: Record<string, string> = {
-    submitted: "text-muted-foreground",
+    open: "text-muted-foreground",
     in_review: "text-chart-4",
     resolved: "text-chart-3",
-    rejected: "text-destructive",
+  };
+
+  const counts = {
+    open: normalized.filter((item) => item.status === "open").length,
+    inReview: normalized.filter((item) => item.status === "in_review").length,
+    resolved: normalized.filter((item) => item.status === "resolved").length,
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-lg font-semibold">Dispute Resolution Queue</h3>
-          <p className="text-sm text-muted-foreground">Review hacker reports, update status, and keep an admin log trail.</p>
+          <h3 className="text-lg font-semibold">Support Ticket Queue</h3>
+          <p className="text-sm text-muted-foreground">Open, review, and resolve user tickets.</p>
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-admin-dispute-filter">
+          <SelectTrigger className="w-[180px]" data-testid="select-admin-support-filter">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="submitted">Submitted</SelectItem>
+            <SelectItem value="open">Open</SelectItem>
             <SelectItem value="in_review">In Review</SelectItem>
             <SelectItem value="resolved">Resolved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            {isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
-              </div>
-            ) : filtered.length > 0 ? (
-              <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
-                {filtered.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`rounded-md border p-3 space-y-2 ${selectedDisputeId === item.id ? "border-primary bg-primary/5" : ""}`}
-                    data-testid={`admin-dispute-${item.id}`}
-                  >
-                    <button className="w-full text-left" onClick={() => setSelectedDisputeId(item.id)}>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-sm">Ticket #{item.id}</p>
-                        <Badge variant="outline" className={`text-[10px] ${statusClass[item.status] || "text-muted-foreground"}`}>
-                          {item.status.replace("_", " ")}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {item.username || `User #${item.userId}`} · {new Date(item.createdAt).toLocaleString("en-IN")}
-                      </p>
-                      <p className="text-sm mt-2 line-clamp-2">{item.description}</p>
-                      {!!item.screenshotUrl && (
-                        <p className="text-xs mt-1">
-                          <a href={item.screenshotUrl} target="_blank" rel="noreferrer" className="underline">
-                            View screenshot evidence
-                          </a>
-                        </p>
-                      )}
-                    </button>
-
-                    <Input
-                      placeholder="Resolution note (optional)"
-                      value={notes[item.id] || ""}
-                      onChange={(e) => setNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                      data-testid={`input-dispute-note-${item.id}`}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "in_review" })}
-                        disabled={updateStatusMutation.isPending}
-                        data-testid={`button-dispute-review-${item.id}`}
-                      >
-                        In Review
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-chart-3"
-                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "resolved" })}
-                        disabled={updateStatusMutation.isPending}
-                        data-testid={`button-dispute-resolve-${item.id}`}
-                      >
-                        Resolve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-destructive"
-                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "rejected" })}
-                        disabled={updateStatusMutation.isPending}
-                        data-testid={`button-dispute-reject-${item.id}`}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-                No disputes found for the selected filter.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Admin Resolution Log</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-3">
-            {!selected ? (
-              <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Select a dispute to inspect full log history.
-              </div>
-            ) : (
-              <>
-                <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
-                  <p>Ticket: #{selected.id}</p>
-                  <p>Reporter: {selected.username || `User #${selected.userId}`}</p>
-                  <p>Status: {selected.status.replace("_", " ")}</p>
-                  {selected.resolutionNote && <p>Resolution note: {selected.resolutionNote}</p>}
-                  {selected.resolvedByUsername && <p>Resolved by: {selected.resolvedByUsername}</p>}
-                </div>
-                {logsLoading ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-                  </div>
-                ) : logs && logs.length > 0 ? (
-                  <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                    {logs.map((log) => (
-                      <div key={log.id} className="rounded-md border p-3">
-                        <p className="text-sm font-medium">{log.action.replace(/_/g, " ")}</p>
-                        {log.note && <p className="text-xs text-muted-foreground mt-1">{log.note}</p>}
-                        <p className="text-[11px] text-muted-foreground mt-2">
-                          {log.actorUsername || log.actorRole} · {new Date(log.createdAt).toLocaleString("en-IN")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No logs available for this dispute.
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Open</p><p className="text-xl font-bold">{counts.open}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">In Review</p><p className="text-xl font-bold">{counts.inReview}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Resolved</p><p className="text-xl font-bold">{counts.resolved}</p></CardContent></Card>
       </div>
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+            </div>
+          ) : filtered.length > 0 ? (
+            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+              {filtered.map((item) => (
+                <div key={item.id} className="rounded-md border p-3 space-y-2" data-testid={`admin-ticket-${item.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-sm">Ticket #{item.id}</p>
+                    <Badge variant="outline" className={`text-[10px] ${statusClass[item.status] || "text-muted-foreground"}`}>
+                      {item.status.replace("_", " ")}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {item.username || `User #${item.userId}`} | {new Date(item.createdAt).toLocaleString("en-IN")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Accused Game Name: {item.accusedGameName || "N/A"}</p>
+                  <p className="text-xs text-muted-foreground">Tournament Name/ID: {item.tournamentRef || "N/A"}</p>
+                  <p className="text-sm">{item.description}</p>
+                  {item.screenshotUrl && (
+                    <a href={item.screenshotUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+                      View screenshot evidence
+                    </a>
+                  )}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {item.status !== "open" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => updateStatusMutation.mutate({ id: item.id, status: "open" })}
+                        disabled={updateStatusMutation.isPending}
+                        data-testid={`button-ticket-open-${item.id}`}
+                      >
+                        Move to Open
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateStatusMutation.mutate({ id: item.id, status: "in_review" })}
+                      disabled={updateStatusMutation.isPending}
+                      data-testid={`button-ticket-review-${item.id}`}
+                    >
+                      In Review
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-chart-3"
+                      onClick={() => updateStatusMutation.mutate({ id: item.id, status: "resolved" })}
+                      disabled={updateStatusMutation.isPending}
+                      data-testid={`button-ticket-resolved-${item.id}`}
+                    >
+                      Mark Resolved
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No support tickets found for the selected filter.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1643,4 +1575,5 @@ function ResultsForm({ tournament, token, onClose }: { tournament: Tournament; t
     </div>
   );
 }
+
 
