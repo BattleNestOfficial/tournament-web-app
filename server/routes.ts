@@ -1,4 +1,4 @@
-import type { Express, Response } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
@@ -98,6 +98,15 @@ const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCK_MS = 15 * 60 * 1000;
 const DAILY_WITHDRAWAL_LIMIT_PAISA = Number(process.env.DAILY_WITHDRAWAL_LIMIT_PAISA || 2000000);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const IDEMPOTENCY_TTL_MS = Math.max(60_000, Number(process.env.IDEMPOTENCY_TTL_MS || 10 * 60 * 1000));
+
+type IdempotencyCacheRecord = {
+  status: number;
+  body: unknown;
+  expiresAt: number;
+};
+
+const idempotencyCache = new Map<string, IdempotencyCacheRecord>();
 
 function shouldExposeDevSecrets() {
   return !IS_PRODUCTION;
@@ -116,6 +125,48 @@ function getPublicErrorMessage(error: unknown, fallback = "Internal Server Error
     return error.message;
   }
   return fallback;
+}
+
+function parsePaisaAmount(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) return null;
+  return value;
+}
+
+function cleanupIdempotencyCache() {
+  const now = Date.now();
+  idempotencyCache.forEach((value, key) => {
+    if (value.expiresAt <= now) {
+      idempotencyCache.delete(key);
+    }
+  });
+}
+
+function getIdempotencyCacheKey(req: Request, scope: string, actorId: number | string) {
+  const rawHeader = req.headers["idempotency-key"];
+  const key = typeof rawHeader === "string" ? rawHeader.trim() : "";
+  if (!key) return null;
+  if (key.length < 8 || key.length > 128) return "__invalid__";
+  return `${scope}:${req.method}:${req.path}:${actorId}:${key}`;
+}
+
+function replayIdempotentResponse(cacheKey: string, res: Response) {
+  const cached = idempotencyCache.get(cacheKey);
+  if (!cached) return false;
+  if (cached.expiresAt <= Date.now()) {
+    idempotencyCache.delete(cacheKey);
+    return false;
+  }
+  res.setHeader("X-Idempotent-Replay", "true");
+  res.status(cached.status).json(cached.body);
+  return true;
+}
+
+function cacheIdempotentResponse(cacheKey: string, status: number, body: unknown) {
+  idempotencyCache.set(cacheKey, {
+    status,
+    body,
+    expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+  });
 }
 
 function createPhoneOtp() {
@@ -590,6 +641,19 @@ function getMetadataSource(value: unknown): string {
   return typeof sourceValue === "string" ? sourceValue : "";
 }
 
+function getMetadataOrderId(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const orderIdValue = (value as Record<string, unknown>).orderId;
+  return typeof orderIdValue === "string" ? orderIdValue : "";
+}
+
+function signaturesMatch(expected: string, provided: string): boolean {
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
 function normalizeCouponTypeForRoute(value: unknown) {
   const raw = String(value || "").toLowerCase().trim();
   return couponTypeValues.includes(raw as any) ? (raw as (typeof couponTypeValues)[number]) : null;
@@ -624,7 +688,40 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      service: "battle-nest-api",
+      timestamp: new Date().toISOString(),
+      uptimeSec: Math.floor(process.uptime()),
+    });
+  });
+
+  app.get("/api/ready", async (_req, res) => {
+    try {
+      await storage.getStats();
+      res.json({
+        status: "ready",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      res.status(503).json({
+        status: "not_ready",
+        message: getPublicErrorMessage(err),
+      });
+    }
+  });
+
   app.use("/api/", apiLimiter);
+
+  const idempotencyCleanupTimer = setInterval(
+    () => cleanupIdempotencyCache(),
+    Math.min(IDEMPOTENCY_TTL_MS, 60_000),
+  );
+  if (typeof (idempotencyCleanupTimer as any).unref === "function") {
+    (idempotencyCleanupTimer as any).unref();
+  }
+  httpServer.on("close", () => clearInterval(idempotencyCleanupTimer));
 
   const express = await import("express");
   app.use("/uploads", express.default.static(uploadDir));
@@ -771,6 +868,67 @@ export async function registerRoutes(
     }
 
     return { refundedUsers, refundedAmount };
+  }
+
+  const paymentCreditLocks = new Map<string, Promise<{ user: any | null; credited: boolean }>>();
+
+  async function ensurePaymentWalletCredit(
+    payment: { userId: number; amount: number; razorpayOrderId: string },
+    meta: { source: "razorpay_verify" | "razorpay_webhook"; paymentId?: string | null },
+  ) {
+    const existingLock = paymentCreditLocks.get(payment.razorpayOrderId);
+    if (existingLock) {
+      return existingLock;
+    }
+
+    const lockPromise = (async () => {
+      const txHistory = await storage.getTransactionsByUser(payment.userId);
+      const alreadyCredited = txHistory.some(
+        (tx) => String(tx.type) === "razorpay" && getMetadataOrderId(tx.metadata) === payment.razorpayOrderId,
+      );
+      const beforeUser = await storage.getUserById(payment.userId);
+      if (alreadyCredited) {
+        return { user: beforeUser || null, credited: false };
+      }
+      if (!beforeUser) {
+        const err = new Error("User not found");
+        (err as any).code = "USER_NOT_FOUND";
+        throw err;
+      }
+      const updatedUser = await storage.updateWalletBalance(payment.userId, payment.amount);
+      if (!updatedUser) {
+        throw new Error("Wallet update failed");
+      }
+      await storage.createTransaction({
+        userId: payment.userId,
+        amount: payment.amount,
+        type: "razorpay",
+        walletType: "main",
+        mainBalanceBefore: beforeUser.mainWalletBalance || 0,
+        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
+        bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
+        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
+        metadata: {
+          source: meta.source,
+          orderId: payment.razorpayOrderId,
+          paymentId: meta.paymentId || null,
+        },
+        description: `Razorpay payment #${meta.paymentId || payment.razorpayOrderId}`,
+      });
+      await storage.createNotification({
+        userId: payment.userId,
+        type: "wallet_credit",
+        title: "Payment Successful",
+        message: `Rs.${(payment.amount / 100).toFixed(2)} has been added to your wallet.`,
+      });
+      return { user: updatedUser, credited: true };
+    })()
+      .finally(() => {
+        paymentCreditLocks.delete(payment.razorpayOrderId);
+      });
+
+    paymentCreditLocks.set(payment.razorpayOrderId, lockPromise);
+    return lockPromise;
   }
 
   app.get("/api/tournaments/stream", (_req, res) => {
@@ -2148,9 +2306,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       const userId = (req as any).userId;
-      const { amount } = req.body;
-      if (!amount || typeof amount !== "number" || amount <= 0 || amount > 10000000) {
-        return res.status(400).json({ message: "Invalid amount. Must be a positive number." });
+      const amount = parsePaisaAmount(req.body?.amount);
+      if (amount == null || amount <= 0 || amount > 10000000) {
+        return res.status(400).json({ message: "Invalid amount. Must be a positive integer amount in paise." });
+      }
+
+      const idempotencyKey = getIdempotencyCacheKey(req, "wallet_add", userId);
+      if (idempotencyKey === "__invalid__") {
+        return res.status(400).json({ message: "Invalid Idempotency-Key header" });
+      }
+      if (idempotencyKey && replayIdempotentResponse(idempotencyKey, res)) {
+        return;
       }
 
       const beforeUser = await storage.getUserById(userId);
@@ -2170,9 +2336,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
         description: "Wallet deposit",
       });
 
-      res.json({ user: sanitizeUser(updatedUser), message: "Money added successfully" });
+      const payload = { user: sanitizeUser(updatedUser), message: "Money added successfully" };
+      if (idempotencyKey) {
+        cacheIdempotentResponse(idempotencyKey, 200, payload);
+      }
+      res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2207,7 +2377,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       if (err?.code === "COUPON_CONDITION_FAILED") return res.status(400).json({ message: err.message });
       if (err?.code === "COUPON_FRAUD_BLOCKED") return res.status(403).json({ message: err.message });
       if (err?.code === "USER_NOT_FOUND") return res.status(404).json({ message: err.message });
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2221,9 +2391,17 @@ app.get("/api/stats/total-users", async (_req, res) => {
       }
 
       const userId = (req as any).userId;
-      const { amount } = req.body;
-      if (!amount || typeof amount !== "number" || amount < 100 || amount > 10000000) {
+      const amount = parsePaisaAmount(req.body?.amount);
+      if (amount == null || amount < 100 || amount > 10000000) {
         return res.status(400).json({ message: "Amount must be between 1 and 100000 rupees" });
+      }
+
+      const idempotencyKey = getIdempotencyCacheKey(req, "payments_create_order", userId);
+      if (idempotencyKey === "__invalid__") {
+        return res.status(400).json({ message: "Invalid Idempotency-Key header" });
+      }
+      if (idempotencyKey && replayIdempotentResponse(idempotencyKey, res)) {
+        return;
       }
 
       const Razorpay = (await import("razorpay")).default;
@@ -2242,12 +2420,16 @@ app.get("/api/stats/total-users", async (_req, res) => {
         currency: "INR",
       });
 
-      res.json({
+      const payload = {
         orderId: order.id,
         amount: amount,
         currency: "INR",
         keyId: keyId,
-      });
+      };
+      if (idempotencyKey) {
+        cacheIdempotentResponse(idempotencyKey, 200, payload);
+      }
+      res.json(payload);
     } catch (err: any) {
       console.error("Razorpay order error:", err);
       res.status(500).json({ message: "Failed to create payment order" });
@@ -2272,7 +2454,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         .update(body)
         .digest("hex");
 
-      if (expectedSignature !== razorpay_signature) {
+      if (!signaturesMatch(expectedSignature, String(razorpay_signature))) {
         return res.status(400).json({ message: "Invalid payment signature" });
       }
 
@@ -2284,37 +2466,27 @@ app.get("/api/stats/total-users", async (_req, res) => {
         razorpayPaymentId: razorpay_payment_id,
         razorpaySignature: razorpay_signature,
       });
-      if (!capturedPayment) return res.status(400).json({ message: "Payment already processed" });
-
-      const beforeUser = await storage.getUserById(userId);
-      if (!beforeUser) return res.status(404).json({ message: "User not found" });
-      const updatedUser = await storage.updateWalletBalance(userId, capturedPayment.amount);
-      if (!updatedUser) return res.status(400).json({ message: "Wallet update failed" });
-      await storage.createTransaction({
-        userId,
-        amount: capturedPayment.amount,
-        type: "razorpay",
-        walletType: "main",
-        mainBalanceBefore: beforeUser.mainWalletBalance || 0,
-        mainBalanceAfter: updatedUser.mainWalletBalance || 0,
-        bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
-        bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
-        metadata: {
+      const paymentForCredit = capturedPayment || payment;
+      const creditResult = await ensurePaymentWalletCredit(
+        {
+          userId: paymentForCredit.userId,
+          amount: paymentForCredit.amount,
+          razorpayOrderId: paymentForCredit.razorpayOrderId,
+        },
+        {
           source: "razorpay_verify",
-          orderId: razorpay_order_id,
           paymentId: razorpay_payment_id,
         },
-        description: `Razorpay payment #${razorpay_payment_id}`,
-      });
+      );
 
-      await storage.createNotification({
-        userId,
-        type: "wallet_credit",
-        title: "Payment Successful",
-        message: `Rs.${(capturedPayment.amount / 100).toFixed(2)} has been added to your wallet.`,
-      });
+      if (!creditResult.user) {
+        return res.status(404).json({ message: "User not found" });
+      }
 
-      res.json({ message: "Payment verified successfully", user: sanitizeUser(updatedUser) });
+      res.json({
+        message: creditResult.credited ? "Payment verified successfully" : "Payment already verified",
+        user: sanitizeUser(creditResult.user),
+      });
     } catch (err: any) {
       console.error("Payment verify error:", err);
       res.status(500).json({ message: "Payment verification failed" });
@@ -2337,7 +2509,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         .update(rawBody)
         .digest("hex");
 
-      if (expectedSignature !== signature) {
+      if (!signaturesMatch(expectedSignature, String(signature))) {
         return res.status(400).json({ message: "Invalid webhook signature" });
       }
 
@@ -2349,25 +2521,19 @@ app.get("/api/stats/total-users", async (_req, res) => {
           const payment = await storage.markPaymentCapturedByOrderId(orderId, {
             razorpayPaymentId: paymentId,
           });
-          if (payment) {
-            const beforeUser = await storage.getUserById(payment.userId);
-            if (beforeUser) {
-              const updatedUser = await storage.updateWalletBalance(payment.userId, payment.amount);
-              if (updatedUser) {
-                await storage.createTransaction({
-                  userId: payment.userId,
-                  amount: payment.amount,
-                  type: "razorpay",
-                  walletType: "main",
-                  mainBalanceBefore: beforeUser.mainWalletBalance || 0,
-                  mainBalanceAfter: updatedUser.mainWalletBalance || 0,
-                  bonusBalanceBefore: beforeUser.bonusWalletBalance || 0,
-                  bonusBalanceAfter: updatedUser.bonusWalletBalance || 0,
-                  metadata: { source: "razorpay_webhook", orderId, paymentId },
-                  description: `Razorpay webhook payment #${paymentId}`,
-                });
-              }
-            }
+          const paymentForCredit = payment || (await storage.getPaymentByOrderId(orderId));
+          if (paymentForCredit) {
+            await ensurePaymentWalletCredit(
+              {
+                userId: paymentForCredit.userId,
+                amount: paymentForCredit.amount,
+                razorpayOrderId: paymentForCredit.razorpayOrderId,
+              },
+              {
+                source: "razorpay_webhook",
+                paymentId,
+              },
+            );
           }
         }
       }
@@ -2384,7 +2550,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const payments = await storage.getPaymentsByUser((req as any).userId);
       res.json(payments);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2393,7 +2559,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const txs = await storage.getTransactionsByUser((req as any).userId);
       res.json(txs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2406,7 +2572,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         tierLabel: getTierBadge(profile.tier),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2414,8 +2580,20 @@ app.get("/api/stats/total-users", async (_req, res) => {
   app.post("/api/withdrawals", authMiddleware, async (req, res) => {
     try {
       const userId = (req as any).userId;
-      const { amount, upiId, bankDetails } = req.body;
-      if (!amount || typeof amount !== "number" || amount < 5000) return res.status(400).json({ message: "Minimum withdrawal is \u20B950" });
+      const amount = parsePaisaAmount(req.body?.amount);
+      const upiId = req.body?.upiId;
+      const bankDetails = req.body?.bankDetails;
+      if (amount == null || amount < 5000) {
+        return res.status(400).json({ message: "Minimum withdrawal is \u20B950" });
+      }
+
+      const idempotencyKey = getIdempotencyCacheKey(req, "withdrawals_create", userId);
+      if (idempotencyKey === "__invalid__") {
+        return res.status(400).json({ message: "Invalid Idempotency-Key header" });
+      }
+      if (idempotencyKey && replayIdempotentResponse(idempotencyKey, res)) {
+        return;
+      }
 
       const user = await requireWithdrawalEligibility(userId, res);
       if (!user) return;
@@ -2474,7 +2652,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
         upiId,
         bankDetails,
       });
-      res.json({
+      const payload = {
         ...wd,
         user: sanitizeUser(updatedUser),
         dailyLimit: DAILY_WITHDRAWAL_LIMIT_PAISA,
@@ -2486,9 +2664,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
           platformFee,
           netAmount,
         },
-      });
+      };
+      if (idempotencyKey) {
+        cacheIdempotentResponse(idempotencyKey, 200, payload);
+      }
+      res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2497,7 +2679,7 @@ app.get("/api/stats/total-users", async (_req, res) => {
       const wds = await storage.getWithdrawalsByUser((req as any).userId);
       res.json(wds);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 
@@ -2896,12 +3078,21 @@ app.get("/api/stats/total-users", async (_req, res) => {
   app.post("/api/admin/users/:id/wallet", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const targetId = Number(req.params.id);
-      const { amount, type, description } = req.body;
-      if (!amount || typeof amount !== "number" || amount <= 0) {
-        return res.status(400).json({ message: "Amount must be positive" });
+      const amount = parsePaisaAmount(req.body?.amount);
+      const { type, description } = req.body;
+      if (amount == null || amount <= 0) {
+        return res.status(400).json({ message: "Amount must be a positive integer amount in paise" });
       }
       if (!type || !["admin_credit", "admin_debit"].includes(type)) {
         return res.status(400).json({ message: "Type must be admin_credit or admin_debit" });
+      }
+
+      const idempotencyKey = getIdempotencyCacheKey(req, "admin_wallet_adjustment", Number((req as any).userId || 0));
+      if (idempotencyKey === "__invalid__") {
+        return res.status(400).json({ message: "Invalid Idempotency-Key header" });
+      }
+      if (idempotencyKey && replayIdempotentResponse(idempotencyKey, res)) {
+        return;
       }
 
       const user = await storage.getUserById(targetId);
@@ -2950,9 +3141,13 @@ app.get("/api/stats/total-users", async (_req, res) => {
         targetId,
         metadata: { amount },
       });
-      res.json(sanitizeUser(updatedUser));
+      const payload = sanitizeUser(updatedUser);
+      if (idempotencyKey) {
+        cacheIdempotentResponse(idempotencyKey, 200, payload);
+      }
+      res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: getPublicErrorMessage(err) });
     }
   });
 

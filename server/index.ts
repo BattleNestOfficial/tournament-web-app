@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import crypto from "crypto";
 import {
   ensureHostApplicationsTable,
   ensureRoleEnumHasHost,
@@ -33,6 +34,17 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+
+app.use((req, res, next) => {
+  const incomingRequestId = req.header("x-request-id");
+  const requestId =
+    typeof incomingRequestId === "string" && incomingRequestId.trim().length > 0
+      ? incomingRequestId.trim().slice(0, 120)
+      : crypto.randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  next();
+});
 
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -101,6 +113,7 @@ function redactSensitive(value: unknown): unknown {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
+  const requestId = (req as any).requestId || "-";
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -112,7 +125,7 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms rid=${requestId}`;
       if (capturedJsonResponse) {
         const redactedPayload = JSON.stringify(redactSensitive(capturedJsonResponse));
         const maxPayloadLen = 1200;
@@ -152,6 +165,7 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    const requestId = ((_req as any).requestId as string | undefined) || null;
     const status = err.status || err.statusCode || 500;
     const message = process.env.NODE_ENV === "production"
       ? "Internal Server Error"
@@ -163,7 +177,7 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({ message, requestId });
   });
 
   // importantly only setup vite in development and after
@@ -182,15 +196,40 @@ async function runStartupStep(name: string, step: () => Promise<void>) {
   // It is the only port that is not firewalled.
   const port = Number(process.env.PORT || 5000);
 
-httpServer.listen(
-  {
-    port,
-    host: "0.0.0.0"
-  },
-  () => {
-    console.log(`Server running on port ${port}`);
-  }
-);
+  httpServer.listen(
+    {
+      port,
+      host: "0.0.0.0",
+    },
+    () => {
+      console.log(`Server running on port ${port}`);
+    },
+  );
+
+  let shuttingDown = false;
+  const handleShutdownSignal = (signal: NodeJS.Signals) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.warn(`[shutdown] Received ${signal}, closing server...`);
+    httpServer.close((closeErr) => {
+      if (closeErr) {
+        console.error("[shutdown] Error while closing server:", closeErr);
+        process.exit(1);
+      }
+      console.warn("[shutdown] Server closed cleanly.");
+      process.exit(0);
+    });
+    const forceExitTimer = setTimeout(() => {
+      console.error("[shutdown] Force exiting after timeout.");
+      process.exit(1);
+    }, 10_000);
+    if (typeof (forceExitTimer as any).unref === "function") {
+      (forceExitTimer as any).unref();
+    }
+  };
+
+  process.on("SIGINT", () => handleShutdownSignal("SIGINT"));
+  process.on("SIGTERM", () => handleShutdownSignal("SIGTERM"));
 })().catch((err) => {
   console.error("Fatal startup error:", err);
   process.exit(1);
