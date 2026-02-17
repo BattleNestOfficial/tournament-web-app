@@ -6,6 +6,7 @@ import {
   Activity,
   CalendarClock,
   Copy,
+  Download,
   Eye,
   Flame,
   Gamepad2,
@@ -28,6 +29,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
 
 import type { Banner, Game, Registration, Tournament } from "@shared/schema";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+const INSTALL_PROMPT_ONCE_KEY = "bn_install_prompt_once_v1";
 
 type ShowcaseStatus = "hot" | "upcoming" | "live";
 type PromoSlide = {
@@ -353,6 +361,9 @@ export default function HomePage() {
   const { token } = useAuth();
   const [roomDialogTournament, setRoomDialogTournament] = useState<Tournament | null>(null);
   const [copiedRoomField, setCopiedRoomField] = useState<"roomId" | "roomPassword" | null>(null);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstallApp, setCanInstallApp] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
 
   const {
     data: tournaments = [],
@@ -444,6 +455,45 @@ export default function HomePage() {
     setBannerIndex(0);
   }, [bannerIndex, promoSlides.length]);
 
+  useEffect(() => {
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+
+    setIsAppInstalled(isStandalone);
+    if (isStandalone) return;
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      const installEvent = event as BeforeInstallPromptEvent;
+      installEvent.preventDefault();
+      setDeferredInstallPrompt(installEvent);
+      setCanInstallApp(true);
+
+      if (localStorage.getItem(INSTALL_PROMPT_ONCE_KEY) === "1") return;
+      localStorage.setItem(INSTALL_PROMPT_ONCE_KEY, "1");
+
+      window.setTimeout(() => {
+        triggerInstallPrompt(installEvent).catch(() => {
+          // Ignore prompt errors from browser restrictions.
+        });
+      }, 300);
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setCanInstallApp(false);
+      setDeferredInstallPrompt(null);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
   const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
   const joinedTournamentIds = useMemo(
     () =>
@@ -524,6 +574,14 @@ export default function HomePage() {
     }
   }
 
+  async function triggerInstallPrompt(installEvent: BeforeInstallPromptEvent | null = deferredInstallPrompt) {
+    if (!installEvent) return;
+    await installEvent.prompt();
+    await installEvent.userChoice;
+    setDeferredInstallPrompt(null);
+    setCanInstallApp(false);
+  }
+
   return (
     <div className="esports-theme esports-page relative min-h-screen bg-background dark:bg-black text-foreground dark:text-white overflow-hidden">
       <ParticleField />
@@ -581,12 +639,23 @@ export default function HomePage() {
               Join high-stakes BGMI, Free Fire, CODM and more. Build your squad, enter live tournaments, and climb from local grinders to Battle Nest champions.
             </p>
 
-            <div className="mt-8 flex items-center justify-center lg:justify-start">
+            <div className="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
               <Link href="/tournaments">
                 <button className="px-7 py-3 rounded-lg bg-gradient-to-r from-lime-400 to-green-500 text-black font-semibold hover:opacity-90 transition">
                   Browse Tournaments
                 </button>
               </Link>
+              {!isAppInstalled && (
+                <button
+                  onClick={() => triggerInstallPrompt().catch(() => {})}
+                  disabled={!canInstallApp}
+                  className="px-6 py-3 rounded-lg border border-lime-400/50 bg-black/45 text-lime-200 font-semibold hover:bg-lime-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition inline-flex items-center gap-2"
+                  data-testid="button-install-app"
+                >
+                  <Download className="w-4 h-4" />
+                  Install App
+                </button>
+              )}
             </div>
           </motion.div>
 
