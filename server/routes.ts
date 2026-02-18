@@ -1205,18 +1205,26 @@ export async function registerRoutes(
           await storage.updateUserProfile(user.id, { googleId, avatarUrl: picture || null, emailVerified: true });
           user = await storage.getUserById(user.id);
         } else {
-          const username = (name || email.split("@")[0]).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 30) || `user_${Date.now()}`;
-          let finalUsername = username;
-          const existingUsername = await storage.getAllUsers();
-          if (existingUsername.some(u => u.username === finalUsername)) {
-            finalUsername = `${username}_${Math.floor(Math.random() * 9999)}`;
-          }
-          user = await storage.createGoogleUser({
-            username: finalUsername,
+          let userToCreate = {
+            username: (name || email.split("@")[0]).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20) || `user_${Date.now()}`,
             email,
             googleId,
             avatarUrl: picture,
-          });
+          };
+
+          for (let i = 0; i < 5; i++) {
+            try {
+              user = await storage.createGoogleUser(userToCreate);
+              break; 
+            } catch (err: any) {
+              if (err?.code === "23505") { // Unique violation
+                userToCreate.username = `${userToCreate.username.slice(0, 20)}_${Math.floor(Math.random() * 9999)}`;
+              } else {
+                throw err;
+              }
+            }
+          }
+
         }
       }
 
