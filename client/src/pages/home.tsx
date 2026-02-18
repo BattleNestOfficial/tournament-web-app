@@ -594,7 +594,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="esports-theme esports-page relative min-h-screen bg-background dark:bg-black text-foreground dark:text-white overflow-hidden">
+    <div className="dark esports-theme esports-page relative min-h-screen bg-background text-foreground overflow-hidden">
       <ParticleField />
       <div className="esports-page-backdrop absolute inset-0 -z-30 bg-gradient-to-br from-[#010701] via-[#03210b] to-[#001006]" />
       <motion.div

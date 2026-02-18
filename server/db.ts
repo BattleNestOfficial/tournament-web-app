@@ -1,6 +1,38 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
+import fs from "fs";
+import path from "path";
+
+function loadLocalEnvFile() {
+  const envPath = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const envContent = fs.readFileSync(envPath, "utf8");
+  for (const rawLine of envContent.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const normalized = line.startsWith("export ") ? line.slice(7).trim() : line;
+    const eqIndex = normalized.indexOf("=");
+    if (eqIndex <= 0) continue;
+
+    const key = normalized.slice(0, eqIndex).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    let value = normalized.slice(eqIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+}
+
+loadLocalEnvFile();
 
 const databaseUrl =
   process.env.DATABASE_URL ||
@@ -28,7 +60,7 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("🔥 Unexpected PG pool error", err);
+  console.error("Unexpected PG pool error", err);
   process.exit(1);
 });
 
