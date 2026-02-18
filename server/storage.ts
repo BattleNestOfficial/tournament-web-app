@@ -167,7 +167,13 @@ export interface IStorage {
   markAllNotificationsRead(userId: number): Promise<void>;
   getUnreadNotificationCount(userId: number): Promise<number>;
 
-  getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }>;
+  getStats(): Promise<{
+    totalUsers: number;
+    totalRevenue: number;
+    totalPrizePool: number;
+    activeTournaments: number;
+    totalPayouts: number;
+  }>;
 
   getAllBanners(): Promise<Banner[]>;
   getEnabledBanners(): Promise<Banner[]>;
@@ -1540,18 +1546,35 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getStats(): Promise<{ totalUsers: number; totalRevenue: number; activeTournaments: number; totalPayouts: number }> {
+  async getStats(): Promise<{
+    totalUsers: number;
+    totalRevenue: number;
+    totalPrizePool: number;
+    activeTournaments: number;
+    totalPayouts: number;
+  }> {
     const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
-    const [revenue] = await db.select({ sum: sql<number>`coalesce(sum(amount), 0)` }).from(transactions).where(eq(transactions.type, "deposit"));
+    const [revenue] = await db
+      .select({ sum: sql<number>`coalesce(sum(${transactions.amount}), 0)` })
+      .from(transactions)
+      .where(sql`${transactions.type} IN ('deposit', 'razorpay')`);
+    const [prizePool] = await db
+      .select({ sum: sql<number>`coalesce(sum(${tournaments.prizePool}), 0)` })
+      .from(tournaments)
+      .where(or(eq(tournaments.status, "upcoming"), eq(tournaments.status, "hot"), eq(tournaments.status, "live")));
     const [active] = await db
       .select({ count: sql<number>`count(*)` })
       .from(tournaments)
-      .where(or(eq(tournaments.status, "upcoming"), eq(tournaments.status, "hot")));
-    const [payouts] = await db.select({ sum: sql<number>`coalesce(sum(amount), 0)` }).from(transactions).where(eq(transactions.type, "winning"));
+      .where(or(eq(tournaments.status, "upcoming"), eq(tournaments.status, "hot"), eq(tournaments.status, "live")));
+    const [payouts] = await db
+      .select({ sum: sql<number>`coalesce(sum(${tournaments.prizePool}), 0)` })
+      .from(tournaments)
+      .where(eq(tournaments.status, "completed"));
 
     return {
       totalUsers: Number(userCount.count),
       totalRevenue: Number(revenue.sum),
+      totalPrizePool: Number(prizePool.sum),
       activeTournaments: Number(active.count),
       totalPayouts: Number(payouts.sum),
     };

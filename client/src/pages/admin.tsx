@@ -135,7 +135,7 @@ function AdminStats({ token }: { token: string | null }) {
 
   const items = [
     { label: "Total Users", value: stats?.totalUsers || 0, icon: Users, color: "text-chart-2" },
-    { label: "Total Revenue", value: `\u20B9${((stats?.totalRevenue || 0) / 100).toFixed(0)}`, icon: DollarSign, color: "text-chart-3" },
+    { label: "Total Prize Pool", value: `\u20B9${((stats?.totalPrizePool || 0) / 100).toFixed(0)}`, icon: DollarSign, color: "text-chart-3" },
     { label: "Active Tournaments", value: stats?.activeTournaments || 0, icon: Trophy, color: "text-chart-4" },
     { label: "Total Payouts", value: `\u20B9${((stats?.totalPayouts || 0) / 100).toFixed(0)}`, icon: TrendingUp, color: "text-chart-1" },
   ];
@@ -163,6 +163,7 @@ function TournamentManager({ token }: { token: string | null }) {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [statusSession, setStatusSession] = useState<"upcoming" | "live" | "completed" | "cancelled">("upcoming");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [prizes, setPrizes] = useState<{ position: number; prize: string }[]>([]);
@@ -326,6 +327,25 @@ function editTournament(t: Tournament) {
     live: "text-destructive",
     completed: "text-muted-foreground",
     cancelled: "text-muted-foreground",
+  };
+
+  const normalizeTournamentSessionStatus = (status: string): "upcoming" | "live" | "completed" | "cancelled" => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "live") return "live";
+    if (normalized === "completed") return "completed";
+    if (normalized === "cancelled") return "cancelled";
+    return "upcoming";
+  };
+
+  const filteredTournaments = (tournaments || []).filter(
+    (tournament) => normalizeTournamentSessionStatus(tournament.status) === statusSession,
+  );
+
+  const statusCounts = {
+    upcoming: (tournaments || []).filter((tournament) => normalizeTournamentSessionStatus(tournament.status) === "upcoming").length,
+    live: (tournaments || []).filter((tournament) => normalizeTournamentSessionStatus(tournament.status) === "live").length,
+    completed: (tournaments || []).filter((tournament) => normalizeTournamentSessionStatus(tournament.status) === "completed").length,
+    cancelled: (tournaments || []).filter((tournament) => normalizeTournamentSessionStatus(tournament.status) === "cancelled").length,
   };
 
   return (
@@ -527,11 +547,31 @@ function editTournament(t: Tournament) {
         </Dialog>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Upcoming</p><p className="text-xl font-bold">{statusCounts.upcoming}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Live</p><p className="text-xl font-bold">{statusCounts.live}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Completed</p><p className="text-xl font-bold">{statusCounts.completed}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cancelled</p><p className="text-xl font-bold">{statusCounts.cancelled}</p></CardContent></Card>
+      </div>
+
+      <Tabs
+        value={statusSession}
+        onValueChange={(value) => setStatusSession(value as "upcoming" | "live" | "completed" | "cancelled")}
+        className="space-y-0"
+      >
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsTrigger value="upcoming" data-testid="tab-admin-tournaments-upcoming">Upcoming</TabsTrigger>
+          <TabsTrigger value="live" data-testid="tab-admin-tournaments-live">Live</TabsTrigger>
+          <TabsTrigger value="completed" data-testid="tab-admin-tournaments-completed">Completed</TabsTrigger>
+          <TabsTrigger value="cancelled" data-testid="tab-admin-tournaments-cancelled">Cancelled</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : (
         <div className="space-y-2">
-          {tournaments?.map((t) => (
+          {filteredTournaments.map((t) => (
             <Card key={t.id} data-testid={`admin-tournament-${t.id}`}>
               <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -589,8 +629,8 @@ function editTournament(t: Tournament) {
               </CardContent>
             </Card>
           ))}
-          {(!tournaments || tournaments.length === 0) && (
-            <Card><CardContent className="p-8 text-center text-muted-foreground text-sm">No tournaments yet. Create one!</CardContent></Card>
+          {filteredTournaments.length === 0 && (
+            <Card><CardContent className="p-8 text-center text-muted-foreground text-sm">No tournaments in this session.</CardContent></Card>
           )}
         </div>
       )}
